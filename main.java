@@ -158,6 +158,25 @@ public final class main extends MIDlet {
             animation = next;
         }
 
+        // Small atan2 approximation for older CLDC profiles lacking Math.atan2.
+        private float fastAtan2(float y, float x) {
+            if (x == 0.0f) {
+                if (y > 0.0f) return 1.5707963f;
+                if (y < 0.0f) return -1.5707963f;
+                return 0.0f;
+            }
+            float absY = y < 0.0f ? -y : y;
+            float angle;
+            if (x > 0.0f) {
+                float r = (x - absY) / (x + absY);
+                angle = 0.78539816f - 0.78539816f * r;
+            } else {
+                float r = (x + absY) / (absY - x);
+                angle = 2.35619449f - 0.78539816f * r;
+            }
+            return y < 0.0f ? -angle : angle;
+        }
+
         private void update(int dt) {
             animTime += dt;
             float step = dt * 0.004f;
@@ -175,7 +194,7 @@ public final class main extends MIDlet {
             if (left) { dx -= cos * step; dz -= sin * step; }
             if (right) { dx += cos * step; dz += sin * step; }
             px += dx; pz += dz;
-            if (dx != 0 || dz != 0) yaw = (float)Math.atan2(dx, -dz);
+            if (dx != 0 || dz != 0) yaw = fastAtan2(dx, -dz);
             if (jumping) {
                 jumpY += jumpVelocity * dt;
                 jumpVelocity -= 0.00003f * dt;
@@ -263,7 +282,7 @@ public final class main extends MIDlet {
             va.set(0, indices.length, coords);
             VertexBuffer vb = new VertexBuffer();
             vb.setPositions(va, 0.001f, null);
-            TriangleArray ta = new TriangleArray(0, indices.length);
+            TriangleArray ta = new TriangleArray(0, 36);
             Appearance ap = new Appearance();
             Material mat = new Material();
             mat.setColor(Material.AMBIENT, color);
