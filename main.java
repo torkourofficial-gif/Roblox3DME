@@ -302,15 +302,32 @@ public final class main extends MIDlet {
             g.drawString("ROBLOX 3DME | DPAD: CAMERA", 3, 2, Graphics.TOP|Graphics.LEFT);
             g.drawString("2/8 move  4/6 strafe  5 jump  */# zoom", 3, getHeight()-18, Graphics.TOP|Graphics.LEFT);
             g.drawString(modelStatus, 3, 20, Graphics.TOP|Graphics.LEFT);
-            if (modelError.length() > 0) g.drawString(shortText(modelError, 38), 3, 38, Graphics.TOP|Graphics.LEFT);
-            if (initError.length() > 0) g.drawString(shortText(initError, 38), 3, 56, Graphics.TOP|Graphics.LEFT);
+            if (modelError.length() > 0) drawWrapped(g, modelError, 3, 38, getWidth() - 6);
+            if (initError.length() > 0) drawWrapped(g, initError, 3, 72, getWidth() - 6);
         }
 
 
-        private String shortText(String s, int max) {
-            if (s == null) return "";
-            if (s.length() <= max) return s;
-            return s.substring(0, max);
+        private void drawWrapped(Graphics g, String s, int x, int y, int maxWidth) {
+            if (s == null || s.length() == 0) return;
+            Font font = g.getFont();
+            int lineHeight = font.getHeight();
+            int start = 0;
+            int lineY = y;
+            while (start < s.length() && lineY < getHeight() - lineHeight) {
+                int end = start;
+                int lastSpace = -1;
+                while (end < s.length()) {
+                    if (s.charAt(end) == ' ') lastSpace = end;
+                    if (font.stringWidth(s.substring(start, end + 1)) > maxWidth) break;
+                    end++;
+                }
+                if (end == start) end++;
+                else if (end < s.length() && lastSpace >= start) end = lastSpace;
+                g.drawString(s.substring(start, end), x, lineY, Graphics.TOP|Graphics.LEFT);
+                start = end;
+                while (start < s.length() && s.charAt(start) == ' ') start++;
+                lineY += lineHeight;
+            }
         }
 
         private Node makeBox(float x, float y, float z, float sx, float sy, float sz, int color) {
