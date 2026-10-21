@@ -1,6 +1,6 @@
 # Roblox3DME — controlador y escenario de prueba M3G
 
-El punto de entrada es `main.java`, un MIDlet para **MIDP 2.0 + JSR-184 (M3G)**.
+El punto de entrada es `main.java` dentro del paquete `meblox` (`package meblox;`), un MIDlet para **MIDP 2.0 + JSR-184 (M3G)**.
 
 ## Controles
 - **D-pad:** gira la cámara en horizontal y permite mirar arriba/abajo.
