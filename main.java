@@ -7,7 +7,7 @@ import javax.microedition.m3g.*;
 /**
  * Roblox3DME: minimal JSR-184 playground/controller.
  * Put noobidle.m3g, noobrun.m3g, noobjump.m3g and face.png
- * in the MIDlet resource root. Intended for MIDP 2.0 + JSR-184 devices.
+ * in the /meblox/ resource folder in the JAR. Intended for MIDP 2.0 + JSR-184 devices.
  */
 public final class main extends MIDlet {
     private Game game;
@@ -87,9 +87,9 @@ public final class main extends MIDlet {
             world.addChild(makeBox(-3, 0.75f, -8, 2, 3, 2, 0x4779D1));
             world.addChild(makeBox(0, 1.5f, -11, 3, 4, 3, 0xB56AC8));
 
-            idleObject = loadModel("/noobidle.m3g");
-            runObject = loadModel("/noobrun.m3g");
-            jumpObject = loadModel("/noobjump.m3g");
+            idleObject = loadModel("/meblox/noobidle.m3g");
+            runObject = loadModel("/meblox/noobrun.m3g");
+            jumpObject = loadModel("/meblox/noobjump.m3g");
             modelStatus = "idle:" + (idleObject != null ? "OK" : "FAIL")
                 + " run:" + (runObject != null ? "OK" : "FAIL")
                 + " jump:" + (jumpObject != null ? "OK" : "FAIL");
@@ -245,7 +245,7 @@ public final class main extends MIDlet {
             // Camera looks along local -Z. Orbit position is opposite the look direction,
             // so yaw must have the opposite sign to camYaw.
             camera.setOrientation((float)(-camYaw * 57.29578f), 0.0f, 1.0f, 0.0f);
-            camera.preRotate((float)(-camPitch * 57.29578f), 1.0f, 0.0f, 0.0f);
+            camera.postRotate((float)(-camPitch * 57.29578f), 1.0f, 0.0f, 0.0f);
             camera.setTranslation(cx, cy, cz);
         }
 
