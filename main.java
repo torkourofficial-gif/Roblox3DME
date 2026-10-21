@@ -40,6 +40,7 @@ public final class main extends MIDlet {
         private boolean forward, back, left, right, camLeft, camRight, camUp, camDown, jumping;
         private boolean loaded;
         private String modelStatus = "Models: not loaded";
+        private String modelError = "";
 
         Game(main m) { midlet = m; setFullScreenMode(true); }
         synchronized void start() {
@@ -107,7 +108,7 @@ public final class main extends MIDlet {
                 // JSR-184 Loader.load(String) accepts an absolute resource path in the JAR.
                 Object3D[] objects = Loader.load(path);
                 if (objects == null || objects.length == 0) {
-                    modelStatus = path + ": empty";
+                    modelError = path + ": Loader returned no objects";
                     return null;
                 }
                 // Root order is undefined. Prefer a Group that can hold the model hierarchy;
@@ -120,9 +121,9 @@ public final class main extends MIDlet {
                     if (objects[i] instanceof Node && !(objects[i] instanceof Camera))
                         return objects[i];
                 }
-                modelStatus = path + ": no renderable Node";
+                modelError = path + ": no renderable Node";
             } catch (Throwable t) {
-                modelStatus = path + ": " + t.toString();
+                modelError = path + ": " + t.toString();
             }
             return null;
         }
@@ -276,6 +277,7 @@ public final class main extends MIDlet {
             g.drawString("ROBLOX 3DME | DPAD: CAMERA", 3, 2, Graphics.TOP|Graphics.LEFT);
             g.drawString("2/8 move  4/6 strafe  5 jump  */# zoom", 3, getHeight()-18, Graphics.TOP|Graphics.LEFT);
             g.drawString(modelStatus, 3, 20, Graphics.TOP|Graphics.LEFT);
+            if (modelError.length() > 0) g.drawString(modelError, 3, 38, Graphics.TOP|Graphics.LEFT);
         }
 
         private Node makeBox(float x, float y, float z, float sx, float sy, float sz, int color) {
