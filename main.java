@@ -107,7 +107,7 @@ public final class main extends MIDlet {
             avatar.addChild(activeModel);
             world.addChild(avatar);
             animation = 0;
-            modelStatus = "M3G loaded | 2/8 move, 5 jump";
+            modelStatus = "M3G loaded";
             loaded = true;
         }
 
@@ -350,8 +350,7 @@ public final class main extends MIDlet {
                 g.drawString("Check .m3g resources", 4, 22, Graphics.TOP|Graphics.LEFT);
             }
             g.setColor(0xFFFFFF);
-            g.drawString("ROBLOX 3DME | DPAD: CAMERA", 3, 2, Graphics.TOP|Graphics.LEFT);
-            g.drawString("2/8 move  4/6 strafe  5 jump  */# zoom", 3, getHeight()-18, Graphics.TOP|Graphics.LEFT);
+            g.drawString("ROBLOX 3DME", 3, 2, Graphics.TOP|Graphics.LEFT);
             g.drawString(modelStatus, 3, 20, Graphics.TOP|Graphics.LEFT);
             if (modelError.length() > 0) drawWrapped(g, modelError, 3, 38, getWidth() - 6);
             if (initError.length() > 0) drawWrapped(g, initError, 3, 72, getWidth() - 6);
