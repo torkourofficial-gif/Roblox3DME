@@ -244,8 +244,8 @@ public final class Roblox3DME extends MIDlet {
 
         protected void keyPressed(int keyCode) {
             int k = getGameAction(keyCode);
-            if (k == UP || keyCode == KEY_NUM2) forward = true;
-            else if (k == DOWN || keyCode == KEY_NUM8) back = true;
+            if (keyCode == KEY_NUM2) forward = true;
+            else if (keyCode == KEY_NUM8) back = true;
             else if (k == LEFT) camLeft = true;
             else if (k == RIGHT) camRight = true;
             else if (keyCode == KEY_NUM4) left = true;
@@ -261,8 +261,8 @@ public final class Roblox3DME extends MIDlet {
         }
         protected void keyReleased(int keyCode) {
             int k = getGameAction(keyCode);
-            if (k == UP || keyCode == KEY_NUM2) forward = false;
-            else if (k == DOWN || keyCode == KEY_NUM8) back = false;
+            if (keyCode == KEY_NUM2) forward = false;
+            else if (keyCode == KEY_NUM8) back = false;
             else if (k == LEFT) camLeft = false;
             else if (k == RIGHT) camRight = false;
             else if (keyCode == KEY_NUM4) left = false;
