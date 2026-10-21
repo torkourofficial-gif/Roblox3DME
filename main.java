@@ -30,6 +30,7 @@ public final class main extends MIDlet {
         private Group avatar;
         private Object3D idleObject, runObject, jumpObject;
         private Group activeModel;
+        private Mesh leftArm, rightArm, leftLeg, rightLeg;
         private int animation = 0; // 0 idle, 1 run, 2 jump
         private float px = 0, pz = 0, yaw = 0;
         private float camYaw = 0, camPitch = 0.22f;
@@ -91,20 +92,11 @@ public final class main extends MIDlet {
             world.addChild(makeBox(-3, 0.75f, -8, 2, 3, 2, 0x4779D1));
             world.addChild(makeBox(0, 1.5f, -11, 3, 4, 3, 0xB56AC8));
 
-            idleObject = loadModel("/meblox/noobidle.m3g", "/noobidle.m3g");
-            String idleResult = idleObject != null ? "OK" : "FAIL";
-            runObject = loadModel("/meblox/noobrun.m3g", "/noobrun.m3g");
-            String runResult = runObject != null ? "OK" : "FAIL";
-            jumpObject = loadModel("/meblox/noobjump.m3g", "/noobjump.m3g");
-            String jumpResult = jumpObject != null ? "OK" : "FAIL";
-            modelStatus = "idle:" + idleResult + " run:" + runResult + " jump:" + jumpResult;
-            activeModel = asGroup(idleObject);
-            if (activeModel != null) {
-                avatar = new Group();
-                avatar.addChild(activeModel);
-                world.addChild(avatar);
-                playAnimation(idleObject, 0);
-            }
+            // Build the avatar procedurally: no external .m3g files are needed.
+            // Only face.png is loaded as a texture; if missing, the face falls back to white.
+            avatar = buildNoob();
+            world.addChild(avatar);
+            modelStatus = "Procedural Noob: OK | 2/8 move, 5 jump";
             loaded = true;
         }
 
@@ -253,9 +245,10 @@ public final class main extends MIDlet {
                 avatar.setOrientation((float)(yaw * 57.29578f), 0, 1, 0);
             }
             updateCamera();
-            if (jumping) switchAnimation(2);
-            else if (forward || back || left || right) switchAnimation(1);
-            else switchAnimation(0);
+            if (jumping) animation = 2;
+            else if (forward || back || left || right) animation = 1;
+            else animation = 0;
+            animateNoob();
             if (world != null) {
                 try { world.animate(animTime); } catch (Throwable t) {}
             }
@@ -328,6 +321,77 @@ public final class main extends MIDlet {
                 while (start < s.length() && s.charAt(start) == ' ') start++;
                 lineY += lineHeight;
             }
+        }
+
+        private Group buildNoob() throws Exception {
+            Group model = new Group();
+
+            // Classic blocky noob proportions, in local coordinates.
+            model.addChild(makeBox(0, 1.45f, 0, 0.78f, 0.95f, 0.42f, 0x2D78D4)); // torso
+            model.addChild(makeBox(0, 2.18f, 0, 0.68f, 0.62f, 0.62f, 0xF0B98B)); // head
+            model.addChild(makeTexturedFace()); // front face decal
+            leftArm = (Mesh)makeBox(-0.52f, 1.48f, 0, 0.24f, 0.88f, 0.28f, 0xF0B98B);
+            rightArm = (Mesh)makeBox(0.52f, 1.48f, 0, 0.24f, 0.88f, 0.28f, 0xF0B98B);
+            leftLeg = (Mesh)makeBox(-0.21f, 0.52f, 0, 0.30f, 0.78f, 0.34f, 0x444B58);
+            rightLeg = (Mesh)makeBox(0.21f, 0.52f, 0, 0.30f, 0.78f, 0.34f, 0x444B58);
+            model.addChild(leftArm);
+            model.addChild(rightArm);
+            model.addChild(leftLeg);
+            model.addChild(rightLeg);
+            return model;
+        }
+
+        private Node makeTexturedFace() {
+            try {
+                javax.microedition.lcdui.Image img = null;
+                java.io.InputStream in = getClass().getResourceAsStream("/meblox/face.png");
+                if (in == null) in = getClass().getResourceAsStream("/face.png");
+                if (in != null) {
+                    try { img = javax.microedition.lcdui.Image.createImage(in); }
+                    finally { try { in.close(); } catch (Throwable ignored) {} }
+                }
+                if (img == null) return makeBox(0, 2.18f, -0.316f, 0.48f, 0.40f, 0.012f, 0xFFFFFF);
+
+                Image2D image2D = new Image2D(Image2D.RGBA, img);
+                Texture2D texture = new Texture2D(image2D);
+                texture.setFiltering(Texture2D.FILTER_NEAREST, Texture2D.FILTER_NEAREST);
+                texture.setWrapping(Texture2D.WRAP_CLAMP, Texture2D.WRAP_CLAMP);
+                Appearance ap = new Appearance();
+                ap.setTexture(0, texture);
+                Material mat = new Material();
+                mat.setColor(Material.AMBIENT, 0xFFFFFFFF);
+                mat.setColor(Material.DIFFUSE, 0xFFFFFFFF);
+                mat.setColor(Material.EMISSIVE, 0xFFFFFFFF);
+                ap.setMaterial(mat);
+
+                // Quad on the front (-Z) side of the head, with full-image UVs.
+                short[] p = new short[] {-230,-190,0, 230,-190,0, -230,190,0, 230,190,0};
+                VertexArray pos = new VertexArray(4, 3, 2);
+                pos.set(0, 4, p);
+                short[] uv = new short[] {0,1000, 1000,1000, 0,0, 1000,0};
+                VertexArray texCoords = new VertexArray(4, 2, 2);
+                texCoords.set(0, 4, uv);
+                VertexBuffer vb = new VertexBuffer();
+                vb.setPositions(pos, 0.001f, null);
+                vb.setTexCoords(0, texCoords, 0.001f, null);
+                TriangleStripArray indices = new TriangleStripArray(0, new int[] {4});
+                Mesh face = new Mesh(vb, new IndexBuffer[] {indices}, new Appearance[] {ap});
+                face.setTranslation(0, 2.18f, -0.317f);
+                return face;
+            } catch (Throwable t) {
+                return makeBox(0, 2.18f, -0.316f, 0.48f, 0.40f, 0.012f, 0xFFFFFF);
+            }
+        }
+
+        private void animateNoob() {
+            if (leftArm == null || rightArm == null || leftLeg == null || rightLeg == null) return;
+            float swing = 0.0f;
+            if (animation == 1) swing = (float)Math.sin(animTime * 0.012f) * 32.0f;
+            else if (animation == 2) swing = -18.0f;
+            leftArm.setOrientation(swing, 1, 0, 0);
+            rightArm.setOrientation(-swing, 1, 0, 0);
+            leftLeg.setOrientation(-swing, 1, 0, 0);
+            rightLeg.setOrientation(swing, 1, 0, 0);
         }
 
         private Node makeBox(float x, float y, float z, float sx, float sy, float sz, int color) {
