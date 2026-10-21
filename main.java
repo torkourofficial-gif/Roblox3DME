@@ -112,28 +112,49 @@ public final class main extends MIDlet {
         }
 
         private Object3D loadModel(String preferredPath, String fallbackPath) {
-            String[] paths = new String[] { preferredPath, fallbackPath };
+            // NetBeans projects may package resources either at the JAR root or
+            // under the Java package. Try both layouts, plus package-relative lookup.
+            String fileName = fallbackPath;
+            if (fileName.startsWith("/")) fileName = fileName.substring(1);
+            String[] paths = new String[] {
+                preferredPath,
+                fallbackPath,
+                "/" + fileName,
+                fileName
+            };
             String lastError = "";
             for (int p = 0; p < paths.length; p++) {
                 String path = paths[p];
-                java.io.InputStream check = null;
+                java.io.InputStream in = null;
                 try {
-                    // Verify that the resource is actually inside the packaged MIDlet JAR.
-                    check = getClass().getResourceAsStream(path);
-                    if (check == null) {
-                        lastError = path + ": resource not found in JAR";
+                    in = getClass().getResourceAsStream(path);
+                    if (in == null) in = midlet.getClass().getResourceAsStream(path);
+                    if (in == null) {
+                        lastError = path + ": not found by class resource lookup";
                         continue;
                     }
-                    check.close();
-                    check = null;
 
-                    Object3D[] objects = Loader.load(path);
+                    // Read the resource ourselves and pass the bytes to M3G Loader.
+                    // This avoids a second, potentially different path lookup inside Loader.load(String).
+                    java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+                    byte[] chunk = new byte[1024];
+                    int count;
+                    while ((count = in.read(chunk)) != -1) buffer.write(chunk, 0, count);
+                    in.close();
+                    in = null;
+                    byte[] data = buffer.toByteArray();
+                    if (data.length == 0) {
+                        lastError = path + ": resource is empty";
+                        continue;
+                    }
+
+                    Object3D[] objects = Loader.load(data, 0);
                     if (objects == null || objects.length == 0) {
                         lastError = path + ": Loader returned no objects";
                         continue;
                     }
 
-                    // Root order is unspecified; prefer a Group, then any renderable Node.
+                    // Root order is unspecified. Prefer a group, then another node.
                     for (int i = 0; i < objects.length; i++) {
                         if (objects[i] instanceof Group && !(objects[i] instanceof World))
                             return objects[i];
@@ -142,12 +163,12 @@ public final class main extends MIDlet {
                         if (objects[i] instanceof Node && !(objects[i] instanceof Camera))
                             return objects[i];
                     }
-                    lastError = path + ": no renderable Node among " + objects.length + " roots";
+                    lastError = path + ": no usable Node among " + objects.length + " roots";
                 } catch (Throwable t) {
                     lastError = path + ": " + t.toString();
                 } finally {
-                    if (check != null) {
-                        try { check.close(); } catch (Throwable ignored) {}
+                    if (in != null) {
+                        try { in.close(); } catch (Throwable ignored) {}
                     }
                 }
             }
