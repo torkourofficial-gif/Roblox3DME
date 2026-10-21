@@ -59,7 +59,7 @@ public final class main extends MIDlet {
                 if (dt > 100) dt = 100;
                 lastTime = now;
                 update(dt);
-                renderFrame();
+                repaint();
                 try { Thread.sleep(25); } catch (InterruptedException e) {}
             }
         }
@@ -203,39 +203,48 @@ public final class main extends MIDlet {
             float cx = px - (float)Math.sin(camYaw) * horizontal;
             float cy = 1.2f + jumpY + (float)Math.sin(camPitch) * camDistance;
             float cz = pz + (float)Math.cos(camYaw) * horizontal;
-            Transform view = new Transform();
-            view.setLookAt(cx, cy, cz, px, 1.0f + jumpY, pz, 0.0f, 1.0f, 0.0f);
-            camera.setTransform(view);
+            // M3G Transform has no setLookAt helper; set camera position and orientation.
+            camera.setTranslation(cx, cy, cz);
+            camera.setOrientation((float)(camYaw * 57.29578f), 0.0f, 1.0f, 0.0f);
+            Transform tilt = new Transform();
+            tilt.setOrientation((float)(-camPitch * 57.29578f), 1.0f, 0.0f, 0.0f);
+            Transform base = new Transform();
+            camera.getTransform(base);
+            base.postMultiply(tilt);
+            camera.setTransform(base);
         }
 
-        private void renderFrame() {
-            Graphics g = getGraphics();
-            if (g == null) return;
-            g.setColor(0x78BCE8); g.fillRect(0, 0, getWidth(), getHeight());
+        protected void paint(Graphics g) {
+            g.setColor(0x78BCE8);
+            g.fillRect(0, 0, getWidth(), getHeight());
             if (loaded && world != null) {
+                boolean bound = false;
                 try {
                     g3d.bindTarget(g, true, Graphics3D.DITHER);
+                    bound = true;
                     g3d.setViewport(0, 0, getWidth(), getHeight());
                     camera.setPerspective(65.0f, (float)getWidth()/(float)getHeight(), 0.1f, 100.0f);
                     g3d.render(world);
                 } catch (Throwable t) {
-                    g.setColor(0xFFFFFF); g.drawString("M3G render error", 3, 3, Graphics.TOP|Graphics.LEFT);
+                    g.setColor(0xFFFFFF);
+                    g.drawString("M3G render error", 3, 3, Graphics.TOP|Graphics.LEFT);
                 } finally {
-                    try { g3d.releaseTarget(); } catch (Throwable t) {}
+                    if (bound) {
+                        try { g3d.releaseTarget(); } catch (Throwable t) {}
+                    }
                 }
             } else {
                 g.setColor(0xFFFFFF);
-                g.drawString("Roblox3DME - loading model failed", 4, 4, Graphics.TOP|Graphics.LEFT);
-                g.drawString("Check .m3g resource names", 4, 22, Graphics.TOP|Graphics.LEFT);
+                g.drawString("Roblox3DME - model load failed", 4, 4, Graphics.TOP|Graphics.LEFT);
+                g.drawString("Check .m3g resources", 4, 22, Graphics.TOP|Graphics.LEFT);
             }
             g.setColor(0xFFFFFF);
             g.drawString("ROBLOX 3DME | DPAD: CAMERA", 3, 2, Graphics.TOP|Graphics.LEFT);
             g.drawString("2/8 move  4/6 strafe  5 jump  */# zoom", 3, getHeight()-18, Graphics.TOP|Graphics.LEFT);
-            flushGraphics();
         }
 
         private Node makeBox(float x, float y, float z, float sx, float sy, float sz, int color) {
-            float[] p = new float[] {
+            float[] corners = new float[] {
                 -sx/2,-sy/2,-sz/2, sx/2,-sy/2,-sz/2, -sx/2,sy/2,-sz/2, sx/2,sy/2,-sz/2,
                 -sx/2,-sy/2,sz/2, sx/2,-sy/2,sz/2, -sx/2,sy/2,sz/2, sx/2,sy/2,sz/2
             };
@@ -244,20 +253,27 @@ public final class main extends MIDlet {
                 0,1,4, 1,5,4, 2,6,3, 3,6,7,
                 0,4,2, 2,4,6, 1,3,5, 3,7,5
             };
-            // Position vertices have three components: x, y and z.
-            VertexArray va = new VertexArray(8, 3, 3);
+            // TriangleArray uses sequential indices, so expand each triangle corner.
+            float[] p = new float[indices.length * 3];
+            for (int i = 0; i < indices.length; i++) {
+                int src = indices[i] * 3;
+                int dst = i * 3;
+                p[dst] = corners[src];
+                p[dst + 1] = corners[src + 1];
+                p[dst + 2] = corners[src + 2];
+            }
+            VertexArray va = new VertexArray(indices.length, 3, 3);
             short[] coords = new short[p.length];
             for (int i=0;i<p.length;i++) coords[i]=(short)(p[i]*1000);
-            va.set(0, 8, coords);
+            va.set(0, indices.length, coords);
             VertexBuffer vb = new VertexBuffer();
             vb.setPositions(va, 0.001f, null);
-            TriangleArray ta = new TriangleArray(0, indices);
+            TriangleArray ta = new TriangleArray(0, indices.length);
             Appearance ap = new Appearance();
             Material mat = new Material();
             mat.setColor(Material.AMBIENT, color);
             mat.setColor(Material.DIFFUSE, color);
             mat.setColor(Material.EMISSIVE, color);
-            mat.setLightingEnable(false);
             ap.setMaterial(mat);
             Mesh mesh = new Mesh(vb, new IndexBuffer[] { ta }, new Appearance[] { ap });
             mesh.setTranslation(x,y,z);
