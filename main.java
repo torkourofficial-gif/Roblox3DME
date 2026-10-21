@@ -92,11 +92,22 @@ public final class main extends MIDlet {
             world.addChild(makeBox(-3, 0.75f, -8, 2, 3, 2, 0x4779D1));
             world.addChild(makeBox(0, 1.5f, -11, 3, 4, 3, 0xB56AC8));
 
-            // Build the avatar procedurally: no external .m3g files are needed.
-            // Only face.png is loaded as a texture; if missing, the face falls back to white.
-            avatar = buildNoob();
+            // Load the three exported JSR-184 models from the JAR resources.
+            idleObject = loadModel("/meblox/noobidle.m3g", "/noobidle.m3g");
+            runObject  = loadModel("/meblox/noobrun.m3g",  "/noobrun.m3g");
+            jumpObject = loadModel("/meblox/noobjump.m3g", "/noobjump.m3g");
+
+            Group idleModel = asGroup(idleObject);
+            if (idleModel == null) {
+                throw new Exception("Cannot load /meblox/noobidle.m3g. " + modelError);
+            }
+
+            avatar = new Group();
+            activeModel = idleModel;
+            avatar.addChild(activeModel);
             world.addChild(avatar);
-            modelStatus = "Procedural Noob: OK | 2/8 move, 5 jump";
+            animation = 0;
+            modelStatus = "M3G loaded | 2/8 move, 5 jump";
             loaded = true;
         }
 
@@ -247,10 +258,11 @@ public final class main extends MIDlet {
                 avatar.setOrientation((float)(yaw * 57.29578f), 0, 1, 0);
             }
             updateCamera();
-            if (jumping) animation = 2;
-            else if (forward || back || left || right) animation = 1;
-            else animation = 0;
-            animateNoob();
+            int wantedAnimation;
+            if (jumping) wantedAnimation = 2;
+            else if (forward || back || left || right) wantedAnimation = 1;
+            else wantedAnimation = 0;
+            switchAnimation(wantedAnimation);
             if (world != null) {
                 try { world.animate(animTime); } catch (Throwable t) {}
             }
