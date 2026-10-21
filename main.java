@@ -1,3 +1,5 @@
+package meblox;
+
 import javax.microedition.midlet.*;
 import javax.microedition.lcdui.*;
 import javax.microedition.m3g.*;
