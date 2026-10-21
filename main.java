@@ -112,8 +112,6 @@ public final class main extends MIDlet {
         }
 
         private Object3D loadModel(String preferredPath, String fallbackPath) {
-            // NetBeans projects may package resources either at the JAR root or
-            // under the Java package. Try both layouts, plus package-relative lookup.
             String fileName = fallbackPath;
             if (fileName.startsWith("/")) fileName = fileName.substring(1);
             String[] paths = new String[] {
@@ -134,8 +132,8 @@ public final class main extends MIDlet {
                         continue;
                     }
 
-                    // Read the resource ourselves and pass the bytes to M3G Loader.
-                    // This avoids a second, potentially different path lookup inside Loader.load(String).
+                    // Keep a byte copy for diagnostics/fallback, but prefer Loader.load(String):
+                    // this lets JSR-184 resolve external references relative to the M3G resource.
                     java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
                     byte[] chunk = new byte[1024];
                     int count;
@@ -148,13 +146,38 @@ public final class main extends MIDlet {
                         continue;
                     }
 
-                    Object3D[] objects = Loader.load(data, 0);
+                    String loaderPath;
+                    if (path.startsWith("/")) {
+                        loaderPath = path;
+                    } else {
+                        // Class.getResourceAsStream("name") is package-relative.
+                        loaderPath = "/meblox/" + path;
+                    }
+
+                    Object3D[] objects = null;
+                    try {
+                        objects = Loader.load(loaderPath);
+                    } catch (Throwable namedLoadError) {
+                        lastError = loaderPath + " Loader.load(String): " + namedLoadError.toString();
+                    }
+
+                    // Byte-array fallback supports self-contained M3G files without external
+                    // relative references. Keep the named-load error if both modes fail.
+                    if (objects == null || objects.length == 0) {
+                        try {
+                            objects = Loader.load(data, 0);
+                        } catch (Throwable byteLoadError) {
+                            lastError = path + " Loader.load(byte[]): " + byteLoadError.toString();
+                            continue;
+                        }
+                    }
+
                     if (objects == null || objects.length == 0) {
                         lastError = path + ": Loader returned no objects";
                         continue;
                     }
 
-                    // Root order is unspecified. Prefer a group, then another node.
+                    // Root order is unspecified. Prefer a Group, then another scene Node.
                     for (int i = 0; i < objects.length; i++) {
                         if (objects[i] instanceof Group && !(objects[i] instanceof World))
                             return objects[i];
