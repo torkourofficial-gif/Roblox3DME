@@ -262,27 +262,32 @@ public final class main extends MIDlet {
                 -sx/2,-sy/2,-sz/2, sx/2,-sy/2,-sz/2, -sx/2,sy/2,-sz/2, sx/2,sy/2,-sz/2,
                 -sx/2,-sy/2,sz/2, sx/2,-sy/2,sz/2, -sx/2,sy/2,sz/2, sx/2,sy/2,sz/2
             };
-            int[] indices = new int[] {
-                0,2,1, 1,2,3, 4,5,6, 5,7,6,
-                0,1,4, 1,5,4, 2,6,3, 3,6,7,
-                0,4,2, 2,4,6, 1,3,5, 3,7,5
+            // JSR-184 defines TriangleStripArray (not TriangleArray).
+            // Four vertices per face, six independent strips.
+            int[] faceOrder = new int[] {
+                0,2,1,3,   // front
+                4,5,6,7,   // back
+                0,1,4,5,   // lower face
+                2,6,3,7,   // upper face
+                0,4,2,6,   // left face
+                1,3,5,7    // right face
             };
-            // TriangleArray uses sequential indices, so expand each triangle corner.
-            float[] p = new float[indices.length * 3];
-            for (int i = 0; i < indices.length; i++) {
-                int src = indices[i] * 3;
+            float[] p = new float[faceOrder.length * 3];
+            for (int i = 0; i < faceOrder.length; i++) {
+                int src = faceOrder[i] * 3;
                 int dst = i * 3;
                 p[dst] = corners[src];
                 p[dst + 1] = corners[src + 1];
                 p[dst + 2] = corners[src + 2];
             }
-            VertexArray va = new VertexArray(indices.length, 3, 3);
+            VertexArray va = new VertexArray(faceOrder.length, 3, 2);
             short[] coords = new short[p.length];
             for (int i=0;i<p.length;i++) coords[i]=(short)(p[i]*1000);
-            va.set(0, indices.length, coords);
+            va.set(0, faceOrder.length, coords);
             VertexBuffer vb = new VertexBuffer();
             vb.setPositions(va, 0.001f, null);
-            TriangleArray ta = new TriangleArray(0, 36);
+            int[] stripLengths = new int[] {4, 4, 4, 4, 4, 4};
+            TriangleStripArray ta = new TriangleStripArray(0, stripLengths);
             Appearance ap = new Appearance();
             Material mat = new Material();
             mat.setColor(Material.AMBIENT, color);
