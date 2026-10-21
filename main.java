@@ -41,6 +41,7 @@ public final class main extends MIDlet {
         private boolean loaded;
         private String modelStatus = "Models: not loaded";
         private String modelError = "";
+        private String initError = "";
 
         Game(main m) { midlet = m; setFullScreenMode(true); }
         synchronized void start() {
@@ -52,7 +53,10 @@ public final class main extends MIDlet {
         synchronized void stop() { running = false; thread = null; }
 
         public void run() {
-            try { init3D(); } catch (Throwable t) { loaded = false; }
+            try { init3D(); } catch (Throwable t) {
+                loaded = false;
+                initError = "Init: " + t.toString();
+            }
             lastTime = System.currentTimeMillis();
             while (running) {
                 long now = System.currentTimeMillis();
@@ -87,12 +91,13 @@ public final class main extends MIDlet {
             world.addChild(makeBox(-3, 0.75f, -8, 2, 3, 2, 0x4779D1));
             world.addChild(makeBox(0, 1.5f, -11, 3, 4, 3, 0xB56AC8));
 
-            idleObject = loadModel("/meblox/noobidle.m3g");
-            runObject = loadModel("/meblox/noobrun.m3g");
-            jumpObject = loadModel("/meblox/noobjump.m3g");
-            modelStatus = "idle:" + (idleObject != null ? "OK" : "FAIL")
-                + " run:" + (runObject != null ? "OK" : "FAIL")
-                + " jump:" + (jumpObject != null ? "OK" : "FAIL");
+            idleObject = loadModel("/meblox/noobidle.m3g", "/noobidle.m3g");
+            String idleResult = idleObject != null ? "OK" : "FAIL";
+            runObject = loadModel("/meblox/noobrun.m3g", "/noobrun.m3g");
+            String runResult = runObject != null ? "OK" : "FAIL";
+            jumpObject = loadModel("/meblox/noobjump.m3g", "/noobjump.m3g");
+            String jumpResult = jumpObject != null ? "OK" : "FAIL";
+            modelStatus = "idle:" + idleResult + " run:" + runResult + " jump:" + jumpResult;
             activeModel = asGroup(idleObject);
             if (activeModel != null) {
                 avatar = new Group();
@@ -103,28 +108,47 @@ public final class main extends MIDlet {
             loaded = true;
         }
 
-        private Object3D loadModel(String path) {
-            try {
-                // JSR-184 Loader.load(String) accepts an absolute resource path in the JAR.
-                Object3D[] objects = Loader.load(path);
-                if (objects == null || objects.length == 0) {
-                    modelError = path + ": Loader returned no objects";
-                    return null;
+        private Object3D loadModel(String preferredPath, String fallbackPath) {
+            String[] paths = new String[] { preferredPath, fallbackPath };
+            String lastError = "";
+            for (int p = 0; p < paths.length; p++) {
+                String path = paths[p];
+                java.io.InputStream check = null;
+                try {
+                    // Verify that the resource is actually inside the packaged MIDlet JAR.
+                    check = getClass().getResourceAsStream(path);
+                    if (check == null) {
+                        lastError = path + ": resource not found in JAR";
+                        continue;
+                    }
+                    check.close();
+                    check = null;
+
+                    Object3D[] objects = Loader.load(path);
+                    if (objects == null || objects.length == 0) {
+                        lastError = path + ": Loader returned no objects";
+                        continue;
+                    }
+
+                    // Root order is unspecified; prefer a Group, then any renderable Node.
+                    for (int i = 0; i < objects.length; i++) {
+                        if (objects[i] instanceof Group && !(objects[i] instanceof World))
+                            return objects[i];
+                    }
+                    for (int i = 0; i < objects.length; i++) {
+                        if (objects[i] instanceof Node && !(objects[i] instanceof Camera))
+                            return objects[i];
+                    }
+                    lastError = path + ": no renderable Node among " + objects.length + " roots";
+                } catch (Throwable t) {
+                    lastError = path + ": " + t.toString();
+                } finally {
+                    if (check != null) {
+                        try { check.close(); } catch (Throwable ignored) {}
+                    }
                 }
-                // Root order is undefined. Prefer a Group that can hold the model hierarchy;
-                // never assume objects[0] is the model root.
-                for (int i = 0; i < objects.length; i++) {
-                    if (objects[i] instanceof Group && !(objects[i] instanceof World))
-                        return objects[i];
-                }
-                for (int i = 0; i < objects.length; i++) {
-                    if (objects[i] instanceof Node && !(objects[i] instanceof Camera))
-                        return objects[i];
-                }
-                modelError = path + ": no renderable Node";
-            } catch (Throwable t) {
-                modelError = path + ": " + t.toString();
             }
+            modelError = lastError;
             return null;
         }
 
@@ -204,8 +228,9 @@ public final class main extends MIDlet {
             if (camRight) camYaw += cameraTurn;
             if (camUp) camPitch += cameraTurn;
             if (camDown) camPitch -= cameraTurn;
-            if (camPitch > 0.95f) camPitch = 0.95f;
-            if (camPitch < -0.35f) camPitch = -0.35f;
+            // Classic third-person camera: allow looking up/down, but never flip over.
+            if (camPitch > 1.20f) camPitch = 1.20f;
+            if (camPitch < -1.20f) camPitch = -1.20f;
             float dx = 0, dz = 0;
             float sin = (float)Math.sin(camYaw), cos = (float)Math.cos(camYaw);
             if (forward) { dx += sin * step; dz -= cos * step; }
@@ -277,7 +302,15 @@ public final class main extends MIDlet {
             g.drawString("ROBLOX 3DME | DPAD: CAMERA", 3, 2, Graphics.TOP|Graphics.LEFT);
             g.drawString("2/8 move  4/6 strafe  5 jump  */# zoom", 3, getHeight()-18, Graphics.TOP|Graphics.LEFT);
             g.drawString(modelStatus, 3, 20, Graphics.TOP|Graphics.LEFT);
-            if (modelError.length() > 0) g.drawString(modelError, 3, 38, Graphics.TOP|Graphics.LEFT);
+            if (modelError.length() > 0) g.drawString(shortText(modelError, 38), 3, 38, Graphics.TOP|Graphics.LEFT);
+            if (initError.length() > 0) g.drawString(shortText(initError, 38), 3, 56, Graphics.TOP|Graphics.LEFT);
+        }
+
+
+        private String shortText(String s, int max) {
+            if (s == null) return "";
+            if (s.length() <= max) return s;
+            return s.substring(0, max);
         }
 
         private Node makeBox(float x, float y, float z, float sx, float sy, float sz, int color) {
