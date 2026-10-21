@@ -19,7 +19,7 @@ public final class main extends MIDlet {
     void quit() { destroyApp(true); notifyDestroyed(); }
 
     private static final class Game extends Canvas implements Runnable {
-        private final Roblox3DME midlet;
+        private final main midlet;
         private Thread thread;
         private boolean running;
         private Graphics3D g3d = Graphics3D.getInstance();
@@ -38,7 +38,7 @@ public final class main extends MIDlet {
         private boolean forward, back, left, right, camLeft, camRight, camUp, camDown, jumping;
         private boolean loaded;
 
-        Game(Roblox3DME m) { midlet = m; setFullScreenMode(true); }
+        Game(main m) { midlet = m; setFullScreenMode(true); }
         synchronized void start() {
             if (running) return;
             running = true;
