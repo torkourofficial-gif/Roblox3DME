@@ -1,23 +1,28 @@
-# Roblox3DME — primer controlador y escenario M3G
+# Roblox3DME — controlador y escenario de prueba M3G
 
-Se añadió `Roblox3DME.java` como punto de partida para un MIDlet MIDP 2.0 + JSR-184 (M3G).
+El punto de entrada es `main.java`, un MIDlet para **MIDP 2.0 + JSR-184 (M3G)**.
 
 ## Controles
-- **Arriba / 2 / W según el teclado del dispositivo:** avanzar
-- **Abajo / 8:** retroceder
-- **Izquierda / 4 y derecha / 6:** girar
-- **1 / 3:** desplazamiento lateral
-- **5 / FIRE:** saltar y seleccionar la animación de salto
-- *** / #:** acercar / alejar cámara
-- **0:** reiniciar posición y cámara
+- **D-pad:** gira la cámara en horizontal y permite mirar arriba/abajo.
+- **2 / 8:** avanzar y retroceder en relación con la cámara.
+- **4 / 6:** desplazamiento lateral.
+- **5 / FIRE:** saltar.
+- *** / #:** acercar / alejar la cámara.
 
 ## Recursos
-El código carga `/noobidle.m3g`, `/noobrun.m3g` y `/noobjump.m3g` desde el classpath del MIDlet. Déjalos en la raíz de recursos del proyecto (junto al descriptor del MIDlet) para que `getResourceAsStream` los encuentre. `face.png` todavía no se aplica por código; la cara puede estar ya incluida en los modelos M3G.
+El código carga `/noobidle.m3g`, `/noobrun.m3g` y `/noobjump.m3g` desde el classpath del MIDlet. Déjalos en la raíz de recursos del proyecto para que `getResourceAsStream` los encuentre. `face.png` todavía no se aplica por código; la cara puede estar incluida en los modelos M3G.
 
-## Escenario de prueba
-Se generan un suelo verde grande y varios bloques de colores usando geometría M3G básica. Sirven para verificar cámara, profundidad, movimiento y escala sin añadir recursos externos.
+## Escenario
+El escenario genera un suelo verde y varios bloques de colores mediante geometría M3G, sin necesitar modelos externos adicionales.
 
-## Importante / estado
-Este es un **prototipo inicial**, no una compilación verificada: hay que abrirlo en el proyecto Java ME con una implementación JSR-184 instalada y compilarlo en el SDK objetivo. La carga de animaciones depende de cómo estén empaquetadas las pistas y controladores dentro de cada archivo M3G; el código intenta activar los controladores que encuentre, pero no puede garantizar que todos los modelos exportados tengan sus pistas configuradas igual. El controlador usa teclas de pulsación mantenida y el salto es actualmente una pose/animación temporal, no física con colisiones.
+## Correcciones incluidas
+- Vértices del escenario configurados con tres componentes (X/Y/Z).
+- D-pad separado del movimiento lateral numérico.
+- Cámara de tercera persona orientada hacia el avatar.
+- Activación de pistas de animación también en nodos hijos.
+- Salto con movimiento vertical básico, en vez de una pose fija mientras se mantiene pulsada la tecla.
 
-No se modificaron ni reemplazaron los modelos M3G existentes.
+## ¿Hace falta crear más scripts?
+No para este prototipo: `main.java` contiene el MIDlet, el bucle de juego, el controlador, la cámara y la geometría del escenario. Sí necesitas un proyecto Java ME configurado con **MIDP 2.0 y una implementación JSR-184**, más los tres archivos `.m3g` como recursos. NetBeans/Java ME puede necesitar además su configuración de proyecto y descriptor JAD/JAR, según cómo hayas creado el proyecto.
+
+**Estado:** los cambios se guardaron en GitHub, pero aún no se han compilado ni probado en el emulador o el teléfono. El salto todavía no incluye colisiones ni aterrizaje sobre plataformas; la activación real de animaciones depende de cómo estén exportados los archivos M3G.
