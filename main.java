@@ -230,7 +230,9 @@ public final class main extends MIDlet {
             if (left) { dx -= cos * step; dz -= sin * step; }
             if (right) { dx += cos * step; dz += sin * step; }
             px += dx; pz += dz;
-            if (dx != 0 || dz != 0) yaw = fastAtan2(dx, -dz);
+            // Roblox-style character facing: follow the camera's horizontal heading,
+            // even while standing still. Movement remains camera-relative.
+            yaw = camYaw;
             if (jumping) {
                 jumpY += jumpVelocity * dt;
                 jumpVelocity -= 0.00003f * dt;
@@ -327,13 +329,13 @@ public final class main extends MIDlet {
             Group model = new Group();
 
             // Classic blocky noob proportions, in local coordinates.
-            model.addChild(makeBox(0, 1.45f, 0, 0.78f, 0.95f, 0.42f, 0x2D78D4)); // torso
-            model.addChild(makeBox(0, 2.18f, 0, 0.68f, 0.62f, 0.62f, 0xF0B98B)); // head
+            model.addChild(makeBox(0, 1.45f, 0, 0.78f, 0.95f, 0.42f, 0x1769AA)); // classic blue torso
+            model.addChild(makeBox(0, 2.18f, 0, 0.68f, 0.62f, 0.62f, 0xF5C542)); // classic yellow head
             model.addChild(makeTexturedFace()); // front face decal
-            leftArm = (Mesh)makeBox(-0.52f, 1.48f, 0, 0.24f, 0.88f, 0.28f, 0xF0B98B);
-            rightArm = (Mesh)makeBox(0.52f, 1.48f, 0, 0.24f, 0.88f, 0.28f, 0xF0B98B);
-            leftLeg = (Mesh)makeBox(-0.21f, 0.52f, 0, 0.30f, 0.78f, 0.34f, 0x444B58);
-            rightLeg = (Mesh)makeBox(0.21f, 0.52f, 0, 0.30f, 0.78f, 0.34f, 0x444B58);
+            leftArm = (Mesh)makeBox(-0.52f, 1.48f, 0, 0.24f, 0.88f, 0.28f, 0xF5C542);
+            rightArm = (Mesh)makeBox(0.52f, 1.48f, 0, 0.24f, 0.88f, 0.28f, 0xF5C542);
+            leftLeg = (Mesh)makeBox(-0.21f, 0.52f, 0, 0.30f, 0.78f, 0.34f, 0x2E9E45);
+            rightLeg = (Mesh)makeBox(0.21f, 0.52f, 0, 0.30f, 0.78f, 0.34f, 0x2E9E45);
             model.addChild(leftArm);
             model.addChild(rightArm);
             model.addChild(leftLeg);
@@ -365,7 +367,7 @@ public final class main extends MIDlet {
                 ap.setMaterial(mat);
 
                 // Quad on the front (-Z) side of the head, with full-image UVs.
-                short[] p = new short[] {-230,-190,0, 230,-190,0, -230,190,0, 230,190,0};
+                short[] p = new short[] {-270,-210,0, 270,-210,0, -270,210,0, 270,210,0};
                 VertexArray pos = new VertexArray(4, 3, 2);
                 pos.set(0, 4, p);
                 short[] uv = new short[] {0,1000, 1000,1000, 0,0, 1000,0};
