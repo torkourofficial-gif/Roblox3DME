@@ -4,7 +4,7 @@ import javax.microedition.m3g.*;
 
 /**
  * Roblox3DME: minimal JSR-184 playground/controller.
- * Put noobidle.m3g, noobrun.m3g, noobjump.m3g, noobface? and face.png
+ * Put noobidle.m3g, noobrun.m3g, noobjump.m3g and face.png
  * in the MIDlet resource root. Intended for MIDP 2.0 + JSR-184 devices.
  */
 public final class Roblox3DME extends MIDlet {
@@ -174,7 +174,6 @@ public final class Roblox3DME extends MIDlet {
             float cz = pz + (float)Math.cos(yaw) * camDistance;
             camera.setTranslation(cx, 3.2f, cz);
             camera.setOrientation((float)(yaw * 57.29578f), 0, 1, 0);
-            camera.postRotate(-12.0f, 1, 0, 0);
         }
 
         private void renderFrame() {
@@ -208,12 +207,12 @@ public final class Roblox3DME extends MIDlet {
                 -sx/2,-sy/2,-sz/2, sx/2,-sy/2,-sz/2, -sx/2,sy/2,-sz/2, sx/2,sy/2,-sz/2,
                 -sx/2,-sy/2,sz/2, sx/2,-sy/2,sz/2, -sx/2,sy/2,sz/2, sx/2,sy/2,sz/2
             };
-            byte[] indices = new byte[] {
+            int[] indices = new int[] {
                 0,2,1, 1,2,3, 4,5,6, 5,7,6,
                 0,1,4, 1,5,4, 2,6,3, 3,6,7,
                 0,4,2, 2,4,6, 1,3,5, 3,7,5
             };
-            VertexArray va = new VertexArray(8, 3, 4);
+            VertexArray va = new VertexArray(8, 3, 2);
             short[] coords = new short[p.length];
             for (int i=0;i<p.length;i++) coords[i]=(short)(p[i]*1000);
             va.set(0, 8, coords);
