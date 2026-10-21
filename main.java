@@ -39,6 +39,7 @@ public final class main extends MIDlet {
         private int animTime;
         private boolean forward, back, left, right, camLeft, camRight, camUp, camDown, jumping;
         private boolean loaded;
+        private String modelStatus = "Models: not loaded";
 
         Game(main m) { midlet = m; setFullScreenMode(true); }
         synchronized void start() {
@@ -88,6 +89,9 @@ public final class main extends MIDlet {
             idleObject = loadModel("/noobidle.m3g");
             runObject = loadModel("/noobrun.m3g");
             jumpObject = loadModel("/noobjump.m3g");
+            modelStatus = "idle:" + (idleObject != null ? "OK" : "FAIL")
+                + " run:" + (runObject != null ? "OK" : "FAIL")
+                + " jump:" + (jumpObject != null ? "OK" : "FAIL");
             activeModel = asGroup(idleObject);
             if (activeModel != null) {
                 avatar = new Group();
@@ -100,13 +104,26 @@ public final class main extends MIDlet {
 
         private Object3D loadModel(String path) {
             try {
+                // JSR-184 Loader.load(String) accepts an absolute resource path in the JAR.
                 Object3D[] objects = Loader.load(path);
-                if (objects != null && objects.length > 0) {
-                    for (int i = 0; i < objects.length; i++)
-                        if (objects[i] instanceof Group) return objects[i];
-                    return objects[0];
+                if (objects == null || objects.length == 0) {
+                    modelStatus = path + ": empty";
+                    return null;
                 }
-            } catch (Throwable t) {}
+                // Root order is undefined. Prefer a Group that can hold the model hierarchy;
+                // never assume objects[0] is the model root.
+                for (int i = 0; i < objects.length; i++) {
+                    if (objects[i] instanceof Group && !(objects[i] instanceof World))
+                        return objects[i];
+                }
+                for (int i = 0; i < objects.length; i++) {
+                    if (objects[i] instanceof Node && !(objects[i] instanceof Camera))
+                        return objects[i];
+                }
+                modelStatus = path + ": no renderable Node";
+            } catch (Throwable t) {
+                modelStatus = path + ": " + t.toString();
+            }
             return null;
         }
 
@@ -224,7 +241,9 @@ public final class main extends MIDlet {
             float cy = 1.2f + jumpY + (float)Math.sin(camPitch) * camDistance;
             float cz = pz + (float)Math.cos(camYaw) * horizontal;
             // M3G Transform has no setLookAt helper; set camera position and orientation.
-            camera.setOrientation((float)(camYaw * 57.29578f), 0.0f, 1.0f, 0.0f);
+            // Camera looks along local -Z. Orbit position is opposite the look direction,
+            // so yaw must have the opposite sign to camYaw.
+            camera.setOrientation((float)(-camYaw * 57.29578f), 0.0f, 1.0f, 0.0f);
             camera.preRotate((float)(-camPitch * 57.29578f), 1.0f, 0.0f, 0.0f);
             camera.setTranslation(cx, cy, cz);
         }
@@ -256,6 +275,7 @@ public final class main extends MIDlet {
             g.setColor(0xFFFFFF);
             g.drawString("ROBLOX 3DME | DPAD: CAMERA", 3, 2, Graphics.TOP|Graphics.LEFT);
             g.drawString("2/8 move  4/6 strafe  5 jump  */# zoom", 3, getHeight()-18, Graphics.TOP|Graphics.LEFT);
+            g.drawString(modelStatus, 3, 20, Graphics.TOP|Graphics.LEFT);
         }
 
         private Node makeBox(float x, float y, float z, float sx, float sy, float sz, int color) {
