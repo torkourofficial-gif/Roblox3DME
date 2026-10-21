@@ -75,6 +75,7 @@ public final class main extends MIDlet {
             camera = new Camera();
             camera.setPerspective(65.0f, 1.0f, 0.1f, 100.0f);
             world.addChild(camera);
+            world.setActiveCamera(camera);
 
             // Large, simple green test platform.
             world.addChild(makeBox(0, -0.25f, 0, 24, 0.5f, 24, 0x54A64B));
