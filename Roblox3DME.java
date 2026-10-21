@@ -30,10 +30,11 @@ public final class Roblox3DME extends MIDlet {
         private Group activeModel;
         private int animation = 0; // 0 idle, 1 run, 2 jump
         private float px = 0, pz = 0, yaw = 0;
+        private float camYaw = 0, camPitch = 0.22f;
         private float camDistance = 5.0f;
         private long lastTime;
         private int animTime;
-        private boolean forward, back, left, right, turnL, turnR, jumping;
+        private boolean forward, back, left, right, camLeft, camRight, camUp, camDown, jumping;
         private boolean loaded;
 
         Game(Roblox3DME m) { midlet = m; setFullScreenMode(true); }
@@ -148,14 +149,21 @@ public final class Roblox3DME extends MIDlet {
         private void update(int dt) {
             animTime += dt;
             float step = dt * 0.004f;
-            if (turnL) yaw -= dt * 0.10f;
-            if (turnR) yaw += dt * 0.10f;
+            float cameraTurn = dt * 0.0025f;
+            if (camLeft) camYaw -= cameraTurn;
+            if (camRight) camYaw += cameraTurn;
+            if (camUp) camPitch += cameraTurn;
+            if (camDown) camPitch -= cameraTurn;
+            if (camPitch > 0.95f) camPitch = 0.95f;
+            if (camPitch < -0.35f) camPitch = -0.35f;
             float dx = 0, dz = 0;
-            if (forward) { dx += (float)Math.sin(yaw) * step; dz -= (float)Math.cos(yaw) * step; }
-            if (back) { dx -= (float)Math.sin(yaw) * step; dz += (float)Math.cos(yaw) * step; }
-            if (left) { dx -= (float)Math.cos(yaw) * step; dz -= (float)Math.sin(yaw) * step; }
-            if (right) { dx += (float)Math.cos(yaw) * step; dz += (float)Math.sin(yaw) * step; }
+            float sin = (float)Math.sin(camYaw), cos = (float)Math.cos(camYaw);
+            if (forward) { dx += sin * step; dz -= cos * step; }
+            if (back) { dx -= sin * step; dz += cos * step; }
+            if (left) { dx -= cos * step; dz -= sin * step; }
+            if (right) { dx += cos * step; dz += sin * step; }
             px += dx; pz += dz;
+            if (dx != 0 || dz != 0) yaw = (float)Math.atan2(dx, -dz);
             if (avatar != null) {
                 avatar.setTranslation(px, jumping ? 0.8f : 0.0f, pz);
                 avatar.setOrientation((float)(yaw * 57.29578f), 0, 1, 0);
@@ -170,10 +178,13 @@ public final class Roblox3DME extends MIDlet {
         }
 
         private void updateCamera() {
-            float cx = px - (float)Math.sin(yaw) * camDistance;
-            float cz = pz + (float)Math.cos(yaw) * camDistance;
-            camera.setTranslation(cx, 3.2f, cz);
-            camera.setOrientation((float)(yaw * 57.29578f), 0, 1, 0);
+            float horizontal = (float)Math.cos(camPitch) * camDistance;
+            float cx = px - (float)Math.sin(camYaw) * horizontal;
+            float cy = 1.2f + (float)Math.sin(camPitch) * camDistance;
+            float cz = pz + (float)Math.cos(camYaw) * horizontal;
+            Transform view = new Transform();
+            view.setLookAt(cx, cy, cz, px, 1.0f, pz, 0.0f, 1.0f, 0.0f);
+            camera.setTransform(view);
         }
 
         private void renderFrame() {
@@ -197,8 +208,8 @@ public final class Roblox3DME extends MIDlet {
                 g.drawString("Check .m3g resource names", 4, 22, Graphics.TOP|Graphics.LEFT);
             }
             g.setColor(0xFFFFFF);
-            g.drawString("ROBLOX 3DME | WASD / DPAD", 3, 2, Graphics.TOP|Graphics.LEFT);
-            g.drawString("5 jump  0 reset  +/- zoom", 3, getHeight()-18, Graphics.TOP|Graphics.LEFT);
+            g.drawString("ROBLOX 3DME | DPAD: CAMERA", 3, 2, Graphics.TOP|Graphics.LEFT);
+            g.drawString("2/8 move  4/6 strafe  5 jump  */# zoom", 3, getHeight()-18, Graphics.TOP|Graphics.LEFT);
             flushGraphics();
         }
 
@@ -235,12 +246,13 @@ public final class Roblox3DME extends MIDlet {
             int k = getGameAction(keyCode);
             if (k == UP || keyCode == KEY_NUM2) forward = true;
             else if (k == DOWN || keyCode == KEY_NUM8) back = true;
-            else if (k == LEFT || keyCode == KEY_NUM4) turnL = true;
-            else if (k == RIGHT || keyCode == KEY_NUM6) turnR = true;
-            else if (keyCode == KEY_NUM1) left = true;
-            else if (keyCode == KEY_NUM3) right = true;
+            else if (k == LEFT) camLeft = true;
+            else if (k == RIGHT) camRight = true;
+            else if (keyCode == KEY_NUM4) left = true;
+            else if (keyCode == KEY_NUM6) right = true;
+            else if (k == UP) camUp = true;
+            else if (k == DOWN) camDown = true;
             else if (keyCode == KEY_NUM5 || k == FIRE) { jumping = true; switchAnimation(2); }
-            else if (keyCode == KEY_NUM0) { px=0; pz=0; yaw=0; camDistance=5; }
             else if (keyCode == KEY_STAR || keyCode == KEY_POUND) {
                 camDistance += keyCode == KEY_STAR ? -0.5f : 0.5f;
                 if (camDistance < 2) camDistance=2;
@@ -251,10 +263,12 @@ public final class Roblox3DME extends MIDlet {
             int k = getGameAction(keyCode);
             if (k == UP || keyCode == KEY_NUM2) forward = false;
             else if (k == DOWN || keyCode == KEY_NUM8) back = false;
-            else if (k == LEFT || keyCode == KEY_NUM4) turnL = false;
-            else if (k == RIGHT || keyCode == KEY_NUM6) turnR = false;
-            else if (keyCode == KEY_NUM1) left = false;
-            else if (keyCode == KEY_NUM3) right = false;
+            else if (k == LEFT) camLeft = false;
+            else if (k == RIGHT) camRight = false;
+            else if (keyCode == KEY_NUM4) left = false;
+            else if (keyCode == KEY_NUM6) right = false;
+            else if (k == UP) camUp = false;
+            else if (k == DOWN) camDown = false;
             else if (keyCode == KEY_NUM5 || k == FIRE) jumping = false;
         }
     }
