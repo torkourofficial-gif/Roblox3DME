@@ -204,13 +204,12 @@ public final class main extends MIDlet {
             float cy = 1.2f + jumpY + (float)Math.sin(camPitch) * camDistance;
             float cz = pz + (float)Math.cos(camYaw) * horizontal;
             // M3G Transform has no setLookAt helper; set camera position and orientation.
-            camera.setTranslation(cx, cy, cz);
-            camera.setOrientation((float)(camYaw * 57.29578f), 0.0f, 1.0f, 0.0f);
+            Transform base = new Transform();
+            base.setOrientation((float)(camYaw * 57.29578f), 0.0f, 1.0f, 0.0f);
             Transform tilt = new Transform();
             tilt.setOrientation((float)(-camPitch * 57.29578f), 1.0f, 0.0f, 0.0f);
-            Transform base = new Transform();
-            camera.getTransform(base);
             base.postMultiply(tilt);
+            base.setTranslation(cx, cy, cz);
             camera.setTransform(base);
         }
 
