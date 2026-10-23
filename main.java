@@ -169,8 +169,9 @@ public final class main extends MIDlet {
             int imageHeight = skySource.getHeight();
             float verticalFov = 1.134464f; // 65 degrees
             float aspect = (float)getWidth() / (float)getHeight();
-            float horizontalFov = 2.0f * (float)Math.atan(
-                    (float)Math.tan(verticalFov * 0.5f) * aspect);
+            float halfHorizontalTangent =
+                    (float)Math.tan(verticalFov * 0.5f) * aspect;
+            float horizontalFov = 2.0f * fastAtan2(halfHorizontalTangent, 1.0f);
             int cropWidth = (int)(imageWidth * horizontalFov / 6.2831853f);
             int cropHeight = (int)(imageHeight * verticalFov / 3.14159265f);
             if (cropWidth < 1) cropWidth = 1;
