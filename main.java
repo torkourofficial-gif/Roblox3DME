@@ -46,6 +46,7 @@ public final class main extends MIDlet {
         private Image2D skyBackgroundImage;
         private Background sceneBackground;
         private int cachedMenuWidth = -1, cachedMenuHeight = -1;
+        private long menuPanTime;
         private String modelStatus = "Select a game";
         private String modelError = "";
         private String initError = "";
@@ -131,7 +132,7 @@ public final class main extends MIDlet {
             sceneBackground.setColorClearEnable(true);
             if (skyBackgroundImage != null) {
                 sceneBackground.setImage(skyBackgroundImage);
-                sceneBackground.setImageMode(Background.BORDER, Background.BORDER);
+                sceneBackground.setImageMode(Background.REPEAT, Background.BORDER);
                 updateSkyCrop();
             }
             world.setBackground(sceneBackground);
@@ -166,21 +167,25 @@ public final class main extends MIDlet {
             if (sceneBackground == null || skySource == null || getWidth() <= 0 || getHeight() <= 0) return;
             int imageWidth = skySource.getWidth();
             int imageHeight = skySource.getHeight();
-            float sourceAspect = (float)imageWidth / (float)imageHeight;
-            float viewportAspect = (float)getWidth() / (float)getHeight();
-            int cropWidth = imageWidth;
-            int cropHeight = imageHeight;
-            int cropX = 0;
-            int cropY = 0;
-            if (sourceAspect > viewportAspect) {
-                cropWidth = (int)(imageHeight * viewportAspect);
-                cropX = (imageWidth - cropWidth) / 2;
-            } else {
-                cropHeight = (int)(imageWidth / viewportAspect);
-                cropY = (imageHeight - cropHeight) / 2;
-            }
+            float verticalFov = 1.134464f; // 65 degrees
+            float aspect = (float)getWidth() / (float)getHeight();
+            float horizontalFov = 2.0f * (float)Math.atan(
+                    (float)Math.tan(verticalFov * 0.5f) * aspect);
+            int cropWidth = (int)(imageWidth * horizontalFov / 6.2831853f);
+            int cropHeight = (int)(imageHeight * verticalFov / 3.14159265f);
             if (cropWidth < 1) cropWidth = 1;
             if (cropHeight < 1) cropHeight = 1;
+
+            // As the camera turns right, the panorama scrolls left at the matching angular rate.
+            int cropX = (imageWidth - cropWidth) / 2 +
+                    (int)(camYaw * imageWidth / 6.2831853f);
+            cropX %= imageWidth;
+            if (cropX < 0) cropX += imageWidth;
+
+            float pitchPosition = (camPitch + 1.20f) / 2.40f;
+            if (pitchPosition < 0.0f) pitchPosition = 0.0f;
+            if (pitchPosition > 1.0f) pitchPosition = 1.0f;
+            int cropY = (int)((imageHeight - cropHeight) * pitchPosition);
             sceneBackground.setCrop(cropX, cropY, cropWidth, cropHeight);
         }
 
@@ -191,7 +196,7 @@ public final class main extends MIDlet {
                     (width == cachedMenuWidth && height == cachedMenuHeight)) return;
             cachedMenuWidth = width;
             cachedMenuHeight = height;
-            scaledTitleBackground = scaleToCover(titleBackgroundSource, width, height);
+            scaledTitleBackground = scalePanorama(titleBackgroundSource, width, height);
             scaledLogo = scaleToFit(logoSource, width - 24, Math.max(1, height / 4));
         }
 
@@ -205,22 +210,14 @@ public final class main extends MIDlet {
                     source.getWidth(), source.getHeight());
         }
 
-        private Image scaleToCover(Image source, int width, int height) {
+        private Image scalePanorama(Image source, int width, int height) {
             if (source == null || width < 1 || height < 1) return null;
-            int sourceWidth = source.getWidth();
-            int sourceHeight = source.getHeight();
-            float sourceAspect = (float)sourceWidth / (float)sourceHeight;
-            float targetAspect = (float)width / (float)height;
-            int cropX = 0, cropY = 0;
-            float cropWidth = sourceWidth, cropHeight = sourceHeight;
-            if (sourceAspect > targetAspect) {
-                cropWidth = sourceHeight * targetAspect;
-                cropX = (int)((sourceWidth - cropWidth) * 0.5f);
-            } else {
-                cropHeight = sourceWidth / targetAspect;
-                cropY = (int)((sourceHeight - cropHeight) * 0.5f);
-            }
-            return resizeImage(source, width, height, cropX, cropY, cropWidth, cropHeight);
+            float scale = Math.max((float)width / source.getWidth(),
+                    (float)height / source.getHeight());
+            int scaledWidth = Math.max(width, (int)(source.getWidth() * scale + 0.999f));
+            int scaledHeight = Math.max(height, (int)(source.getHeight() * scale + 0.999f));
+            return resizeImage(source, scaledWidth, scaledHeight, 0, 0,
+                    source.getWidth(), source.getHeight());
         }
 
         private Image resizeImage(Image source, int width, int height,
@@ -249,8 +246,17 @@ public final class main extends MIDlet {
             prepareMenuImages();
             g.setColor(0x101820);
             g.fillRect(0, 0, getWidth(), getHeight());
-            if (scaledTitleBackground != null)
-                g.drawImage(scaledTitleBackground, 0, 0, Graphics.TOP | Graphics.LEFT);
+            if (scaledTitleBackground != null) {
+                int imageWidth = scaledTitleBackground.getWidth();
+                int imageHeight = scaledTitleBackground.getHeight();
+                int offset = imageWidth > 0 ? (int)((menuPanTime / 60L) % imageWidth) : 0;
+                int x = -offset;
+                int y = (getHeight() - imageHeight) / 2;
+                while (x < getWidth()) {
+                    g.drawImage(scaledTitleBackground, x, y, Graphics.TOP | Graphics.LEFT);
+                    x += imageWidth;
+                }
+            }
 
             if (scaledLogo != null) {
                 int logoX = (getWidth() - scaledLogo.getWidth()) / 2;
@@ -306,12 +312,17 @@ public final class main extends MIDlet {
         }
 
         private void update(int dt) {
-            if (menuMode) return;
+            if (menuMode) {
+                menuPanTime += dt;
+                return;
+            }
             animTime += dt;
             float step = dt * 0.004f;
             float cameraTurn = dt * 0.0025f;
             if (camLeft) camYaw -= cameraTurn;
             if (camRight) camYaw += cameraTurn;
+            if (camYaw > 3.14159265f) camYaw -= 6.2831853f;
+            if (camYaw < -3.14159265f) camYaw += 6.2831853f;
             if (camUp) camPitch += cameraTurn;
             if (camDown) camPitch -= cameraTurn;
             // Classic third-person camera: allow looking up/down, but never flip over.
