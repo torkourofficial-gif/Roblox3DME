@@ -5,6 +5,10 @@ import javax.microedition.lcdui.*;
 import javax.microedition.m3g.*;
 import javax.microedition.media.Manager;
 import javax.microedition.media.Player;
+import javax.microedition.lcdui.TextBox;
+import javax.microedition.lcdui.TextField;
+import javax.microedition.lcdui.Command;
+import javax.microedition.lcdui.CommandListener;
 
 /**
  * Roblox3DME: minimal JSR-184 playground/controller.
@@ -24,12 +28,14 @@ public final class main extends MIDlet {
     }
     void quit() { destroyApp(true); notifyDestroyed(); }
 
-    private static final class Game extends Canvas implements Runnable {
+    private static final class Game extends Canvas implements Runnable, CommandListener {
         private final main midlet;
         private Thread thread;
         private Player musicPlayer;
         private java.io.InputStream musicInput;
         private int musicTrack=-1;
+        private int[] gameMusicOrder = {1,2,3};
+        private int gameMusicIndex=3, lastGameMusicTrack;
         private boolean running;
         private Graphics3D g3d = Graphics3D.getInstance();
         private World world;
@@ -48,6 +54,18 @@ public final class main extends MIDlet {
         private boolean paused, configMode;
         private int pauseSelection, configSelection;
         private boolean menuSettings, controlMapMode, awaitingControlKey;
+        private boolean lanMenu;
+        private int lanMenuSelection;
+        private String lanMessage="";
+        private LanSession lanSession;
+        private volatile LanSession pendingLanSession;
+        private volatile int pendingLanGame=-1;
+        private volatile String pendingLanError;
+        private LanSession.PlayerState[] lanPlayers;
+        private Group[] lanAvatars = new Group[5];
+        private TextBox lanAddressBox;
+        private final Command lanConnectCommand=new Command("Connect",Command.OK,1);
+        private final Command lanCancelCommand=new Command("Cancel",Command.CANCEL,2);
         private int controlSelection;
         private String settingsMessage = "";
         private static final int CONTROL_FORWARD=0, CONTROL_BACK=1, CONTROL_LEFT=2,
@@ -251,6 +269,35 @@ public final class main extends MIDlet {
             midlet = m;
             setFullScreenMode(true);
         }
+
+        public void commandAction(Command command, Displayable displayable) {
+            if (command == lanCancelCommand) {
+                Display.getDisplay(midlet).setCurrent(this);
+                lanMenu = true;
+                repaint();
+                return;
+            }
+            if (command == lanConnectCommand && lanAddressBox != null) {
+                final String address = lanAddressBox.getString();
+                Display.getDisplay(midlet).setCurrent(this);
+                lanMenu = false;
+                lanMessage = "Connecting to " + address + "...";
+                final Game self = this;
+                Thread connect = new Thread(new Runnable() {
+                    public void run() {
+                        try {
+                            LanSession session = LanSession.join(address);
+                            pendingLanSession = session;
+                            pendingLanGame = session.getGameId();
+                        } catch (Throwable t) {
+                            pendingLanError = "LAN: " + t.toString();
+                        }
+                        self.repaint();
+                    }
+                });
+                connect.start();
+            }
+        }
         synchronized void start() {
             if (running) return;
             running = true;
@@ -365,6 +412,7 @@ public final class main extends MIDlet {
         }
 
         private void startGame(int game) throws Exception {
+            lanMenu = false;
             currentGame = game;
             if (game == 3) studioTesting = false;
             menuMode = false;
@@ -479,9 +527,27 @@ public final class main extends MIDlet {
             if (game == 11) spawnSeekBots();
             if (game == 14) spawnDefenseWave();
             spawnPlayerBots();
-            int nextTrack=1+nextRandom(3);
-            if(nextTrack==musicTrack)nextTrack=nextTrack%3+1;
-            playMusic(nextTrack);
+            playMusic(chooseGameMusicTrack());
+        }
+
+        private int chooseGameMusicTrack() {
+            if (gameMusicIndex >= gameMusicOrder.length) {
+                for (int i = 0; i < gameMusicOrder.length; i++) gameMusicOrder[i] = i + 1;
+                for (int i = gameMusicOrder.length - 1; i > 0; i--) {
+                    int j = nextRandom(i + 1);
+                    int swap = gameMusicOrder[i];
+                    gameMusicOrder[i] = gameMusicOrder[j];
+                    gameMusicOrder[j] = swap;
+                }
+                if (gameMusicOrder[0] == lastGameMusicTrack) {
+                    int swap = gameMusicOrder[0];
+                    gameMusicOrder[0] = gameMusicOrder[1];
+                    gameMusicOrder[1] = swap;
+                }
+                gameMusicIndex = 0;
+            }
+            lastGameMusicTrack = gameMusicOrder[gameMusicIndex++];
+            return lastGameMusicTrack;
         }
 
         private int addModeBlock(float x, float y, float z, float sx, float sy,
@@ -1767,6 +1833,10 @@ public final class main extends MIDlet {
 
         private void drawMenu(Graphics g) {
             prepareMenuImages();
+            if (lanMenu) {
+                drawLanPanel(g);
+                return;
+            }
             if (menuSettings) {
                 drawSettingsPanel(g, false);
                 return;
@@ -1813,13 +1883,42 @@ public final class main extends MIDlet {
                     "  UP/DOWN SELECT  7/9 PAGE",
                     getWidth() / 2, getHeight() - font.getHeight() - 8,
                     Graphics.TOP | Graphics.HCENTER);
-            g.drawString("* SETTINGS  5 START",
+            g.drawString("# LAN  * SETTINGS  5 START",
                     getWidth() / 2, getHeight() - font.getHeight() * 2 - 10,
                     Graphics.TOP | Graphics.HCENTER);
             if (modelError.length() > 0)
                 g.drawString(modelError, 4, 4, Graphics.TOP | Graphics.LEFT);
             if (initError.length() > 0)
                 g.drawString(initError, 4, g.getFont().getHeight() + 6, Graphics.TOP | Graphics.LEFT);
+        }
+
+        private void drawLanPanel(Graphics g) {
+            g.setColor(0x101820);
+            g.fillRect(0, 0, getWidth(), getHeight());
+            drawMenuPanorama(g);
+            if (scaledLogo != null)
+                g.drawImage(scaledLogo, (getWidth()-scaledLogo.getWidth())/2,
+                        Math.max(5,getHeight()/18), Graphics.TOP|Graphics.LEFT);
+            int y = getHeight()/2 - 30;
+            String[] options = {"Host selected game", "Join by host IP", "Back"};
+            for (int i = 0; i < options.length; i++) {
+                int rowY = y + i * 25;
+                g.setColor(i == lanMenuSelection ? 0xF5C542 : 0x203040);
+                g.fillRoundRect(12,rowY,getWidth()-24,21,8,8);
+                g.setColor(i == lanMenuSelection ? 0x17202A : 0xFFFFFF);
+                g.drawString(options[i],getWidth()/2,rowY+3,Graphics.TOP|Graphics.HCENTER);
+            }
+            Font font = g.getFont();
+            g.setColor(0xFFFFFF);
+            g.drawString("Selected: " + GAME_NAMES[selectedGame],getWidth()/2,
+                    y-20,Graphics.TOP|Graphics.HCENTER);
+            g.drawString("UP/DOWN SELECT  5 OK  # BACK",getWidth()/2,
+                    getHeight()-font.getHeight()-6,Graphics.TOP|Graphics.HCENTER);
+            if (lanMessage.length() > 0)
+                g.drawString(lanMessage,getWidth()/2,getHeight()-font.getHeight()*2-8,
+                        Graphics.TOP|Graphics.HCENTER);
+            if (modelError.length() > 0)
+                g.drawString(modelError,2,2,Graphics.TOP|Graphics.LEFT);
         }
 
         private void drawMenuPanorama(Graphics g) {
@@ -1867,11 +1966,75 @@ public final class main extends MIDlet {
             return y < 0.0f ? -angle : angle;
         }
 
+        private void updateLanPlayers() {
+            if (lanSession == null) return;
+            if (!lanSession.isHost() && !lanSession.isConnected()) {
+                lanSession = null;
+                lanMessage = "LAN connection lost";
+                modelStatus = lanMessage;
+                for (int i=0;i<lanAvatars.length;i++) {
+                    if (lanAvatars[i] != null && world != null) {
+                        try { world.removeChild(lanAvatars[i]); } catch (Throwable ignored) {}
+                        lanAvatars[i] = null;
+                    }
+                }
+                return;
+            }
+            lanSession.publish(px, jumpY, pz, yaw, playerHealth, !dead);
+            if (lanPlayers == null) lanPlayers = new LanSession.PlayerState[5];
+            lanSession.copySnapshot(lanPlayers);
+            LanSession.PlayerState[] states = lanPlayers;
+            int local = lanSession.getLocalSlot();
+            for (int i = 0; i < states.length; i++) {
+                if (i == local || states[i] == null || !states[i].connected || !states[i].alive) {
+                    if (lanAvatars[i] != null && world != null) {
+                        try { world.removeChild(lanAvatars[i]); } catch (Throwable ignored) {}
+                        lanAvatars[i] = null;
+                    }
+                    continue;
+                }
+                if (lanAvatars[i] == null && world != null) {
+                    Mesh oldLeft=leftArm,oldRight=rightArm,oldLegL=leftLeg,oldLegR=rightLeg;
+                    Group oldSword=swordVisual;
+                    try { lanAvatars[i]=buildNoob(false); }
+                    catch (Throwable t) { continue; }
+                    leftArm=oldLeft; rightArm=oldRight; leftLeg=oldLegL; rightLeg=oldLegR;
+                    swordVisual=oldSword;
+                    world.addChild(lanAvatars[i]);
+                }
+                if (lanAvatars[i] != null) {
+                    lanAvatars[i].setTranslation(states[i].x,states[i].y,states[i].z);
+                    lanAvatars[i].setOrientation(states[i].yaw*57.29578f,0,1,0);
+                }
+            }
+        }
+
         private void update(int dt) {
+            if (pendingLanError != null) {
+                lanMessage = pendingLanError;
+                modelError = lanMessage;
+                pendingLanError = null;
+            }
+            if (pendingLanSession != null && pendingLanGame >= 0) {
+                lanSession = pendingLanSession;
+                pendingLanSession = null;
+                int joinedGame = pendingLanGame;
+                pendingLanGame = -1;
+                try {
+                    selectedGame = joinedGame;
+                    startGame(joinedGame);
+                    lanMessage = "Connected to LAN host";
+                } catch (Throwable t) {
+                    lanSession.close(); lanSession = null;
+                    lanMessage = "LAN game: " + t.toString();
+                    modelError = lanMessage;
+                }
+            }
             if (menuMode) {
                 menuPanTime += dt;
                 return;
             }
+            updateLanPlayers();
             gameClock += dt;
             if (dead) {
                 if (currentGame == 2 || currentGame == 10) updateZombies(dt);
@@ -2862,6 +3025,11 @@ public final class main extends MIDlet {
         }
 
         private void exitToGameMenu() {
+            if (lanSession != null) { lanSession.close(); lanSession = null; }
+            lanMenu = false;
+            lanMessage = "";
+            lanPlayers = null;
+            for (int i=0;i<lanAvatars.length;i++) lanAvatars[i]=null;
             paused = false;
             configMode = false;
             menuMode = true;
@@ -3300,12 +3468,53 @@ public final class main extends MIDlet {
                     repaint();
                     return;
                 }
+                if(keyCode==KEY_POUND && !lanMenu) {
+                    lanMenu=true;
+                    lanMenuSelection=0;
+                    repaint();
+                    return;
+                }
                 if(keyCode==KEY_STAR) {
                     menuSettings=true;
                     configSelection=0;
                     controlMapMode=false;
                     awaitingControlKey=false;
                     settingsMessage="";
+                    repaint();
+                    return;
+                }
+                if (lanMenu) {
+                    if (k == UP || keyCode == KEY_NUM2)
+                        lanMenuSelection = (lanMenuSelection + 2) % 3;
+                    else if (k == DOWN || keyCode == KEY_NUM8)
+                        lanMenuSelection = (lanMenuSelection + 1) % 3;
+                    else if (keyCode == KEY_POUND) lanMenu = false;
+                    else if (keyCode == KEY_NUM5 || k == FIRE) {
+                        if (lanMenuSelection == 0) {
+                            try {
+                                initError = "";
+                                startGame(selectedGame);
+                                lanSession = LanSession.host(selectedGame);
+                                lanPlayers = null;
+                                lanMessage = "Host " + lanSession.getLocalAddress() + ":" +
+                                        LanSession.PORT + " (same Wi-Fi)";
+                                modelStatus = "LAN host: " + lanMessage;
+                            } catch (Throwable t) {
+                                lanMessage = "LAN host: " + t.toString();
+                                modelError = lanMessage;
+                                menuMode = true;
+                                lanMenu = true;
+                            }
+                        } else if (lanMenuSelection == 1) {
+                            lanAddressBox = new TextBox("Join LAN game",
+                                    "", 32, TextField.ANY);
+                            lanAddressBox.addCommand(lanConnectCommand);
+                            lanAddressBox.addCommand(lanCancelCommand);
+                            lanAddressBox.setCommandListener(this);
+                            Display.getDisplay(midlet).setCurrent(lanAddressBox);
+                            return;
+                        } else lanMenu = false;
+                    }
                     repaint();
                     return;
                 }
