@@ -4,7 +4,7 @@ El punto de entrada es `main.java`, dentro del paquete `meblox`. Es un MIDlet pa
 
 ## Menú
 
-Al iniciar, elige **Obby**, **Baseplate** o **Horda zombi** con arriba/abajo y confirma con **5 / FIRE**. Obby tiene una ruta larga de 81 plataformas en zigzag y una plataforma verde de meta; el jugador aparece sobre la primera plataforma flotante. Baseplate deja el suelo verde y un bloque rojo de prueba que elimina al jugador al tocarlo. Horda zombi tiene una arena con coberturas, plataformas elevadas y escalones saltables; los enemigos usan el modelo del avatar con piel verde y ropa marrón, persiguen al jugador en oleadas y lo eliminan al alcanzarlo. Pulsa **0** durante el juego para volver al menú. El fondo `bgtitle.png` se dibuja directamente en el tamaño de pantalla y se desplaza en bucle como una panorámica.
+Al iniciar, elige **Obby**, **Baseplate**, **Horda zombi** o **Studio** con arriba/abajo y confirma con **5 / FIRE**. Obby tiene una ruta larga de 81 plataformas en zigzag y una plataforma verde de meta; el jugador aparece sobre la primera plataforma flotante. Baseplate deja el suelo verde y un bloque rojo de prueba que elimina al jugador al tocarlo. Horda zombi tiene una arena con coberturas, plataformas elevadas y escalones saltables; los enemigos usan el modelo del avatar con piel verde y ropa marrón, persiguen al jugador en oleadas y lo eliminan al alcanzarlo. Pulsa **0** durante el juego para volver al menú. El fondo `bgtitle.png` se dibuja directamente en el tamaño de pantalla y se desplaza en bucle como una panorámica.
 
 ## Controles en los juegos
 
@@ -20,9 +20,13 @@ El menú de pausa tiene un fondo oscuro semitransparente y permite reanudar, con
 
 En la Horda zombi, **7/9** cambian entre **Espada**, **Bomba** y **Pala**, y **3** usa el objeto. La espada anima el brazo y la pierna y golpea a un zombi cercano que esté delante. La bomba cae con gravedad, parpadea y explota tras 2,6 segundos; elimina zombis dentro de 4,8 unidades y también puede alcanzar al jugador. La pala suelta seis bloques que caen, chocan entre sí y forman una pared temporal.
 
+## Studio
+
+Studio abre un Baseplate editable. Pulsa **5 / FIRE** para añadir el tipo de objeto actual; el catálogo rota entre Block, Platform, Hazard, Pillar y Spawn Pad. **7/9** seleccionan los objetos colocados y **2/4/6/8** mueven el seleccionado en el plano. El D-pad orbita la cámara. Pulsa ***** para elegir propiedad y **1/#** para reducir/aumentar posición, tamaño o color; **0** elimina el objeto seleccionado. Un Spawn Pad cambia el punto de aparición y Hazard elimina al jugador al tocarlo durante la prueba. Pulsa **3** para entrar o salir del modo de prueba. Los objetos se conservan mientras la aplicación siga abierta; aún no hay exportación o guardado permanente de escenas.
+
 ## Física y reaparición
 
-La gravedad actúa al saltar y al caer fuera de las plataformas; el jugador aterriza en el suelo y en las plataformas del Obby y de la Horda zombi. El jugador, los zombis y las piezas físicas chocan con las caras superiores y laterales de los bloques. Tocar el bloque rojo del Baseplate separa cabeza, torso, brazos y piernas. Las piezas salen despedidas, giran en varios ejes y chocan según su posición y rotación con el suelo, las plataformas y entre sí; caen y rebotan levemente. La cámara sigue al torso mientras esa pieza exista. Al entrar al juego y después de morir, el personaje aparece dentro de un aura azul semitransparente esférica; el aura pulsa con destellos y lo protege durante 4 segundos. Tras morir, reaparece después de 2,6 segundos.
+La gravedad actúa al saltar y al caer fuera de las plataformas; el jugador aterriza en el suelo y en las plataformas del Obby, la Horda zombi y Studio. El jugador, los zombis y las piezas físicas chocan con las caras superiores y laterales de los bloques. Tocar el bloque rojo del Baseplate separa cabeza, torso, brazos y piernas. Las piezas salen despedidas, giran en varios ejes y chocan según su posición y rotación con el suelo, las plataformas y entre sí; caen y rebotan levemente. La cámara sigue al torso mientras esa pieza exista. Al entrar al juego y después de morir, el personaje aparece dentro de un aura azul semitransparente esférica; el aura pulsa con destellos y lo protege durante 4 segundos. Tras morir, reaparece después de 2,6 segundos.
 
 ## Recursos
 
