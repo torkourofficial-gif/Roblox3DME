@@ -4,7 +4,7 @@ El punto de entrada es `main.java`, dentro del paquete `meblox`. Es un MIDlet pa
 
 ## Menú
 
-Al iniciar, elige **Obby** o **Baseplate** con arriba/abajo y confirma con **5 / FIRE**. Obby tiene una ruta larga de 81 plataformas en zigzag y una plataforma verde de meta; Baseplate deja el suelo verde y un bloque rojo de prueba que elimina al jugador al tocarlo. Pulsa **0** durante el juego para volver al menú. El fondo `bgtitle.png` se dibuja directamente en el tamaño de pantalla y se desplaza en bucle como una panorámica.
+Al iniciar, elige **Obby**, **Baseplate** o **Horda zombi** con arriba/abajo y confirma con **5 / FIRE**. Obby tiene una ruta larga de 81 plataformas en zigzag y una plataforma verde de meta; Baseplate deja el suelo verde y un bloque rojo de prueba que elimina al jugador al tocarlo. En Horda zombi, los enemigos usan el modelo del avatar con piel verde y ropa marrón, persiguen al jugador en oleadas y lo eliminan al alcanzarlo. Pulsa **0** durante el juego para volver al menú. El fondo `bgtitle.png` se dibuja directamente en el tamaño de pantalla y se desplaza en bucle como una panorámica.
 
 ## Controles en los juegos
 
@@ -17,6 +17,8 @@ Al iniciar, elige **Obby** o **Baseplate** con arriba/abajo y confirma con **5 /
 - El avatar gira al caminar, hacia el movimiento; la cámara puede orbitar mientras permanece quieto.
 
 El menú de pausa tiene un fondo oscuro semitransparente y permite reanudar, configurar sensibilidad e inversión de cámara, reiniciar la partida o volver al menú de juegos. Al abrirlo, el mundo sigue avanzando detrás del menú, como en Roblox.
+
+En la Horda zombi, **7/9** cambian entre **Espada**, **Bomba** y **Pala**, y **3** usa el objeto. La espada anima el brazo y la pierna y golpea a un zombi cercano que esté delante. La bomba cae con gravedad, parpadea y explota tras 2,6 segundos; elimina zombis dentro de 4,8 unidades y también puede alcanzar al jugador. La pala suelta seis bloques que caen, chocan entre sí y forman una pared temporal.
 
 ## Física y reaparición
 
