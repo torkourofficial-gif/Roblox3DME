@@ -22,7 +22,7 @@ public final class main extends MIDlet {
     }
     void quit() { destroyApp(true); notifyDestroyed(); }
 
-    private static final class Game extends Canvas implements Runnable, CommandListener {
+    private static final class Game extends Canvas implements Runnable {
         private final main midlet;
         private Thread thread;
         private boolean running;
@@ -53,6 +53,29 @@ public final class main extends MIDlet {
         private StudioObject[] studioObjects = new StudioObject[40];
         private int studioObjectCount, studioSelected = -1, studioPalette, studioProperty;
         private boolean studioTesting;
+        private static final String[] GAME_NAMES = new String[] {
+            "Obby", "Baseplate", "Horda zombi", "Studio", "Lava ascendente",
+            "Lluvia de meteoritos", "Plataformas que caen", "Carrera contrarreloj",
+            "Caza de monedas", "Rey de la colina", "Arena de espadas", "Escondite",
+            "Simon dice", "Mini tycoon", "Defensa de base"
+        };
+        private float[][] modeBlocks = new float[96][7];
+        private Node[] modeBlockNodes = new Node[96];
+        private boolean[] modeBlockActive = new boolean[96];
+        private boolean[] modeBlockFalling = new boolean[96];
+        private long[] modeBlockFallAt = new long[96];
+        private float[] modeBlockFallVelocity = new float[96];
+        private int modeBlockCount;
+        private Node lavaNode;
+        private float lavaHeight;
+        private long modeStartAt, modeEventAt, modeScoreAt;
+        private int modeScore, modeLives, modeCash, tycoonLevel, simonTarget, simonRound;
+        private int modeCollected, modeGoal;
+        private Node[] tokenNodes = new Node[20];
+        private float[][] tokenPositions = new float[20][3];
+        private boolean[] tokenActive = new boolean[20];
+        private int tokenCount;
+        private int defenseLeaked;
         private static final String[] STUDIO_TYPE_NAMES =
                 {"Block", "Platform", "Hazard", "Pillar", "Spawn Pad"};
         private static final String[] STUDIO_PROPERTY_NAMES =
@@ -72,8 +95,6 @@ public final class main extends MIDlet {
         private int cachedMenuWidth = -1, cachedMenuHeight = -1;
         private int[] pauseOverlayPixels;
         private int pauseOverlayWidth = -1, pauseOverlayHeight = -1;
-        private Command pauseCommand;
-        private boolean pauseCommandAdded;
         private long menuPanTime;
         private float playerVelocityY;
         private boolean grounded = true, dead, lobbyMode;
@@ -186,16 +207,6 @@ public final class main extends MIDlet {
         Game(main m) {
             midlet = m;
             setFullScreenMode(true);
-            pauseCommand = new Command("Pause", Command.SCREEN, 1);
-            setCommandListener(this);
-        }
-
-        public void commandAction(Command command, Displayable displayable) {
-            if (command == pauseCommand && !menuMode) {
-                if (paused) { paused = false; configMode = false; }
-                else openPauseMenu();
-                repaint();
-            }
         }
         synchronized void start() {
             if (running) return;
@@ -262,10 +273,6 @@ public final class main extends MIDlet {
         private void startGame(int game) throws Exception {
             currentGame = game;
             if (game == 3) studioTesting = false;
-            if (!pauseCommandAdded) {
-                addCommand(pauseCommand);
-                pauseCommandAdded = true;
-            }
             menuMode = false;
             paused = false;
             configMode = false;
@@ -288,6 +295,22 @@ public final class main extends MIDlet {
             invulnerableUntil = 0;
             deathPieces = null;
 
+            modeBlockCount = 0;
+            for (int i=0; i<modeBlockActive.length; i++) {
+                modeBlockActive[i]=false;
+                modeBlockFalling[i]=false;
+                modeBlockFallAt[i]=0;
+                modeBlockFallVelocity[i]=0;
+                modeBlockNodes[i]=null;
+            }
+            for (int i=0; i<tokenActive.length; i++) {
+                tokenActive[i]=false;
+                tokenNodes[i]=null;
+            }
+            tokenCount=0; modeCollected=0; modeScore=0; modeLives=3;
+            modeCash=10; tycoonLevel=0; simonTarget=0; simonRound=0;
+            defenseLeaked=0; lavaHeight=-1.0f; lavaNode=null;
+            modeStartAt=0; modeEventAt=0; modeScoreAt=0;
             world = new World();
             sceneBackground = new Background();
             sceneBackground.setColor(0x78BCE8);
@@ -305,8 +328,8 @@ public final class main extends MIDlet {
             world.addChild(camera);
             world.setActiveCamera(camera);
 
-            // All games share the green baseplate.
-            world.addChild(makeBox(0, -0.25f, 0, 24, 0.5f, 24, 0x54A64B));
+            // Every mode uses a compact procedural scene; Lava Rise replaces the floor with lava.
+            if (game != 4) world.addChild(makeBox(0, -0.25f, 0, 24, 0.5f, 24, 0x54A64B));
             if (game == 0) {
                 // An 80-platform zigzag course ending on an enlarged green finish.
                 for (int i = 0; i < OBBY_BLOCKS.length; i++) {
@@ -325,6 +348,9 @@ public final class main extends MIDlet {
             } else if (game == 3) {
                 // Studio begins with a clear baseplate and restores any objects in the editor.
                 syncStudioNodes();
+            } else if (game >= 4) {
+                buildExtraGame(game);
+                resetPlayerSpawn();
             }
 
             avatar = new Group();
@@ -337,14 +363,366 @@ public final class main extends MIDlet {
             animation = 0;
             animateNoob();
             updateCamera();
-            modelStatus = game == 0 ? "Obby" :
-                    (game == 1 ? "Baseplate" : (game == 2 ? "Zombie Horde" : "Studio - Edit mode"));
+            modelStatus = GAME_NAMES[game];
             loaded = true;
-            if (game == 2) spawnZombieWave();
+            modeStartAt = gameClock;
+            modeEventAt = game == 12 ? gameClock + 4000 : gameClock + 900;
+            modeScoreAt = gameClock + 1000;
+            if (game == 2 || game == 10) spawnZombieWave();
+            if (game == 9) spawnKingBots();
+            if (game == 11) spawnSeekBots();
+            if (game == 14) spawnDefenseWave();
+        }
+
+        private int addModeBlock(float x, float y, float z, float sx, float sy,
+                float sz, int color) {
+            if (modeBlockCount >= modeBlocks.length) return -1;
+            int i = modeBlockCount++;
+            modeBlocks[i] = new float[] {x,y,z,sx,sy,sz,color};
+            modeBlockNodes[i] = makeBox(x,y,z,sx,sy,sz,color);
+            modeBlockActive[i] = true;
+            world.addChild(modeBlockNodes[i]);
+            return i;
+        }
+
+        private void addToken(float x, float y, float z) {
+            if (tokenCount >= tokenNodes.length) return;
+            int i=tokenCount++;
+            tokenPositions[i][0]=x; tokenPositions[i][1]=y; tokenPositions[i][2]=z;
+            tokenNodes[i]=makeBox(x,y,z,0.28f,0.28f,0.28f,0xFFD633);
+            tokenActive[i]=true;
+            world.addChild(tokenNodes[i]);
+        }
+
+        private void buildExtraGame(int game) {
+            if (game == 4) {
+                lavaNode=makeBox(0,lavaHeight-0.12f,0,24,0.24f,24,0xF04B25);
+                world.addChild(lavaNode);
+                for (int i=0;i<18;i++) {
+                    float x=(float)Math.sin(i*1.7)*4.0f;
+                    float z=-1.0f-i*1.05f;
+                    float y=0.62f+i*0.48f;
+                    addModeBlock(x,y,z,2.8f,0.45f,2.8f,
+                            new int[] {0xE9B44C,0xD97B35,0xC85C3C,0xE5CF66}[i%4]);
+                }
+            } else if (game == 5) {
+                addModeBlock(-6,0.75f,-4,2.4f,1.5f,1.0f,0x74614A);
+                addModeBlock(6,0.75f,-2,2.4f,1.5f,1.0f,0x66563F);
+                addModeBlock(-3,0.55f,4,1.5f,1.1f,1.5f,0x8B6B45);
+                addModeBlock(3,0.55f,-7,1.5f,1.1f,1.5f,0x8B6B45);
+                addModeBlock(0,0.35f,7,3.0f,0.7f,1.0f,0x6688C7);
+            } else if (game == 6) {
+                for (int i=0;i<18;i++) {
+                    float x=(i%3-1)*2.4f + ((i/3)%2==0?0:1.0f);
+                    float z=-1.0f-(i/3)*2.4f;
+                    addModeBlock(x,0.28f,z,2.0f,0.56f,2.0f,
+                            new int[] {0xD94B45,0xE3C44D,0x4779D1}[i%3]);
+                }
+            } else if (game == 7) {
+                for (int i=0;i<OBBY_BLOCKS.length;i++) {
+                    float[] b=OBBY_BLOCKS[i];
+                    addModeBlock(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]);
+                }
+            } else if (game == 8) {
+                addModeBlock(-5,0.5f,-5,2,1,2,0x6688C7);
+                addModeBlock(5,0.5f,-4,2,1,2,0xA26BC0);
+                addModeBlock(-4,0.5f,5,2,1,2,0xD2A84B);
+                addModeBlock(5,0.5f,5,2,1,2,0x6BAA55);
+                for (int i=0;i<12;i++) {
+                    float x=-9.0f+(i%4)*6.0f;
+                    float z=-8.0f+(i/4)*7.5f;
+                    addToken(x,0.55f,z);
+                }
+                modeGoal=tokenCount;
+            } else if (game == 9) {
+                addModeBlock(0,0.35f,0,5.0f,0.7f,5.0f,0xD2A84B);
+                addModeBlock(-4,0.18f,0,2.0f,0.36f,3.0f,0x6BAA55);
+                addModeBlock(4,0.18f,0,2.0f,0.36f,3.0f,0x6BAA55);
+                addModeBlock(0,0.18f,-4,3.0f,0.36f,2.0f,0x6688C7);
+                addModeBlock(0,0.18f,4,3.0f,0.36f,2.0f,0x6688C7);
+            } else if (game == 10) {
+                for (int i=0;i<8;i++) {
+                    double a=6.2831853*i/8.0;
+                    addModeBlock((float)Math.cos(a)*7.0f,0.8f,
+                            (float)Math.sin(a)*7.0f,1.3f,1.6f,1.3f,
+                            i%2==0?0x74614A:0x6688C7);
+                }
+            } else if (game == 11) {
+                addModeBlock(0,1.0f,-3,8,2,0.7f,0x74614A);
+                addModeBlock(-4,0.7f,2,0.7f,1.4f,7,0x66563F);
+                addModeBlock(4,0.7f,3,0.7f,1.4f,6,0x795438);
+                addModeBlock(-1,0.5f,7,5,1,0.7f,0x8B6B45);
+                addModeBlock(1,0.5f,-8,4,1,0.7f,0x795438);
+            } else if (game == 12) {
+                addModeBlock(-4,0.18f,-4,3.5f,0.36f,3.5f,0xE34B4B);
+                addModeBlock(4,0.18f,-4,3.5f,0.36f,3.5f,0x4B78E3);
+                addModeBlock(-4,0.18f,4,3.5f,0.36f,3.5f,0x55B66A);
+                addModeBlock(4,0.18f,4,3.5f,0.36f,3.5f,0xE3C44D);
+            } else if (game == 13) {
+                addModeBlock(0,0.18f,0,8,0.36f,8,0x6BAA55);
+                addModeBlock(-8,0.8f,0,1,1.6f,10,0x6688C7);
+                addModeBlock(8,0.8f,0,1,1.6f,10,0x6688C7);
+                addModeBlock(0,0.8f,-8,10,1.6f,1,0x6688C7);
+                addModeBlock(0,0.18f,5,1.8f,0.36f,1.8f,0xE3C44D);
+            } else if (game == 14) {
+                addModeBlock(-5,0.2f,-5,1.5f,0.4f,1.5f,0x6688C7);
+                addModeBlock(5,0.2f,-5,1.5f,0.4f,1.5f,0x6688C7);
+                addModeBlock(-5,0.2f,5,1.5f,0.4f,1.5f,0x6688C7);
+                addModeBlock(5,0.2f,5,1.5f,0.4f,1.5f,0x6688C7);
+                addModeBlock(0,0.25f,0,3.0f,0.5f,3.0f,0xD2A84B);
+            }
+        }
+
+        private void spawnSimpleBot(int slot, float x, float z) {
+            if (slot<0 || slot>=zombies.length) return;
+            try {
+                Group model=buildNoob(true);
+                model.setTranslation(x,0,z);
+                world.addChild(model);
+                zombies[slot]=new Zombie(model,x,z);
+            } catch (Throwable t) {
+                initError="NPC: "+t.toString();
+            }
+        }
+
+        private void spawnKingBots() {
+            zombies=new Zombie[4];
+            spawnSimpleBot(0,-8,-8);
+            spawnSimpleBot(1,8,-8);
+            spawnSimpleBot(2,0,9);
+        }
+
+        private void spawnSeekBots() {
+            zombies=new Zombie[6];
+            spawnSimpleBot(0,-9,-8);
+            spawnSimpleBot(1,8,-8);
+            spawnSimpleBot(2,-8,8);
+            spawnSimpleBot(3,8,8);
+            spawnSimpleBot(4,0,-10);
+            modeGoal=5;
+        }
+
+        private void spawnDefenseWave() {
+            zombies=new Zombie[12];
+            int count=Math.min(3+(int)(modeStartAt/12000),zombies.length);
+            for(int i=0;i<count;i++)
+                spawnSimpleBot(i,(i%3-1)*2.2f,-10.0f-(i/3)*1.4f);
+            modeStatus("Wave "+(1+modeScore/3)+" - stop the enemies");
+        }
+
+        private void modeStatus(String message) {
+            modelStatus=message;
+        }
+
+        private void updateExtraGame(int dt) {
+            if (currentGame==4) {
+                lavaHeight+=dt*0.00004f;
+                if (lavaNode!=null) lavaNode.setTranslation(0,lavaHeight-0.12f,0);
+                if (jumpY<lavaHeight+0.85f && Math.abs(px)<11.5f && Math.abs(pz)<11.5f) {
+                    beginDeath(); return;
+                }
+                if (jumpY>8.0f) modeStatus("Lava escaped!");
+            } else if (currentGame==5) {
+                if (gameClock>=modeEventAt) {
+                    modeEventAt=gameClock+850;
+                    long seed=gameClock/850L+modeScore*17L;
+                    float x=(float)((seed*37L)%190L)/10.0f-9.5f;
+                    float z=(float)((seed*61L)%190L)/10.0f-9.5f;
+                    addWorldObject(makeBox(0,0,0,0.72f,0.72f,0.72f,0xA94732),
+                            x,8.5f,z,0,0,0,0.72f,0.72f,0.72f,0,false,0);
+                }
+                for(int i=0;i<worldObjects.length;i++) {
+                    WorldObject o=worldObjects[i];
+                    if(o==null||!o.active) continue;
+                    float dx=o.body.x-px,dz=o.body.z-pz;
+                    if(gameClock>=invulnerableUntil&&o.body.y<jumpY+1.6f&&
+                            o.body.y>jumpY-0.5f&&dx*dx+dz*dz<1.0f) {
+                        removeWorldObject(o); beginDeath(); return;
+                    }
+                }
+                if(gameClock-modeStartAt>=30000) modeStatus("Meteor shower survived!");
+            } else if (currentGame==6) {
+                updateFallingTiles(dt);
+                if(pz < -12.0f) modeStatus("You crossed the collapsing tiles!");
+            } else if (currentGame==7) {
+                if(gameClock-modeStartAt>0&&modelStatus.indexOf("complete")>=0) {
+                    modeScore=(int)((gameClock-modeStartAt)/1000);
+                }
+            } else if (currentGame==8) {
+                updateTokens(dt);
+                if(modeCollected>=modeGoal) modeStatus("All coins collected!");
+                else if(gameClock-modeStartAt>60000) modeStatus("Time up - coins "+modeCollected+"/"+modeGoal);
+            } else if (currentGame==9) {
+                updateKingHill(dt);
+            } else if (currentGame==11) {
+                updateSeekGame();
+            } else if (currentGame==12) {
+                updateSimonGame();
+            } else if (currentGame==13) {
+                if(gameClock>=modeEventAt) {
+                    modeEventAt=gameClock+4000;
+                    modeCash+=2+tycoonLevel;
+                    modeStatus("Tycoon cash: "+modeCash+" - press 3 to build");
+                }
+            } else if (currentGame==14) {
+                updateDefenseGame(dt);
+            }
+        }
+
+        private void updateFallingTiles(int dt) {
+            for(int i=0;i<modeBlockCount;i++) {
+                if(!modeBlockActive[i]) continue;
+                float[] b=modeBlocks[i];
+                if(!modeBlockFalling[i] && onPlatform(b[0],b[2],b[3]*0.5f,b[5]*0.5f) &&
+                        grounded && jumpY>=b[1]+b[4]*0.5f-0.08f) {
+                    if(modeBlockFallAt[i]==0) modeBlockFallAt[i]=gameClock+650;
+                    if(gameClock>=modeBlockFallAt[i]) modeBlockFalling[i]=true;
+                }
+                if(modeBlockFalling[i]) {
+                    modeBlockFallVelocity[i]-=0.000018f*dt;
+                    b[1]+=modeBlockFallVelocity[i]*dt;
+                    modeBlockNodes[i].setTranslation(b[0],b[1],b[2]);
+                    if(b[1]<-3.0f) {
+                        modeBlockActive[i]=false;
+                        try { world.removeChild(modeBlockNodes[i]); } catch(Throwable ignored) {}
+                    }
+                }
+            }
+        }
+
+        private void updateTokens(int dt) {
+            for(int i=0;i<tokenCount;i++) {
+                if(!tokenActive[i]) continue;
+                Node node=tokenNodes[i];
+                node.setOrientation((float)((gameClock*0.12f)%360L),0,1,0);
+                float dx=tokenPositions[i][0]-px,dz=tokenPositions[i][2]-pz;
+                if(dx*dx+dz*dz<0.55f*0.55f&&Math.abs(jumpY-tokenPositions[i][1])<1.2f) {
+                    tokenActive[i]=false; modeCollected++;
+                    try { world.removeChild(node); } catch(Throwable ignored) {}
+                    modeStatus("Coins "+modeCollected+"/"+modeGoal);
+                }
+            }
+        }
+
+        private void updateKingHill(int dt) {
+            for(int i=0;i<zombies.length;i++) {
+                Zombie z=zombies[i]; if(z==null||!z.alive) continue;
+                float dx=px-z.x,dz=pz-z.z;
+                float d=(float)Math.sqrt(dx*dx+dz*dz);
+                if(d>1.0f) {
+                    float step=dt*0.0008f;
+                    z.x+=dx/d*step; z.z+=dz/d*step;
+                    z.model.setTranslation(z.x,0,z.z);
+                } else if(gameClock>=z.attackAt) {
+                    z.attackAt=gameClock+1400;
+                    if(d>0.01f) { px+=dx/d*1.2f; pz+=dz/d*1.2f; }
+                    playerVelocityY=0.0028f; grounded=false;
+                }
+            }
+            boolean onHill=Math.abs(px)<2.35f&&Math.abs(pz)<2.35f&&jumpY>=0.68f;
+            if(onHill&&gameClock>=modeScoreAt) {
+                modeScore++; modeScoreAt=gameClock+1000;
+                modeStatus("Hill held: "+modeScore+" / 20 sec");
+            } else if(!onHill) modeScore=0;
+            if(modeScore>=20) modeStatus("Hill captured!");
+        }
+
+        private void updateSeekGame() {
+            for(int i=0;i<zombies.length;i++) {
+                Zombie z=zombies[i]; if(z==null||!z.alive) continue;
+                float dx=px-z.x,dz=pz-z.z;
+                if(dx*dx+dz*dz<1.1f*1.1f) {
+                    z.alive=false;
+                    try {world.removeChild(z.model);}catch(Throwable ignored){}
+                    modeStatus("Found "+(modeGoal-countZombies())+"/"+modeGoal);
+                }
+            }
+            if(modeGoal-countZombies()>=modeGoal) modeStatus("Everyone found!");
+        }
+
+        private void updateSimonGame() {
+            if(simonRound>12 || gameClock<modeEventAt) return;
+            if(simonRound>0) {
+                float[][] pos=new float[][] {{-4,-4},{4,-4},{-4,4},{4,4}};
+                if(Math.abs(px-pos[simonTarget][0])>1.85f ||
+                        Math.abs(pz-pos[simonTarget][1])>1.85f) {
+                    beginDeath(); return;
+                }
+                modeScore++;
+            }
+            simonTarget=(int)((gameClock/3200L*17L+3L)%4L);
+            simonRound++; modeEventAt=gameClock+3200;
+            String[] color=new String[] {"RED","BLUE","GREEN","YELLOW"};
+            modeStatus("SIMON SAYS: "+color[simonTarget]+"! Round "+simonRound);
+            if(simonRound>12) modeStatus("Simon Says complete!");
+        }
+
+        private void useTycoonAction() {
+            if(currentGame!=13) return;
+            if(Math.abs(px)>2.0f||Math.abs(pz-5.0f)>2.0f) {
+                modeStatus("Stand on the yellow build pad");
+                return;
+            }
+            int cost=5+tycoonLevel*5;
+            if(modeCash<cost) {modeStatus("Need "+cost+" cash");return;}
+            modeCash-=cost; tycoonLevel++;
+            float x=((tycoonLevel-1)%3-1)*2.2f;
+            float z=-2.0f-(tycoonLevel-1)/3*2.2f;
+            addModeBlock(x,0.8f,z,1.8f,1.6f,1.8f,STUDIO_COLORS[tycoonLevel%STUDIO_COLORS.length]);
+            modeStatus("Built "+tycoonLevel+" / 9 - cash "+modeCash);
+            if(tycoonLevel>=9) modeStatus("Tycoon completed!");
+        }
+
+        private void useArenaSword() {
+            if(gameClock<swordAttackUntil) return;
+            swordAttackUntil=gameClock+500;
+            float best=3.0f*3.0f; int target=-1;
+            for(int i=0;i<zombies.length;i++) {
+                Zombie z=zombies[i]; if(z==null||!z.alive) continue;
+                float dx=z.x-px,dz=z.z-pz, d=dx*dx+dz*dz;
+                if(d<best){best=d;target=i;}
+            }
+            animateNoob();
+            if(target>=0) {
+                Zombie z=zombies[target]; z.alive=false;
+                try {world.removeChild(z.model);}catch(Throwable ignored){}
+                modeScore++;
+                modeStatus("Enemy down: "+modeScore);
+            }
+        }
+
+        private void updateDefenseGame(int dt) {
+            if(defenseLeaked>=3) {
+                modeStatus("Base lost - restart from pause");
+                return;
+            }
+            if(countZombies()==0) {
+                if(gameClock>=modeEventAt) {
+                    modeStartAt=gameClock;
+                    modeEventAt=gameClock+1800;
+                    spawnDefenseWave();
+                }
+                return;
+            }
+            for(int i=0;i<zombies.length;i++) {
+                Zombie z=zombies[i]; if(z==null||!z.alive) continue;
+                float dx=-z.x,dz=-z.z;
+                float d=(float)Math.sqrt(dx*dx+dz*dz);
+                if(d<1.0f) {
+                    z.alive=false; defenseLeaked++;
+                    try {world.removeChild(z.model);}catch(Throwable ignored){}
+                    modeStatus("Base lives: "+(3-defenseLeaked));
+                    if(defenseLeaked>=3) {beginDeath();return;}
+                } else {
+                    float step=dt*0.00065f;
+                    z.x+=dx/d*step; z.z+=dz/d*step;
+                    z.model.setTranslation(z.x,0,z.z);
+                }
+            }
         }
 
         private void spawnZombieWave() {
-            if (currentGame != 2 || world == null) return;
+            if ((currentGame != 2 && currentGame != 10) || world == null) return;
             zombieWave++;
             nextWaveAt = 0;
             int count = Math.min(4 + zombieWave, zombies.length);
@@ -383,7 +761,7 @@ public final class main extends MIDlet {
         }
 
         private void updateZombies(int dt) {
-            if (currentGame != 2 || zombies == null) return;
+            if ((currentGame != 2 && currentGame != 10) || zombies == null) return;
             float speed = dt * 0.0022f;
             for (int i = 0; i < zombies.length; i++) {
                 Zombie z = zombies[i];
@@ -440,6 +818,14 @@ public final class main extends MIDlet {
                     if (overlapsBlock(x,z,bottom,height,object.x,object.y,object.z,
                             object.sx*0.5f,object.sy*0.5f,object.sz*0.5f,0.30f))
                         return true;
+                }
+            }
+            if (currentGame >= 4) {
+                for (int i=0;i<modeBlockCount;i++) {
+                    if (!modeBlockActive[i]) continue;
+                    float[] b=modeBlocks[i];
+                    if (overlapsBlock(x,z,bottom,height,b[0],b[2],b[1],
+                            b[3]*0.5f,b[5]*0.5f,b[4]*0.5f,0.30f)) return true;
                 }
             }
             float[][] blocks = currentGame == 0 ? OBBY_BLOCKS :
@@ -720,25 +1106,33 @@ public final class main extends MIDlet {
             }
 
             int buttonWidth = Math.max(1, getWidth() - 32);
-            int buttonHeight = Math.max(18, Math.min(26, getHeight() / 11));
-            int gap = Math.max(3, buttonHeight / 5);
-            String[] games = new String[] {"Obby", "Baseplate", "Horda zombi", "Studio"};
-            int listHeight = games.length * buttonHeight + (games.length - 1) * gap;
-            int startY = Math.max(getHeight() / 3, getHeight() / 2 - listHeight / 2 + 18);
+            int pageSize = getHeight() < 220 ? 4 : 5;
+            int buttonHeight = Math.max(14, Math.min(24, getHeight() / 11));
+            int gap = Math.max(2, buttonHeight / 6);
+            int page = selectedGame / pageSize;
+            int pageCount = (GAME_NAMES.length + pageSize - 1) / pageSize;
+            int first = page * pageSize;
+            int count = Math.min(pageSize, GAME_NAMES.length - first);
+            int listHeight = count * buttonHeight + (count - 1) * gap;
+            int startY = Math.max(getHeight() / 3,
+                    getHeight() / 2 - listHeight / 2 + 8);
             Font font = g.getFont();
-            for (int i = 0; i < games.length; i++) {
+            for (int i = 0; i < count; i++) {
+                int gameIndex = first + i;
                 int y = startY + i * (buttonHeight + gap);
-                g.setColor(i == selectedGame ? 0xF5C542 : 0x203040);
+                g.setColor(gameIndex == selectedGame ? 0xF5C542 : 0x203040);
                 g.fillRoundRect((getWidth() - buttonWidth) / 2, y,
                         buttonWidth, buttonHeight, 10, 10);
-                g.setColor(i == selectedGame ? 0x17202A : 0xFFFFFF);
-                g.drawString(games[i], getWidth() / 2,
+                g.setColor(gameIndex == selectedGame ? 0x17202A : 0xFFFFFF);
+                g.drawString(GAME_NAMES[gameIndex], getWidth() / 2,
                         y + (buttonHeight - font.getHeight()) / 2,
                         Graphics.TOP | Graphics.HCENTER);
             }
             g.setColor(0xFFFFFF);
-            g.drawString("UP/DOWN - FIRE TO SELECT", getWidth() / 2,
-                    getHeight() - font.getHeight() - 8, Graphics.TOP | Graphics.HCENTER);
+            g.drawString("PAGE " + (page + 1) + "/" + pageCount +
+                    "  UP/DOWN SELECT  7/9 PAGE",
+                    getWidth() / 2, getHeight() - font.getHeight() - 8,
+                    Graphics.TOP | Graphics.HCENTER);
             if (modelError.length() > 0)
                 g.drawString(modelError, 4, 4, Graphics.TOP | Graphics.LEFT);
             if (initError.length() > 0)
@@ -797,8 +1191,8 @@ public final class main extends MIDlet {
             }
             gameClock += dt;
             if (dead) {
-                if (currentGame == 2) updateZombies(dt);
-                updateWorldObjects(dt);
+                if (currentGame == 2 || currentGame == 10) updateZombies(dt);
+                if (currentGame == 2 || currentGame == 5) updateWorldObjects(dt);
                 updateDeathPieces(dt);
                 if (deathPieces != null && deathPieces.length > 1 && deathPieces[1] != null) {
                     PhysicsPiece torso = deathPieces[1];
@@ -814,11 +1208,9 @@ public final class main extends MIDlet {
             } else if (protectionAura != null) {
                 updateProtectionFlash();
             }
-            if (currentGame == 2) {
-                updateZombies(dt);
-                updateWorldObjects(dt);
-                if (dead) return;
-            }
+            if (currentGame == 2 || currentGame == 10) updateZombies(dt);
+            if (currentGame == 2 || currentGame == 5) updateWorldObjects(dt);
+            if (dead) return;
             animTime += dt;
             float step = dt * 0.004f;
             float cameraTurn = dt * cameraSensitivity;
@@ -864,12 +1256,12 @@ public final class main extends MIDlet {
                 beginDeath();
                 return;
             }
-            if (currentGame == 0) {
+            if (currentGame == 0 || currentGame == 7) {
                 float[] finish = OBBY_BLOCKS[OBBY_BLOCKS.length - 1];
                 float finishTop = finish[1] + finish[4] * 0.5f;
                 if (onPlatform(finish[0], finish[2], finish[3] * 0.5f, finish[5] * 0.5f) &&
                         jumpY >= finishTop - 0.05f)
-                    modelStatus = "Obby complete!";
+                    modelStatus = currentGame == 7 ? "Race complete!" : "Obby complete!";
             }
             // Turn only while moving, toward the world-space travel direction.
             if (dx != 0.0f || dz != 0.0f) yaw = fastAtan2(-dx, -dz);
@@ -888,12 +1280,24 @@ public final class main extends MIDlet {
             if (world != null) {
                 try { world.animate(animTime); } catch (Throwable t) {}
             }
+            updateExtraGame(dt);
             if (currentGame == 2) updateHordeStatus();
         }
 
         private void resolveLanding(float previousY) {
             float top = Float.NEGATIVE_INFINITY;
-            if (Math.abs(px) < 11.5f && Math.abs(pz) < 11.5f) top = 0.0f;
+            if (currentGame != 4 && Math.abs(px) < 11.5f &&
+                    Math.abs(pz) < 11.5f) top = 0.0f;
+            if (currentGame >= 4) {
+                for (int i=0;i<modeBlockCount;i++) {
+                    if (!modeBlockActive[i]) continue;
+                    float[] b=modeBlocks[i];
+                    float platformTop=b[1]+b[4]*0.5f;
+                    if (onPlatform(b[0],b[2],b[3]*0.5f,b[5]*0.5f) &&
+                            platformCanSupport(previousY,platformTop))
+                        top=Math.max(top,platformTop);
+                }
+            }
             if (currentGame == 3 && studioTesting) {
                 for (int i=0; i<studioObjectCount; i++) {
                     StudioObject object = studioObjects[i];
@@ -1107,11 +1511,17 @@ public final class main extends MIDlet {
                     }
                 }
                 if (!foundSpawn) { px=0; pz=0; jumpY=0; }
-            } else if (currentGame == 0 && OBBY_BLOCKS.length > 0) {
+            } else if ((currentGame == 0 || currentGame == 7) && OBBY_BLOCKS.length > 0) {
                 float[] first = OBBY_BLOCKS[0];
-                px = first[0];
-                pz = first[2];
+                px = first[0]; pz = first[2];
                 jumpY = first[1] + first[4] * 0.5f;
+            } else if ((currentGame == 4 || currentGame == 6) && modeBlockCount > 0) {
+                float[] first=modeBlocks[0];
+                px=first[0]; pz=first[2]; jumpY=first[1]+first[4]*0.5f;
+            } else if (currentGame == 9) {
+                px=0; pz=0; jumpY=0.70f;
+            } else if (currentGame == 13) {
+                px=0; pz=0; jumpY=0.36f;
             } else {
                 px = 0;
                 pz = 0;
@@ -1250,10 +1660,30 @@ public final class main extends MIDlet {
             if (modelError.length() > 0) drawWrapped(g, modelError, 3, 38, getWidth() - 6);
             if (initError.length() > 0) drawWrapped(g, initError, 3, 72, getWidth() - 6);
             if (currentGame == 2) drawInventory(g);
+            if (currentGame >= 4) drawExtraHud(g);
             if (currentGame == 3 && !paused) drawStudioHud(g);
             if (paused) drawPauseMenu(g);
         }
 
+
+        private void drawExtraHud(Graphics g) {
+            String label="";
+            if(currentGame==4) label="CLIMB! LAVA "+(int)(lavaHeight*10)/10.0f;
+            else if(currentGame==5) label="DODGE METEORS  "+Math.max(0,30-(int)((gameClock-modeStartAt)/1000))+"s";
+            else if(currentGame==6) label="KEEP MOVING - TILES FALL";
+            else if(currentGame==7) label="TIME "+Math.max(0,(int)((gameClock-modeStartAt)/1000))+"s";
+            else if(currentGame==8) label="COINS "+modeCollected+"/"+modeGoal;
+            else if(currentGame==9) label="HILL "+modeScore+"/20s";
+            else if(currentGame==10) label="3 ATTACK  "+modeScore+" KOs";
+            else if(currentGame==11) label="FOUND "+(modeGoal-countZombies())+"/"+modeGoal;
+            else if(currentGame==12) {
+                String[] colors=new String[] {"RED","BLUE","GREEN","YELLOW"};
+                label=simonRound>12?"SIMON SAYS COMPLETE":(simonRound==0?"GET READY":"GO TO "+colors[simonTarget]);
+            } else if(currentGame==13) label="CASH "+modeCash+"  BUILD "+tycoonLevel+"/9  (3)";
+            else if(currentGame==14) label="LIVES "+Math.max(0,3-defenseLeaked)+"  3 ATTACK";
+            g.setColor(0xFFFFFF);
+            g.drawString(label,getWidth()/2,getHeight()-3,Graphics.BOTTOM|Graphics.HCENTER);
+        }
 
         private void drawInventory(Graphics g) {
             String[] items = new String[] {"Espada", "Bomba", "Pala"};
@@ -1605,10 +2035,6 @@ public final class main extends MIDlet {
             loaded = false;
             selectedGame = currentGame;
             clearInput();
-            if (pauseCommandAdded) {
-                removeCommand(pauseCommand);
-                pauseCommandAdded = false;
-            }
         }
 
         private void openPauseMenu() {
@@ -1926,10 +2352,20 @@ public final class main extends MIDlet {
         protected void keyPressed(int keyCode) {
             int k = getGameAction(keyCode);
             if (menuMode) {
-                if (k == UP || keyCode == KEY_NUM2)
-                    selectedGame = (selectedGame + 3) % 4;
+                int pageSize = getHeight() < 220 ? 4 : 5;
+                int pageCount = (GAME_NAMES.length + pageSize - 1) / pageSize;
+                int page = selectedGame / pageSize;
+                int row = selectedGame % pageSize;
+                if (keyCode == KEY_NUM7) {
+                    page = (page + pageCount - 1) % pageCount;
+                    selectedGame = Math.min(page * pageSize + row, GAME_NAMES.length - 1);
+                } else if (keyCode == KEY_NUM9) {
+                    page = (page + 1) % pageCount;
+                    selectedGame = Math.min(page * pageSize + row, GAME_NAMES.length - 1);
+                } else if (k == UP || keyCode == KEY_NUM2)
+                    selectedGame = (selectedGame + GAME_NAMES.length - 1) % GAME_NAMES.length;
                 else if (k == DOWN || keyCode == KEY_NUM8)
-                    selectedGame = (selectedGame + 1) % 4;
+                    selectedGame = (selectedGame + 1) % GAME_NAMES.length;
                 else if (keyCode == KEY_NUM5 || k == FIRE) {
                     try {
                         initError = "";
@@ -1945,7 +2381,8 @@ public final class main extends MIDlet {
             }
             // On some devices key 3 is reported with GAME_B, which is also used
             // by the right softkey. In Horde and Studio, keep numeric 3 reserved for its game action.
-            boolean reservedThree = (currentGame == 2 || currentGame == 3) &&
+            boolean reservedThree = (currentGame == 2 || currentGame == 3 ||
+                    currentGame == 10 || currentGame == 13 || currentGame == 14) &&
                     keyCode == KEY_NUM3;
             if (!reservedThree && isRightSoftkey(keyCode, k)) {
                 if (paused) { paused = false; configMode = false; }
@@ -1987,6 +2424,16 @@ public final class main extends MIDlet {
             }
             if (currentGame == 2 && keyCode == KEY_NUM3) {
                 useInventoryItem();
+                repaint();
+                return;
+            }
+            if ((currentGame == 10 || currentGame == 14) && keyCode == KEY_NUM3) {
+                useArenaSword();
+                repaint();
+                return;
+            }
+            if (currentGame == 13 && keyCode == KEY_NUM3) {
+                useTycoonAction();
                 repaint();
                 return;
             }
