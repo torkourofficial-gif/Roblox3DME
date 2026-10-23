@@ -398,6 +398,9 @@ public final class main extends MIDlet {
         }
         private void spawnPlayerBots() {
             playerBotCount=3+nextRandom(3);
+            int skinStart=nextRandom(BOT_SKIN_COLORS.length);
+            int shirtStart=nextRandom(BOT_SHIRT_COLORS.length);
+            int legStart=nextRandom(BOT_LEG_COLORS.length);
             for(int i=0;i<playerBotCount;i++) {
                 float x,z;
                 if((currentGame==0||currentGame==7)&&OBBY_BLOCKS.length>0){
