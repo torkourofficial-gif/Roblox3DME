@@ -17,7 +17,7 @@ Al iniciar, elige **Obby** o **Baseplate** con arriba/abajo y confirma con **5 /
 
 ## Física y reaparición
 
-La gravedad actúa al saltar y al caer fuera de las plataformas; el jugador aterriza en el suelo y en las plataformas del Obby. Tocar el bloque rojo del Baseplate separa cabeza, torso, brazos y piernas. Las piezas salen despedidas, caen y rebotan levemente. Tras 2,6 segundos reaparece el personaje con un aura azul semitransparente que lo protege durante 4 segundos.
+La gravedad actúa al saltar y al caer fuera de las plataformas; el jugador aterriza en el suelo y en las plataformas del Obby. Tocar el bloque rojo del Baseplate separa cabeza, torso, brazos y piernas. Las piezas salen despedidas, giran en varios ejes, caen y rebotan levemente. Tras 2,6 segundos reaparece el personaje dentro de un aura azul semitransparente esférica; el aura pulsa con destellos y lo protege durante 4 segundos.
 
 ## Recursos
 
