@@ -367,7 +367,6 @@ public final class main extends MIDlet {
             final float halfHeight = 0.25f;
             final float endRadius = 0.20f;
             final float bevelRadius = 0.08f;
-            final float sideRadius = endRadius + bevelRadius;
             int ringCount = bevelSteps * 2 + 1;
             float[] ringY = new float[ringCount];
             float[] ringRadius = new float[ringCount];
