@@ -20,6 +20,12 @@ El menú de pausa tiene un fondo oscuro semitransparente y permite reanudar, con
 
 En la Horda zombi, **7/9** cambian entre **Espada**, **Bomba** y **Pala**, y **3** usa el objeto. La espada anima el brazo y la pierna y golpea a un zombi cercano que esté delante. La bomba cae con gravedad, parpadea y explota tras 2,6 segundos; elimina zombis dentro de 4,8 unidades y también puede alcanzar al jugador. La pala suelta seis bloques que caen, chocan entre sí y forman una pared temporal.
 
+## Ajustes y multijugador Bluetooth
+
+El menú principal incluye **Ajustes**. Activa Bluetooth y elige **Host multiplayer** en un dispositivo; en el otro, activa Bluetooth y usa **Find multiplayer host**. Cuando aparezca **Multiplayer connected**, ambos jugadores deben iniciar el mismo juego desde el menú. La conexión intercambia la posición y orientación de un avatar remoto mediante JSR-82 (Bluetooth SPP); por ahora admite una pareja de jugadores.
+
+El interruptor habilita el uso de Bluetooth por el juego. Java ME no puede encender por sí solo una radio que esté desactivada por el sistema, así que actívala en los ajustes del dispositivo cuando se indique. La compilación requiere un SDK que incluya **JSR-82** además de **JSR-184**. En el JAD o manifiesto solicita `javax.microedition.io.Connector.bluetooth.client` y `javax.microedition.io.Connector.bluetooth.server`; el teléfono puede pedir autorización para conexiones y descubrimiento.
+
 ## Studio
 
 Studio abre un Baseplate editable. Pulsa **5 / FIRE** para añadir el tipo de objeto actual; el catálogo rota entre Block, Platform, Hazard, Pillar y Spawn Pad. **7/9** seleccionan los objetos colocados y **2/4/6/8** mueven el seleccionado en el plano. El D-pad orbita la cámara. Pulsa ***** para elegir propiedad y **1/#** para reducir/aumentar posición, tamaño o color; **0** elimina el objeto seleccionado. Un Spawn Pad cambia el punto de aparición y Hazard elimina al jugador al tocarlo durante la prueba. Pulsa **3** para entrar o salir del modo de prueba. Los objetos se conservan mientras la aplicación siga abierta; aún no hay exportación o guardado permanente de escenas.
@@ -38,6 +44,6 @@ Los archivos `noobidle.m3g`, `noobrun.m3g` y `noobjump.m3g` no son necesarios: e
 
 ## Compilación
 
-Compila `main.java` con un SDK MIDP 2.0 que incluya JSR-184, copia los cinco PNG al directorio de recursos del proyecto y vuelve a instalar el JAR generado.
+Compila `main.java` con un SDK MIDP 2.0 que incluya JSR-184 y JSR-82, declara los permisos Bluetooth cliente y servidor en el JAD/manifiesto, copia los cinco PNG al directorio de recursos del proyecto y vuelve a instalar el JAR generado.
 
 **Estado:** los cambios se guardaron en GitHub, pero no se han compilado ni probado en un emulador o teléfono.
