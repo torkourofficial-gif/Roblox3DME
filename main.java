@@ -31,7 +31,7 @@ public final class main extends MIDlet {
         private Group activeModel;
         private Mesh leftArm, rightArm, leftLeg, rightLeg;
         private int animation = 0; // 0 idle, 1 run, 2 jump
-        private float px = 0, pz = 0;
+        private float px = 0, pz = 0, yaw = 0;
         private float camYaw = 0, camPitch = 0.22f;
         private float camDistance = 5.0f;
         private float jumpY = 0, jumpVelocity = 0;
@@ -139,7 +139,8 @@ public final class main extends MIDlet {
             if (left) { dx -= cos * step; dz -= sin * step; }
             if (right) { dx += cos * step; dz += sin * step; }
             px += dx; pz += dz;
-            // Camera orbit does not change the avatar's orientation.
+            // Turn only while moving, toward the world-space travel direction.
+            if (dx != 0.0f || dz != 0.0f) yaw = fastAtan2(-dx, -dz);
             if (jumping) {
                 jumpY += jumpVelocity * dt;
                 jumpVelocity -= 0.00003f * dt;
@@ -151,6 +152,7 @@ public final class main extends MIDlet {
             }
             if (avatar != null) {
                 avatar.setTranslation(px, jumpY, pz);
+                avatar.setOrientation((float)(yaw * 57.29578f), 0, 1, 0);
             }
             updateCamera();
             int wantedAnimation;
@@ -360,10 +362,28 @@ public final class main extends MIDlet {
         }
 
         private Node makeRoundedCylinderHead() {
-            final int segments = 16;
-            float[] ringY = new float[] {-0.25f, -0.245f, -0.23f, -0.20f, 0.20f, 0.23f, 0.245f, 0.25f};
-            float[] ringRadius = new float[] {0.25f, 0.266f, 0.278f, 0.28f, 0.28f, 0.278f, 0.266f, 0.25f};
-            int bandCount = ringY.length - 1;
+            final int segments = 32;
+            final int bevelSteps = 6;
+            final float halfHeight = 0.25f;
+            final float endRadius = 0.20f;
+            final float bevelRadius = 0.08f;
+            final float sideRadius = endRadius + bevelRadius;
+            int ringCount = bevelSteps * 2 + 1;
+            float[] ringY = new float[ringCount];
+            float[] ringRadius = new float[ringCount];
+            for (int i = 0; i <= bevelSteps; i++) {
+                double angle = 1.57079632679 * i / bevelSteps;
+                ringY[i] = -halfHeight + bevelRadius * (1.0f - (float)Math.cos(angle));
+                ringRadius[i] = endRadius + bevelRadius * (float)Math.sin(angle);
+            }
+            for (int i = 1; i <= bevelSteps; i++) {
+                double angle = 1.57079632679 * i / bevelSteps;
+                int ring = bevelSteps + i;
+                ringY[ring] = halfHeight - bevelRadius * (float)Math.cos(angle);
+                ringRadius[ring] = endRadius + bevelRadius * (float)Math.cos(angle);
+            }
+
+            int bandCount = ringCount - 1;
             int verticesPerBand = (segments + 1) * 2;
             short[] shellCoords = new short[bandCount * verticesPerBand * 3];
             int[] shellStrips = new int[bandCount];
@@ -385,8 +405,8 @@ public final class main extends MIDlet {
 
             Group head = new Group();
             head.addChild(makeSolidMesh(shellCoords, shellStrips, 0xF5C542));
-            head.addChild(makeCylinderDisk(-0.25f, 0.25f, segments, 0xF5C542));
-            head.addChild(makeCylinderDisk(0.25f, 0.25f, segments, 0xF5C542));
+            head.addChild(makeCylinderDisk(-halfHeight, endRadius, segments, 0xF5C542));
+            head.addChild(makeCylinderDisk(halfHeight, endRadius, segments, 0xF5C542));
             head.setTranslation(0, 2.19f, 0);
             return head;
         }
