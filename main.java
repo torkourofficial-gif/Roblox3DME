@@ -47,6 +47,10 @@ public final class main extends MIDlet {
         private boolean loaded;
         private boolean menuMode = true;
         private int selectedGame;
+        private int inventorySelection;
+        private long swordAttackUntil, nextWaveAt;
+        private int zombieWave;
+        private Group swordVisual;
         private Image logoSource, titleBackgroundSource, skySource;
         private Image scaledLogo;
         private int[] menuPanPixels;
@@ -64,6 +68,8 @@ public final class main extends MIDlet {
         private boolean grounded = true, dead, lobbyMode;
         private long gameClock, respawnAt, invulnerableUntil;
         private PhysicsPiece[] deathPieces;
+        private Zombie[] zombies = new Zombie[12];
+        private WorldObject[] worldObjects = new WorldObject[80];
         private Group protectionAura;
         private Material protectionAuraMaterial;
         private String modelStatus = "Select a game";
@@ -107,6 +113,26 @@ public final class main extends MIDlet {
                 vx = velX; vy = velY; vz = velZ; spin = spinRate;
                 spinX = axisX; spinY = axisY; spinZ = axisZ;
                 halfX = sizeX; halfY = sizeY; halfZ = sizeZ;
+            }
+        }
+
+        private static final class Zombie {
+            Group model;
+            float x, z;
+            long attackAt;
+            boolean alive = true;
+            Zombie(Group model, float x, float z) {
+                this.model = model; this.x = x; this.z = z;
+            }
+        }
+
+        private static final class WorldObject {
+            PhysicsPiece body;
+            boolean bomb, active = true;
+            long explodeAt, removeAt;
+            WorldObject(PhysicsPiece body, boolean bomb, long explodeAt, long removeAt) {
+                this.body = body; this.bomb = bomb;
+                this.explodeAt = explodeAt; this.removeAt = removeAt;
             }
         }
 
@@ -204,6 +230,12 @@ public final class main extends MIDlet {
             jumping = false;
             forward = back = left = right = false;
             playerVelocityY = 0;
+            inventorySelection = 0;
+            swordAttackUntil = 0;
+            zombieWave = 0;
+            nextWaveAt = 0;
+            zombies = new Zombie[12];
+            worldObjects = new WorldObject[80];
             grounded = true;
             dead = false;
             lobbyMode = game == 1;
@@ -228,7 +260,7 @@ public final class main extends MIDlet {
             world.addChild(camera);
             world.setActiveCamera(camera);
 
-            // Both selections share the same green baseplate.
+            // All games share the green baseplate.
             world.addChild(makeBox(0, -0.25f, 0, 24, 0.5f, 24, 0x54A64B));
             if (game == 0) {
                 // An 80-platform zigzag course ending on an enlarged green finish.
@@ -236,7 +268,7 @@ public final class main extends MIDlet {
                     float[] b = OBBY_BLOCKS[i];
                     world.addChild(makeBox(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]));
                 }
-            } else {
+            } else if (game == 1) {
                 // Red touch-to-die test block in the baseplate lobby.
                 world.addChild(makeBox(3, 0.35f, -3, 1.2f, 0.7f, 1.2f, 0xE32636));
             }
@@ -251,8 +283,253 @@ public final class main extends MIDlet {
             animation = 0;
             animateNoob();
             updateCamera();
-            modelStatus = game == 0 ? "Obby" : "Baseplate";
+            modelStatus = game == 0 ? "Obby" : (game == 1 ? "Baseplate" : "Zombie Horde");
             loaded = true;
+            if (game == 2) spawnZombieWave();
+        }
+
+        private void spawnZombieWave() {
+            if (currentGame != 2 || world == null) return;
+            zombieWave++;
+            nextWaveAt = 0;
+            int count = Math.min(4 + zombieWave, zombies.length);
+            for (int i = 0; i < count; i++) {
+                int slot = -1;
+                for (int j = 0; j < zombies.length; j++)
+                    if (zombies[j] == null || !zombies[j].alive) { slot = j; break; }
+                if (slot < 0) break;
+                double angle = 6.28318530718 * i / count + zombieWave * 0.31;
+                float radius = 6.0f + (i % 3) * 0.9f;
+                float x = px + (float)Math.cos(angle) * radius;
+                float z = pz + (float)Math.sin(angle) * radius;
+                try {
+                    Group model = buildNoob(true);
+                    model.setTranslation(x, 0, z);
+                    world.addChild(model);
+                    zombies[slot] = new Zombie(model, x, z);
+                } catch (Throwable t) {
+                    initError = "Zombie: " + t.toString();
+                }
+            }
+            updateHordeStatus();
+        }
+
+        private int countZombies() {
+            int count = 0;
+            if (zombies == null) return count;
+            for (int i = 0; i < zombies.length; i++)
+                if (zombies[i] != null && zombies[i].alive) count++;
+            return count;
+        }
+
+        private void updateHordeStatus() {
+            if (currentGame == 2)
+                modelStatus = "Wave " + zombieWave + " - Zombies: " + countZombies();
+        }
+
+        private void updateZombies(int dt) {
+            if (currentGame != 2 || zombies == null) return;
+            float speed = dt * 0.0022f;
+            for (int i = 0; i < zombies.length; i++) {
+                Zombie z = zombies[i];
+                if (z == null || !z.alive) continue;
+                float dx = px - z.x, dz = pz - z.z;
+                float distance = (float)Math.sqrt(dx * dx + dz * dz);
+                if (distance > 0.82f) {
+                    float moveX = dx / distance * speed;
+                    float moveZ = dz / distance * speed;
+                    float nextX = z.x + moveX, nextZ = z.z + moveZ;
+                    if (!isWorldBlocked(nextX, z.z, 0.0f, 1.9f)) z.x = nextX;
+                    if (!isWorldBlocked(z.x, nextZ, 0.0f, 1.9f)) z.z = nextZ;
+                    dx = px - z.x; dz = pz - z.z;
+                    if (moveX != 0.0f || moveZ != 0.0f)
+                        z.model.setOrientation((float)(fastAtan2(-moveX, -moveZ) * 57.29578f), 0, 1, 0);
+                }
+                z.model.setTranslation(z.x, 0, z.z);
+                distance = (float)Math.sqrt(dx * dx + dz * dz);
+                if (distance < 0.9f && gameClock >= z.attackAt) {
+                    z.attackAt = gameClock + 900;
+                    if (gameClock >= invulnerableUntil && !dead) {
+                        beginDeath();
+                        return;
+                    }
+                }
+            }
+            if (countZombies() == 0) {
+                if (nextWaveAt == 0) nextWaveAt = gameClock + 1400;
+                else if (gameClock >= nextWaveAt) spawnZombieWave();
+            } else {
+                nextWaveAt = 0;
+            }
+        }
+
+        private boolean isPlayerBlocked(float x, float z) {
+            return isWorldBlocked(x, z, jumpY, 1.9f);
+        }
+
+        private boolean isWorldBlocked(float x, float z, float bottom, float height) {
+            if (worldObjects == null) return false;
+            for (int i = 0; i < worldObjects.length; i++) {
+                WorldObject o = worldObjects[i];
+                if (o == null || !o.active || o.bomb) continue;
+                PhysicsPiece b = o.body;
+                boolean vertical = bottom < b.y + b.extentY &&
+                        bottom + height > b.y - b.extentY;
+                if (vertical && Math.abs(x - b.x) < b.extentX + 0.30f &&
+                        Math.abs(z - b.z) < b.extentZ + 0.30f) return true;
+            }
+            return false;
+        }
+
+        private void updateWorldObjects(int dt) {
+            if (worldObjects == null) return;
+            for (int i = 0; i < worldObjects.length; i++) {
+                WorldObject o = worldObjects[i];
+                if (o == null || !o.active) continue;
+                if (!o.bomb && gameClock >= o.removeAt) {
+                    removeWorldObject(o);
+                    continue;
+                }
+                PhysicsPiece p = o.body;
+                p.vy -= 0.000018f * dt;
+                p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+                p.rotation += p.spin * dt * 0.001f;
+                updatePieceExtents(p);
+                resolvePieceEnvironment(p);
+            }
+            for (int i = 0; i < worldObjects.length; i++) {
+                WorldObject a = worldObjects[i];
+                if (a == null || !a.active) continue;
+                for (int j = i + 1; j < worldObjects.length; j++) {
+                    WorldObject b = worldObjects[j];
+                    if (b != null && b.active) resolvePiecePair(a.body, b.body);
+                }
+            }
+            for (int i = 0; i < worldObjects.length; i++) {
+                WorldObject o = worldObjects[i];
+                if (o == null || !o.active) continue;
+                PhysicsPiece p = o.body;
+                p.node.setTranslation(p.x, p.y, p.z);
+                p.node.setOrientation(p.rotation, p.spinX, p.spinY, p.spinZ);
+                if (o.bomb) {
+                    boolean flash = gameClock >= o.explodeAt - 900 &&
+                            ((gameClock / 110L) % 2L == 0L);
+                    p.node.setRenderingEnable(gameClock < o.explodeAt - 900 || flash);
+                    if (gameClock >= o.explodeAt) explodeBomb(o);
+                }
+            }
+        }
+
+        private void addWorldObject(Node node, float x, float y, float z,
+                float vx, float vy, float vz, float sx, float sy, float sz,
+                float orientation, boolean bomb, long fuse) {
+            int slot = -1;
+            for (int i = 0; i < worldObjects.length; i++)
+                if (worldObjects[i] == null || !worldObjects[i].active) { slot = i; break; }
+            if (slot < 0) {
+                WorldObject oldest = worldObjects[0];
+                for (int i = 1; i < worldObjects.length; i++)
+                    if (worldObjects[i].removeAt < oldest.removeAt) oldest = worldObjects[i];
+                removeWorldObject(oldest);
+                slot = 0;
+            }
+            node.setTranslation(x, y, z);
+            node.setOrientation(orientation, 0.0f, 1.0f, 0.0f);
+            world.addChild(node);
+            PhysicsPiece body = new PhysicsPiece(node, x, y, z, vx, vy, vz,
+                    bomb ? 95.0f : 18.0f, 0.0f, 1.0f, 0.0f,
+                    sx * 0.5f, sy * 0.5f, sz * 0.5f);
+            body.rotation = orientation;
+            updatePieceExtents(body);
+            worldObjects[slot] = new WorldObject(body, bomb,
+                    bomb ? gameClock + fuse : 0, bomb ? 0 : gameClock + 45000);
+        }
+
+        private void removeWorldObject(WorldObject o) {
+            if (o == null || !o.active) return;
+            o.active = false;
+            try { o.body.node.setRenderingEnable(false); } catch (Throwable ignored) {}
+            try { world.removeChild(o.body.node); } catch (Throwable ignored) {}
+        }
+
+        private void explodeBomb(WorldObject bomb) {
+            float bx = bomb.body.x, bz = bomb.body.z;
+            removeWorldObject(bomb);
+            float radius = 4.8f, radiusSquared = radius * radius;
+            for (int i = 0; i < zombies.length; i++) {
+                Zombie z = zombies[i];
+                if (z == null || !z.alive) continue;
+                float dx = z.x - bx, dz = z.z - bz;
+                if (dx * dx + dz * dz <= radiusSquared) {
+                    z.alive = false;
+                    try { world.removeChild(z.model); } catch (Throwable ignored) {}
+                }
+            }
+            float playerX = px - bx, playerZ = pz - bz;
+            if (!dead && gameClock >= invulnerableUntil &&
+                    playerX * playerX + playerZ * playerZ <= radiusSquared) beginDeath();
+            updateHordeStatus();
+        }
+
+        private void useInventoryItem() {
+            if (dead || currentGame != 2) return;
+            if (inventorySelection == 0) {
+                if (gameClock < swordAttackUntil) return;
+                swordAttackUntil = gameClock + 600;
+                float fx = (float)Math.sin(yaw), fz = -(float)Math.cos(yaw);
+                int target = -1;
+                float closest = 2.55f * 2.55f;
+                for (int i = 0; i < zombies.length; i++) {
+                    Zombie z = zombies[i];
+                    if (z == null || !z.alive) continue;
+                    float dx = z.x - px, dz = z.z - pz;
+                    float distanceSquared = dx * dx + dz * dz;
+                    if (distanceSquared > closest) continue;
+                    float dot = dx * fx + dz * fz;
+                    if (dot < 0.10f) continue;
+                    target = i;
+                    closest = distanceSquared;
+                }
+                if (target >= 0) {
+                    zombies[target].alive = false;
+                    try { world.removeChild(zombies[target].model); } catch (Throwable ignored) {}
+                    updateHordeStatus();
+                }
+                animateNoob();
+            } else if (inventorySelection == 1) {
+                float fx = (float)Math.sin(yaw), fz = -(float)Math.cos(yaw);
+                Group bomb = new Group();
+                bomb.addChild(makeBox(0, 0, 0, 0.34f, 0.34f, 0.34f, 0xE52B2B));
+                bomb.addChild(makeBox(0, 0.21f, 0, 0.12f, 0.10f, 0.12f, 0x303030));
+                addWorldObject(bomb, px + fx * 0.85f, jumpY + 0.45f, pz + fz * 0.85f,
+                        fx * 0.0018f, 0.0f, fz * 0.0018f,
+                        0.34f, 0.44f, 0.34f, 0.0f, true, 2600);
+            } else {
+                float fx = (float)Math.sin(yaw), fz = -(float)Math.cos(yaw);
+                float rx = (float)Math.cos(yaw), rz = (float)Math.sin(yaw);
+                float centerX = px + fx * 1.75f, centerZ = pz + fz * 1.75f;
+                for (int row = 0; row < 2; row++) {
+                    for (int col = -1; col <= 1; col++) {
+                        Group block = new Group();
+                        block.addChild(makeBox(0, 0, 0, 0.88f, 0.82f, 0.36f,
+                                row == 0 ? 0x777777 : 0x969696));
+                        float x = centerX + rx * col * 0.86f;
+                        float z = centerZ + rz * col * 0.86f;
+                        addWorldObject(block, x, jumpY + 1.5f + row * 0.84f, z,
+                                0.0f, 0.0f, 0.0f, 0.88f, 0.82f, 0.36f,
+                                yaw * 57.29578f, false, 0);
+                    }
+                }
+            }
+        }
+
+        private Group makeSwordVisual() {
+            Group sword = new Group();
+            sword.addChild(makeBox(0, 0.47f, 0, 0.13f, 0.78f, 0.06f, 0xDCE9F2));
+            sword.addChild(makeBox(0, 0.05f, 0, 0.38f, 0.08f, 0.12f, 0xB68A42));
+            sword.addChild(makeBox(0, -0.12f, 0, 0.10f, 0.30f, 0.10f, 0x654321));
+            sword.setTranslation(0.56f, 1.02f, -0.08f);
+            return sword;
         }
 
         private void updateSkyCrop() {
@@ -364,7 +641,7 @@ public final class main extends MIDlet {
             int buttonHeight = Math.max(28, getHeight() / 10);
             int gap = Math.max(8, buttonHeight / 4);
             int startY = getHeight() / 2 - buttonHeight - gap / 2;
-            String[] games = new String[] {"Obby", "Baseplate"};
+            String[] games = new String[] {"Obby", "Baseplate", "Horda zombi"};
             Font font = g.getFont();
             for (int i = 0; i < games.length; i++) {
                 int y = startY + i * (buttonHeight + gap);
@@ -436,6 +713,8 @@ public final class main extends MIDlet {
             }
             gameClock += dt;
             if (dead) {
+                if (currentGame == 2) updateZombies(dt);
+                updateWorldObjects(dt);
                 updateDeathPieces(dt);
                 if (deathPieces != null && deathPieces.length > 1 && deathPieces[1] != null) {
                     PhysicsPiece torso = deathPieces[1];
@@ -450,6 +729,11 @@ public final class main extends MIDlet {
                 protectionAuraMaterial = null;
             } else if (protectionAura != null) {
                 updateProtectionFlash();
+            }
+            if (currentGame == 2) {
+                updateZombies(dt);
+                updateWorldObjects(dt);
+                if (dead) return;
             }
             animTime += dt;
             float step = dt * 0.004f;
@@ -470,7 +754,13 @@ public final class main extends MIDlet {
             if (back) { dx -= sin * step; dz += cos * step; }
             if (left) { dx -= cos * step; dz -= sin * step; }
             if (right) { dx += cos * step; dz += sin * step; }
-            px += dx; pz += dz;
+            float nextX = px + dx, nextZ = pz + dz;
+            if (currentGame == 2) {
+                if (isPlayerBlocked(nextX, pz)) nextX = px;
+                if (isPlayerBlocked(nextX, nextZ)) nextZ = pz;
+            }
+            dx = nextX - px; dz = nextZ - pz;
+            px = nextX; pz = nextZ;
             // Gravity applies continuously; landing checks cover the floor and obby platforms.
             float previousY = jumpY;
             if (!grounded) {
@@ -487,7 +777,7 @@ public final class main extends MIDlet {
                 beginDeath();
                 return;
             }
-            if (!lobbyMode) {
+            if (currentGame == 0) {
                 float[] finish = OBBY_BLOCKS[OBBY_BLOCKS.length - 1];
                 float finishTop = finish[1] + finish[4] * 0.5f;
                 if (onPlatform(finish[0], finish[2], finish[3] * 0.5f, finish[5] * 0.5f) &&
@@ -511,12 +801,13 @@ public final class main extends MIDlet {
             if (world != null) {
                 try { world.animate(animTime); } catch (Throwable t) {}
             }
+            if (currentGame == 2) updateHordeStatus();
         }
 
         private void resolveLanding(float previousY) {
             float top = Float.NEGATIVE_INFINITY;
             if (Math.abs(px) < 11.5f && Math.abs(pz) < 11.5f) top = 0.0f;
-            if (!lobbyMode) {
+            if (currentGame == 0) {
                 for (int i = 0; i < OBBY_BLOCKS.length; i++) {
                     float[] b = OBBY_BLOCKS[i];
                     float platformTop = b[1] + b[4] * 0.5f;
@@ -626,13 +917,21 @@ public final class main extends MIDlet {
         }
 
         private void resolvePieceEnvironment(PhysicsPiece p) {
-            if (!lobbyMode) {
+            if (currentGame == 0) {
                 for (int i = 0; i < OBBY_BLOCKS.length; i++) {
                     float[] b = OBBY_BLOCKS[i];
                     resolvePieceAgainstBox(p,b[0],b[1],b[2],b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
                 }
-            } else {
+            } else if (lobbyMode) {
                 resolvePieceAgainstBox(p, 3, 0.35f, -3, 0.6f, 0.35f, 0.6f);
+            } else if (currentGame == 2) {
+                for (int i = 0; i < worldObjects.length; i++) {
+                    WorldObject o = worldObjects[i];
+                    if (o != null && o.active && !o.bomb && o.body != p) {
+                        PhysicsPiece b = o.body;
+                        resolvePieceAgainstBox(p,b.x,b.y,b.z,b.extentX,b.extentY,b.extentZ);
+                    }
+                }
             }
             if (Math.abs(p.x) <= 12.0f + p.extentX && Math.abs(p.z) <= 12.0f + p.extentZ &&
                     p.y - p.extentY < 0.0f) {
@@ -816,9 +1115,21 @@ public final class main extends MIDlet {
             g.drawString(modelStatus, 3, 20, Graphics.TOP|Graphics.LEFT);
             if (modelError.length() > 0) drawWrapped(g, modelError, 3, 38, getWidth() - 6);
             if (initError.length() > 0) drawWrapped(g, initError, 3, 72, getWidth() - 6);
+            if (currentGame == 2) drawInventory(g);
             if (paused) drawPauseMenu(g);
         }
 
+
+        private void drawInventory(Graphics g) {
+            String[] items = new String[] {"Espada", "Bomba", "Pala"};
+            int y = getHeight() - 2 * g.getFont().getHeight() - 6;
+            g.setColor(0xFFFFFF);
+            g.drawString("7/9 CAMBIAR   3 USAR", getWidth() / 2, y,
+                    Graphics.BOTTOM | Graphics.HCENTER);
+            g.setColor(0xF5C542);
+            g.drawString("ITEM: " + items[inventorySelection], getWidth() / 2,
+                    y - g.getFont().getHeight(), Graphics.BOTTOM | Graphics.HCENTER);
+        }
 
         private void drawWrapped(Graphics g, String s, int x, int y, int maxWidth) {
             if (s == null || s.length() == 0) return;
@@ -844,24 +1155,42 @@ public final class main extends MIDlet {
         }
 
         private Group buildNoob() throws Exception {
-            Group model = new Group();
+            return buildNoob(false);
+        }
 
-            // Classic blocky noob proportions, in local coordinates.
-            model.addChild(makeBox(0, 1.45f, 0, 0.78f, 0.95f, 0.40f, 0x1769AA)); // classic blue torso
-            model.addChild(makeRoundedCylinderHead()); // upright rounded cylindrical yellow head
-            model.addChild(makeTexturedFace()); // curved face.png decal on the front (-Z)
-            leftArm = (Mesh)makeBox(-0.54f, 1.48f, 0, 0.30f, 0.88f, 0.40f, 0xF5C542);
-            rightArm = (Mesh)makeBox(0.54f, 1.48f, 0, 0.30f, 0.88f, 0.40f, 0xF5C542);
-            leftLeg = (Mesh)makeBox(-0.20f, 0.52f, 0, 0.36f, 0.78f, 0.40f, 0x2E9E45);
-            rightLeg = (Mesh)makeBox(0.20f, 0.52f, 0, 0.36f, 0.78f, 0.40f, 0x2E9E45);
-            model.addChild(leftArm);
-            model.addChild(rightArm);
-            model.addChild(leftLeg);
-            model.addChild(rightLeg);
+        private Group buildNoob(boolean zombie) throws Exception {
+            Group model = new Group();
+            int skin = zombie ? 0x35B64A : 0xF5C542;
+            int clothing = zombie ? 0x795438 : 0x1769AA;
+            int legs = zombie ? 0x795438 : 0x2E9E45;
+
+            // Zombie copies use the noob body proportions and face with a green/brown palette.
+            model.addChild(makeBox(0, 1.45f, 0, 0.78f, 0.95f, 0.40f, clothing));
+            model.addChild(makeRoundedCylinderHead(skin));
+            model.addChild(makeTexturedFace(skin));
+            Mesh modelLeftArm = (Mesh)makeBox(-0.54f, 1.48f, 0, 0.30f, 0.88f, 0.40f, skin);
+            Mesh modelRightArm = (Mesh)makeBox(0.54f, 1.48f, 0, 0.30f, 0.88f, 0.40f, skin);
+            Mesh modelLeftLeg = (Mesh)makeBox(-0.20f, 0.52f, 0, 0.36f, 0.78f, 0.40f, legs);
+            Mesh modelRightLeg = (Mesh)makeBox(0.20f, 0.52f, 0, 0.36f, 0.78f, 0.40f, legs);
+            model.addChild(modelLeftArm);
+            model.addChild(modelRightArm);
+            model.addChild(modelLeftLeg);
+            model.addChild(modelRightLeg);
+            if (!zombie) {
+                leftArm = modelLeftArm; rightArm = modelRightArm;
+                leftLeg = modelLeftLeg; rightLeg = modelRightLeg;
+                swordVisual = makeSwordVisual();
+                swordVisual.setRenderingEnable(false);
+                model.addChild(swordVisual);
+            }
             return model;
         }
 
         private Node makeTexturedFace() {
+            return makeTexturedFace(0xF5C542);
+        }
+
+        private Node makeTexturedFace(int fallbackColor) {
             try {
                 javax.microedition.lcdui.Image img = null;
                 java.io.InputStream in = getClass().getResourceAsStream("/meblox/face.png");
@@ -872,7 +1201,7 @@ public final class main extends MIDlet {
                 }
                 if (img == null) {
                     modelError = "face.png not found in /meblox/ or JAR root";
-                    return makeCurvedTexturedFace(makeSolidAppearance(0xF5C542));
+                    return makeCurvedTexturedFace(makeSolidAppearance(fallbackColor));
                 }
 
                 // JSR-184 textures require power-of-two dimensions; face.png is 126x128.
@@ -896,7 +1225,7 @@ public final class main extends MIDlet {
                 return makeCurvedTexturedFace(ap);
             } catch (Throwable t) {
                 modelError = "face.png texture: " + t.toString();
-                return makeCurvedTexturedFace(makeSolidAppearance(0xF5C542));
+                return makeCurvedTexturedFace(makeSolidAppearance(fallbackColor));
             }
         }
 
@@ -971,6 +1300,10 @@ public final class main extends MIDlet {
         }
 
         private Node makeRoundedCylinderHead() {
+            return makeRoundedCylinderHead(0xF5C542);
+        }
+
+        private Node makeRoundedCylinderHead(int color) {
             final int segments = 32;
             final int bevelSteps = 6;
             final float halfHeight = 0.25f;
@@ -1012,9 +1345,9 @@ public final class main extends MIDlet {
             }
 
             Group head = new Group();
-            head.addChild(makeSolidMesh(shellCoords, shellStrips, 0xF5C542));
-            head.addChild(makeCylinderDisk(-halfHeight, endRadius, segments, 0xF5C542));
-            head.addChild(makeCylinderDisk(halfHeight, endRadius, segments, 0xF5C542));
+            head.addChild(makeSolidMesh(shellCoords, shellStrips, color));
+            head.addChild(makeCylinderDisk(-halfHeight, endRadius, segments, color));
+            head.addChild(makeCylinderDisk(halfHeight, endRadius, segments, color));
             head.setTranslation(0, 2.19f, 0);
             return head;
         }
@@ -1062,10 +1395,12 @@ public final class main extends MIDlet {
             float swing = 0.0f;
             if (animation == 1) swing = (float)Math.sin(animTime * 0.012f) * 32.0f;
             else if (animation == 2) swing = -18.0f;
+            boolean swingingSword = currentGame == 2 && gameClock < swordAttackUntil;
             leftArm.setOrientation(swing, 1, 0, 0);
-            rightArm.setOrientation(-swing, 1, 0, 0);
+            rightArm.setOrientation(swingingSword ? -35.0f : -swing, 1, 0, 0);
             leftLeg.setOrientation(-swing, 1, 0, 0);
-            rightLeg.setOrientation(swing, 1, 0, 0);
+            rightLeg.setOrientation(swingingSword ? 34.0f : swing, 1, 0, 0);
+            if (swordVisual != null) swordVisual.setRenderingEnable(swingingSword);
         }
 
         private Node makeBox(float x, float y, float z, float sx, float sy, float sz, int color) {
@@ -1248,8 +1583,10 @@ public final class main extends MIDlet {
         protected void keyPressed(int keyCode) {
             int k = getGameAction(keyCode);
             if (menuMode) {
-                if (k == UP || keyCode == KEY_NUM2) selectedGame = 0;
-                else if (k == DOWN || keyCode == KEY_NUM8) selectedGame = 1;
+                if (k == UP || keyCode == KEY_NUM2)
+                    selectedGame = (selectedGame + 2) % 3;
+                else if (k == DOWN || keyCode == KEY_NUM8)
+                    selectedGame = (selectedGame + 1) % 3;
                 else if (keyCode == KEY_NUM5 || k == FIRE) {
                     try {
                         initError = "";
@@ -1276,6 +1613,18 @@ public final class main extends MIDlet {
             }
             if (keyCode == KEY_NUM0) {
                 exitToGameMenu();
+                repaint();
+                return;
+            }
+            if (currentGame == 2 &&
+                    (keyCode == KEY_NUM7 || keyCode == KEY_NUM9)) {
+                inventorySelection = (inventorySelection +
+                        (keyCode == KEY_NUM9 ? 1 : 2)) % 3;
+                repaint();
+                return;
+            }
+            if (currentGame == 2 && keyCode == KEY_NUM3) {
+                useInventoryItem();
                 repaint();
                 return;
             }
