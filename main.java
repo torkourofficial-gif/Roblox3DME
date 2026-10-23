@@ -141,8 +141,8 @@ public final class main extends MIDlet {
             px += dx; pz += dz;
             // Roblox-style character facing: follow the camera's horizontal heading,
             // even while standing still. Movement remains camera-relative.
-            // The model's front is local -Z; keep that front aimed at the orbit camera.
-            yaw = 3.14159265f - camYaw;
+            // Keep the avatar's front facing away from the orbit camera.
+            yaw = camYaw;
             if (jumping) {
                 jumpY += jumpVelocity * dt;
                 jumpVelocity -= 0.00003f * dt;
@@ -241,7 +241,7 @@ public final class main extends MIDlet {
 
             // Classic blocky noob proportions, in local coordinates.
             model.addChild(makeBox(0, 1.45f, 0, 0.78f, 0.95f, 0.40f, 0x1769AA)); // classic blue torso
-            model.addChild(makeBox(0, 2.19f, 0, 0.50f, 0.50f, 0.50f, 0xF5C542)); // sharp-edged cubic classic Roblox head
+            model.addChild(makeRoundedCylinderHead()); // rounded cylindrical yellow head
             model.addChild(makeTexturedFace()); // square face.png decal on the front (-Z)
             leftArm = (Mesh)makeBox(-0.54f, 1.48f, 0, 0.30f, 0.88f, 0.40f, 0xF5C542);
             rightArm = (Mesh)makeBox(0.54f, 1.48f, 0, 0.30f, 0.88f, 0.40f, 0xF5C542);
@@ -265,7 +265,7 @@ public final class main extends MIDlet {
                 }
                 if (img == null) {
                     modelError = "face.png not found in /meblox/ or JAR root";
-                    return makeBox(0, 2.19f, -0.252f, 0.40f, 0.40f, 0.004f, 0xF5C542);
+                    return makeBox(0, 2.19f, -0.256f, 0.32f, 0.32f, 0.002f, 0xF5C542);
                 }
 
                 // JSR-184 textures require power-of-two dimensions; face.png is 126x128.
@@ -287,7 +287,7 @@ public final class main extends MIDlet {
                 ap.setPolygonMode(polygonMode);
 
                 // Quad on the front (-Z) side of the cubic head, wound toward the camera.
-                short[] p = new short[] {-200,-200,0, -200,200,0, 200,-200,0, 200,200,0};
+                short[] p = new short[] {-160,-160,0, -160,160,0, 160,-160,0, 160,160,0};
                 VertexArray pos = new VertexArray(4, 3, 2);
                 pos.set(0, 4, p);
                 short[] uv = new short[] {0,1000, 0,0, 1000,1000, 1000,0};
@@ -298,11 +298,11 @@ public final class main extends MIDlet {
                 vb.setTexCoords(0, texCoords, 0.001f, null);
                 TriangleStripArray indices = new TriangleStripArray(0, new int[] {4});
                 Mesh face = new Mesh(vb, new IndexBuffer[] {indices}, new Appearance[] {ap});
-                face.setTranslation(0, 2.19f, -0.252f);
+                face.setTranslation(0, 2.19f, -0.256f);
                 return face;
             } catch (Throwable t) {
                 modelError = "face.png texture: " + t.toString();
-                return makeBox(0, 2.19f, -0.252f, 0.40f, 0.40f, 0.004f, 0xF5C542);
+                return makeBox(0, 2.19f, -0.256f, 0.32f, 0.32f, 0.002f, 0xF5C542);
             }
         }
 
@@ -326,6 +326,76 @@ public final class main extends MIDlet {
                 }
             }
             return Image.createRGBImage(texturePixels, width, height, true);
+        }
+
+        private Node makeRoundedCylinderHead() {
+            final int segments = 16;
+            float[] ringZ = new float[] {-0.25f, -0.245f, -0.23f, -0.20f, 0.20f, 0.23f, 0.245f, 0.25f};
+            float[] ringRadius = new float[] {0.25f, 0.266f, 0.278f, 0.28f, 0.28f, 0.278f, 0.266f, 0.25f};
+            int bandCount = ringZ.length - 1;
+            int verticesPerBand = (segments + 1) * 2;
+            short[] shellCoords = new short[bandCount * verticesPerBand * 3];
+            int[] shellStrips = new int[bandCount];
+            int out = 0;
+            for (int band = 0; band < bandCount; band++) {
+                shellStrips[band] = verticesPerBand;
+                for (int point = 0; point <= segments; point++) {
+                    double angle = 6.283185307179586 * point / segments;
+                    float c = (float)Math.cos(angle);
+                    float sn = (float)Math.sin(angle);
+                    shellCoords[out++] = (short)(ringRadius[band] * c * 1000.0f);
+                    shellCoords[out++] = (short)(ringRadius[band] * sn * 1000.0f);
+                    shellCoords[out++] = (short)(ringZ[band] * 1000.0f);
+                    shellCoords[out++] = (short)(ringRadius[band + 1] * c * 1000.0f);
+                    shellCoords[out++] = (short)(ringRadius[band + 1] * sn * 1000.0f);
+                    shellCoords[out++] = (short)(ringZ[band + 1] * 1000.0f);
+                }
+            }
+
+            Group head = new Group();
+            head.addChild(makeSolidMesh(shellCoords, shellStrips, 0xF5C542));
+            head.addChild(makeCylinderDisk(-0.25f, 0.25f, segments, 0xF5C542));
+            head.addChild(makeCylinderDisk(0.25f, 0.25f, segments, 0xF5C542));
+            head.setTranslation(0, 2.19f, 0);
+            return head;
+        }
+
+        private Mesh makeCylinderDisk(float z, float radius, int segments, int color) {
+            short[] coords = new short[segments * 3 * 3];
+            int[] strips = new int[segments];
+            int out = 0;
+            for (int i = 0; i < segments; i++) {
+                strips[i] = 3;
+                double a0 = 6.283185307179586 * i / segments;
+                double a1 = 6.283185307179586 * (i + 1) / segments;
+                coords[out++] = 0; coords[out++] = 0; coords[out++] = (short)(z * 1000.0f);
+                coords[out++] = (short)(radius * Math.cos(a0) * 1000.0); 
+                coords[out++] = (short)(radius * Math.sin(a0) * 1000.0);
+                coords[out++] = (short)(z * 1000.0f);
+                coords[out++] = (short)(radius * Math.cos(a1) * 1000.0);
+                coords[out++] = (short)(radius * Math.sin(a1) * 1000.0);
+                coords[out++] = (short)(z * 1000.0f);
+            }
+            return makeSolidMesh(coords, strips, color);
+        }
+
+        private Mesh makeSolidMesh(short[] coords, int[] stripLengths, int color) {
+            int vertexCount = coords.length / 3;
+            VertexArray vertices = new VertexArray(vertexCount, 3, 2);
+            vertices.set(0, vertexCount, coords);
+            VertexBuffer vb = new VertexBuffer();
+            vb.setPositions(vertices, 0.001f, null);
+            TriangleStripArray strips = new TriangleStripArray(0, stripLengths);
+            Appearance ap = new Appearance();
+            Material mat = new Material();
+            mat.setColor(Material.AMBIENT, color);
+            mat.setColor(Material.DIFFUSE, color);
+            mat.setColor(Material.EMISSIVE, color);
+            ap.setMaterial(mat);
+            PolygonMode pm = new PolygonMode();
+            pm.setCulling(PolygonMode.CULL_NONE);
+            ap.setPolygonMode(pm);
+            return new Mesh(vb, new IndexBuffer[] {strips}, new Appearance[] {ap});
         }
 
         private void animateNoob() {
