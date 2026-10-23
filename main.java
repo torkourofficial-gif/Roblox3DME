@@ -70,18 +70,30 @@ public final class main extends MIDlet {
         private String modelError = "";
         private String initError = "";
 
-        private static final float[][] OBBY_BLOCKS = new float[][] {
-            {0,0.30f,-3,2,0.60f,2,0xD94B45},
-            {2,0.45f,-6,1.6f,0.90f,1.6f,0xE3C44D},
-            {4,0.40f,-9,1.8f,0.80f,1.8f,0x4779D1},
-            {2,0.65f,-12,1.5f,1.30f,1.5f,0xB56AC8},
-            {-1,0.45f,-15,2,0.90f,2,0xD94B45},
-            {-4,0.65f,-18,1.6f,1.30f,1.6f,0xE3C44D},
-            {-2,0.40f,-21,1.8f,0.80f,1.8f,0x4779D1},
-            {1,0.60f,-24,1.8f,1.20f,1.8f,0xB56AC8},
-            {4,0.45f,-27,2,0.90f,2,0xD94B45},
-            {4,0.25f,-31,4,0.50f,4,0x63C7A5}
-        };
+        private static final int OBBY_PLATFORM_COUNT = 81;
+        private static final float[][] OBBY_BLOCKS = createObbyBlocks();
+
+        private static float[][] createObbyBlocks() {
+            float[][] blocks = new float[OBBY_PLATFORM_COUNT][7];
+            float[] routeX = new float[] {0, 1.5f, 3, 3, 1.5f, 0, -1.5f, -3, -3, -1.5f};
+            int[] colors = new int[] {0xD94B45, 0xE3C44D, 0x4779D1, 0xB56AC8};
+            for (int i = 0; i < OBBY_PLATFORM_COUNT; i++) {
+                boolean finish = i == OBBY_PLATFORM_COUNT - 1;
+                float top = 0.65f + ((i * 7) % 4) * 0.12f;
+                float width = finish ? 5.0f : 2.2f;
+                float depth = finish ? 5.0f : 2.0f;
+                float height = finish ? 0.60f : 0.80f;
+                if (finish) top = height;
+                blocks[i][0] = routeX[i % routeX.length];
+                blocks[i][1] = top - height * 0.5f;
+                blocks[i][2] = -3.0f - i * 2.8f;
+                blocks[i][3] = width;
+                blocks[i][4] = height;
+                blocks[i][5] = depth;
+                blocks[i][6] = finish ? 0x63C7A5 : colors[i % colors.length];
+            }
+            return blocks;
+        }
 
         private static final class PhysicsPiece {
             Node node;
@@ -212,14 +224,14 @@ public final class main extends MIDlet {
             world.setBackground(sceneBackground);
 
             camera = new Camera();
-            camera.setPerspective(65.0f, 1.0f, 0.1f, 100.0f);
+            camera.setPerspective(65.0f, 1.0f, 0.1f, 240.0f);
             world.addChild(camera);
             world.setActiveCamera(camera);
 
             // Both selections share the same green baseplate.
             world.addChild(makeBox(0, -0.25f, 0, 24, 0.5f, 24, 0x54A64B));
             if (game == 0) {
-                // A ten-platform zigzag obby ending on the green finish platform.
+                // An 80-platform zigzag course ending on an enlarged green finish.
                 for (int i = 0; i < OBBY_BLOCKS.length; i++) {
                     float[] b = OBBY_BLOCKS[i];
                     world.addChild(makeBox(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]));
@@ -422,7 +434,6 @@ public final class main extends MIDlet {
                 menuPanTime += dt;
                 return;
             }
-            if (paused) return;
             gameClock += dt;
             if (dead) {
                 updateDeathPieces(dt);
@@ -476,8 +487,13 @@ public final class main extends MIDlet {
                 beginDeath();
                 return;
             }
-            if (!lobbyMode && onPlatform(4, -31, 2, 2) && jumpY >= 0.45f)
-                modelStatus = "Obby complete!";
+            if (!lobbyMode) {
+                float[] finish = OBBY_BLOCKS[OBBY_BLOCKS.length - 1];
+                float finishTop = finish[1] + finish[4] * 0.5f;
+                if (onPlatform(finish[0], finish[2], finish[3] * 0.5f, finish[5] * 0.5f) &&
+                        jumpY >= finishTop - 0.05f)
+                    modelStatus = "Obby complete!";
+            }
             // Turn only while moving, toward the world-space travel direction.
             if (dx != 0.0f || dz != 0.0f) yaw = fastAtan2(-dx, -dz);
             jumping = !grounded;
@@ -779,7 +795,7 @@ public final class main extends MIDlet {
                     g3d.bindTarget(g, true, Graphics3D.DITHER);
                     bound = true;
                     g3d.setViewport(0, 0, getWidth(), getHeight());
-                    camera.setPerspective(65.0f, (float)getWidth()/(float)getHeight(), 0.1f, 100.0f);
+                    camera.setPerspective(65.0f, (float)getWidth()/(float)getHeight(), 0.1f, 240.0f);
                     updateSkyCrop();
                     g3d.render(world);
                 } catch (Throwable t) {
