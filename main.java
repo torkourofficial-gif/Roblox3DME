@@ -99,6 +99,9 @@ public final class main extends MIDlet {
         private Zombie[] zombies = new Zombie[12];
         private PlayerBot[] playerBots = new PlayerBot[5];
         private int playerBotCount, randomState;
+        private String botDialogue="";
+        private long botDialogueUntil,nextBotDialogueAt;
+        private int talkingBot=-1;
         private WorldObject[] worldObjects = new WorldObject[80];
         private Group protectionAura;
         private Material protectionAuraMaterial;
@@ -136,6 +139,28 @@ public final class main extends MIDlet {
             }
         }
 
+        private static final String[] BOT_DIALOGUES = {
+            "Vamos por aqui.",
+            "Buena partida!",
+            "Creo que vi un zombie.",
+            "Necesito una espada.",
+            "Salta, puedes hacerlo!",
+            "Por aqui parece seguro.",
+            "Uy, casi me caigo!",
+            "A defender la base!",
+            "Te cubro!",
+            "Voy por ese enemigo.",
+            "Esa bomba va a explotar!",
+            "Mejor sigamos moviendonos.",
+            "El obby esta larguisimo.",
+            "Creo que encontre un camino.",
+            "Eso estuvo cerca!",
+            "Ya reapareci, listo!",
+            "Vamos equipo!",
+            "Nos vemos en la meta.",
+            "Alguien vio mi pala?",
+            "No voy a caer otra vez!"
+        };
         private static final int[] BOT_SKIN_COLORS =
                 {0xF5C542,0xC68642,0xF1C27D,0x8D5524,0xE0AC69,0xD9A066};
         private static final int[] BOT_SHIRT_COLORS =
@@ -399,6 +424,10 @@ public final class main extends MIDlet {
         }
         private void spawnPlayerBots() {
             playerBotCount=3+nextRandom(3);
+            botDialogue="";
+            talkingBot=-1;
+            botDialogueUntil=0;
+            nextBotDialogueAt=gameClock+1400+nextRandom(2400);
             int skinStart=nextRandom(BOT_SKIN_COLORS.length);
             int shirtStart=nextRandom(BOT_SHIRT_COLORS.length);
             int legStart=nextRandom(BOT_LEG_COLORS.length);
@@ -454,6 +483,9 @@ public final class main extends MIDlet {
         private void killPlayerBot(PlayerBot bot) {
             if(bot==null||!bot.alive||gameClock<bot.invulnerableUntil)return;
             bot.alive=false;bot.grounded=false;bot.respawnAt=gameClock+2600;
+            if(talkingBot>=0&&talkingBot<playerBotCount&&playerBots[talkingBot]==bot){
+                botDialogue="";talkingBot=-1;botDialogueUntil=0;
+            }
             if(bot.model!=null){
                 try{world.removeChild(bot.model);}catch(Throwable ignored){}
                 spawnBotDeathPieces(bot);
@@ -485,6 +517,7 @@ public final class main extends MIDlet {
         }
         private void updatePlayerBots(int dt) {
             if(playerBots==null||world==null)return;
+            updateBotDialogue();
             for(int i=0;i<playerBotCount;i++){
                 PlayerBot bot=playerBots[i];if(bot==null)continue;
                 if(!bot.alive){
@@ -651,6 +684,26 @@ public final class main extends MIDlet {
             }
             return false;
         }
+        private void updateBotDialogue() {
+            if(botDialogue.length()>0&&gameClock<botDialogueUntil&&talkingBot>=0&&
+                    talkingBot<playerBotCount&&playerBots[talkingBot]!=null&&playerBots[talkingBot].alive)return;
+            botDialogue="";
+            talkingBot=-1;
+            if(gameClock<nextBotDialogueAt||playerBotCount<=0)return;
+            int first=nextRandom(playerBotCount);
+            for(int offset=0;offset<playerBotCount;offset++){
+                int index=(first+offset)%playerBotCount;
+                PlayerBot bot=playerBots[index];
+                if(bot==null||!bot.alive)continue;
+                talkingBot=index;
+                botDialogue=BOT_DIALOGUES[nextRandom(BOT_DIALOGUES.length)];
+                botDialogueUntil=gameClock+3000;
+                nextBotDialogueAt=botDialogueUntil+2400+nextRandom(4600);
+                return;
+            }
+            nextBotDialogueAt=gameClock+1000;
+        }
+
         private void animatePlayerBotWeapon(PlayerBot bot) {
             bot.attackUntil=gameClock+450;
             if(bot.swordArm!=null)bot.swordArm.setOrientation(-42,1,0,0);
@@ -670,7 +723,7 @@ public final class main extends MIDlet {
             return top;
         }
         private Group makeBotAura() {
-            Group aura=new Group();aura.addChild(makeAuraMesh(0x5047D764));
+            Group aura=new Group();aura.addChild(makeAuraMesh(0x503399FF));
             aura.setTranslation(0,1.35f,0);return aura;
         }
         private Mesh makeAuraMesh(int color) {
@@ -1926,9 +1979,28 @@ public final class main extends MIDlet {
             if (currentGame == 2 || currentGame == 10 || currentGame == 14) drawInventory(g);
             if (currentGame >= 4) drawExtraHud(g);
             if (currentGame == 3 && !paused) drawStudioHud(g);
+            if (!paused) drawBotDialogue(g);
             if (paused) drawPauseMenu(g);
         }
 
+
+        private void drawBotDialogue(Graphics g) {
+            if(botDialogue.length()==0||gameClock>=botDialogueUntil||talkingBot<0||
+                    talkingBot>=playerBotCount||playerBots[talkingBot]==null||!playerBots[talkingBot].alive)return;
+            Font font=g.getFont();
+            String label="BOT "+(talkingBot+1)+": "+botDialogue;
+            int maxTextWidth=Math.max(1,getWidth()-16);
+            if(font.stringWidth(label)>maxTextWidth){
+                while(label.length()>0&&font.stringWidth(label+"...")>maxTextWidth)
+                    label=label.substring(0,label.length()-1);
+                label+="...";
+            }
+            int x=4,y=42,h=font.getHeight()+6;
+            g.setColor(0x102030);
+            g.fillRoundRect(x,y,Math.max(1,getWidth()-8),h,8,8);
+            g.setColor(0xFFFFFF);
+            g.drawString(label,getWidth()/2,y+3,Graphics.TOP|Graphics.HCENTER);
+        }
 
         private void drawExtraHud(Graphics g) {
             String label="";
