@@ -39,7 +39,14 @@ public final class main extends MIDlet {
         private int animTime;
         private boolean forward, back, left, right, camLeft, camRight, camUp, camDown, jumping;
         private boolean loaded;
-        private String modelStatus = "Code model: not loaded";
+        private boolean menuMode = true;
+        private int selectedGame;
+        private Image logoSource, titleBackgroundSource, skySource;
+        private Image scaledLogo, scaledTitleBackground;
+        private Image2D skyBackgroundImage;
+        private Background sceneBackground;
+        private int cachedMenuWidth = -1, cachedMenuHeight = -1;
+        private String modelStatus = "Select a game";
         private String modelError = "";
         private String initError = "";
 
@@ -71,35 +78,212 @@ public final class main extends MIDlet {
         }
 
         private void init3D() throws Exception {
+            logoSource = loadImageResource("/logoR.png", "/meblox/logoR.png");
+            titleBackgroundSource = loadImageResource("/bgtitle.png", "/meblox/bgtitle.png");
+            skySource = loadImageResource("/skyboxR.png", "/meblox/skyboxR.png");
+            if (logoSource == null) modelError = "logoR.png not found";
+            if (titleBackgroundSource == null) modelError = "bgtitle.png not found";
+            if (skySource != null) {
+                try {
+                    // The file is JPEG data despite its .png name.
+                    skyBackgroundImage = new Image2D(Image2D.RGB, skySource);
+                } catch (Throwable t) {
+                    modelError = "skyboxR.png: " + t.toString();
+                }
+            } else {
+                modelError = "skyboxR.png not found";
+            }
+            menuMode = true;
+            loaded = false;
+        }
+
+        private Image loadImageResource(String primary, String secondary) {
+            java.io.InputStream in = null;
+            try {
+                in = getClass().getResourceAsStream(primary);
+                if (in == null) in = midlet.getClass().getResourceAsStream(primary);
+                if (in == null) in = getClass().getResourceAsStream(secondary);
+                if (in == null) in = midlet.getClass().getResourceAsStream(secondary);
+                if (in == null) return null;
+                return Image.createImage(in);
+            } catch (Throwable t) {
+                return null;
+            } finally {
+                if (in != null) try { in.close(); } catch (Throwable ignored) {}
+            }
+        }
+
+        private void startGame(int game) throws Exception {
+            menuMode = false;
+            loaded = false;
+            px = 0;
+            pz = 0;
+            yaw = 0;
+            jumpY = 0;
+            jumpVelocity = 0;
+            jumping = false;
+            forward = back = left = right = false;
+
             world = new World();
-            world.setBackground(new Background());
-            Background bg = world.getBackground();
-            bg.setColor(0x78BCE8);
-            bg.setDepthClearEnable(true);
-            bg.setColorClearEnable(true);
+            sceneBackground = new Background();
+            sceneBackground.setColor(0x78BCE8);
+            sceneBackground.setDepthClearEnable(true);
+            sceneBackground.setColorClearEnable(true);
+            if (skyBackgroundImage != null) {
+                sceneBackground.setImage(skyBackgroundImage);
+                sceneBackground.setImageMode(Background.BORDER, Background.BORDER);
+                updateSkyCrop();
+            }
+            world.setBackground(sceneBackground);
 
             camera = new Camera();
             camera.setPerspective(65.0f, 1.0f, 0.1f, 100.0f);
             world.addChild(camera);
             world.setActiveCamera(camera);
 
-            // Large, simple green test platform.
+            // Both selections share the same green baseplate.
             world.addChild(makeBox(0, -0.25f, 0, 24, 0.5f, 24, 0x54A64B));
-            // Colored stepping blocks to test depth, scale, and movement.
-            world.addChild(makeBox(0, 0.25f, -5, 2, 1, 2, 0xD94B45));
-            world.addChild(makeBox(3, 0.5f, -8, 2, 2, 2, 0xE3C44D));
-            world.addChild(makeBox(-3, 0.75f, -8, 2, 3, 2, 0x4779D1));
-            world.addChild(makeBox(0, 1.5f, -11, 3, 4, 3, 0xB56AC8));
+            if (game == 0) {
+                // Obby course: stepping blocks are only present in this selection.
+                world.addChild(makeBox(0, 0.25f, -5, 2, 1, 2, 0xD94B45));
+                world.addChild(makeBox(3, 0.5f, -8, 2, 2, 2, 0xE3C44D));
+                world.addChild(makeBox(-3, 0.75f, -8, 2, 3, 2, 0x4779D1));
+                world.addChild(makeBox(0, 1.5f, -11, 3, 4, 3, 0xB56AC8));
+            }
 
-            // Build one classic blocky noob directly from Java geometry.
             avatar = new Group();
             activeModel = buildNoob();
             avatar.addChild(activeModel);
             world.addChild(avatar);
             animation = 0;
             animateNoob();
-            modelStatus = "Code model loaded";
+            updateCamera();
+            modelStatus = game == 0 ? "Obby" : "Baseplate";
             loaded = true;
+        }
+
+        private void updateSkyCrop() {
+            if (sceneBackground == null || skySource == null || getWidth() <= 0 || getHeight() <= 0) return;
+            int imageWidth = skySource.getWidth();
+            int imageHeight = skySource.getHeight();
+            float sourceAspect = (float)imageWidth / (float)imageHeight;
+            float viewportAspect = (float)getWidth() / (float)getHeight();
+            int cropWidth = imageWidth;
+            int cropHeight = imageHeight;
+            int cropX = 0;
+            int cropY = 0;
+            if (sourceAspect > viewportAspect) {
+                cropWidth = (int)(imageHeight * viewportAspect);
+                cropX = (imageWidth - cropWidth) / 2;
+            } else {
+                cropHeight = (int)(imageWidth / viewportAspect);
+                cropY = (imageHeight - cropHeight) / 2;
+            }
+            if (cropWidth < 1) cropWidth = 1;
+            if (cropHeight < 1) cropHeight = 1;
+            sceneBackground.setCrop(cropX, cropY, cropWidth, cropHeight);
+        }
+
+        private void prepareMenuImages() {
+            int width = getWidth();
+            int height = getHeight();
+            if (width <= 0 || height <= 0 ||
+                    (width == cachedMenuWidth && height == cachedMenuHeight)) return;
+            cachedMenuWidth = width;
+            cachedMenuHeight = height;
+            scaledTitleBackground = scaleToCover(titleBackgroundSource, width, height);
+            scaledLogo = scaleToFit(logoSource, width - 24, Math.max(1, height / 4));
+        }
+
+        private Image scaleToFit(Image source, int maxWidth, int maxHeight) {
+            if (source == null || maxWidth < 1 || maxHeight < 1) return null;
+            float scale = Math.min((float)maxWidth / source.getWidth(),
+                    (float)maxHeight / source.getHeight());
+            int width = Math.max(1, (int)(source.getWidth() * scale));
+            int height = Math.max(1, (int)(source.getHeight() * scale));
+            return resizeImage(source, width, height, 0, 0,
+                    source.getWidth(), source.getHeight());
+        }
+
+        private Image scaleToCover(Image source, int width, int height) {
+            if (source == null || width < 1 || height < 1) return null;
+            int sourceWidth = source.getWidth();
+            int sourceHeight = source.getHeight();
+            float sourceAspect = (float)sourceWidth / (float)sourceHeight;
+            float targetAspect = (float)width / (float)height;
+            int cropX = 0, cropY = 0;
+            float cropWidth = sourceWidth, cropHeight = sourceHeight;
+            if (sourceAspect > targetAspect) {
+                cropWidth = sourceHeight * targetAspect;
+                cropX = (int)((sourceWidth - cropWidth) * 0.5f);
+            } else {
+                cropHeight = sourceWidth / targetAspect;
+                cropY = (int)((sourceHeight - cropHeight) * 0.5f);
+            }
+            return resizeImage(source, width, height, cropX, cropY, cropWidth, cropHeight);
+        }
+
+        private Image resizeImage(Image source, int width, int height,
+                int cropX, int cropY, float cropWidth, float cropHeight) {
+            int sourceWidth = source.getWidth();
+            int[] pixels = new int[width * height];
+            int[] row = new int[sourceWidth];
+            int previousY = -1;
+            for (int y = 0; y < height; y++) {
+                int sourceY = cropY + (int)(cropHeight * y / height);
+                if (sourceY >= source.getHeight()) sourceY = source.getHeight() - 1;
+                if (sourceY != previousY) {
+                    source.getRGB(row, 0, sourceWidth, 0, sourceY, sourceWidth, 1);
+                    previousY = sourceY;
+                }
+                for (int x = 0; x < width; x++) {
+                    int sourceX = cropX + (int)(cropWidth * x / width);
+                    if (sourceX >= sourceWidth) sourceX = sourceWidth - 1;
+                    pixels[y * width + x] = row[sourceX];
+                }
+            }
+            return Image.createRGBImage(pixels, width, height, true);
+        }
+
+        private void drawMenu(Graphics g) {
+            prepareMenuImages();
+            g.setColor(0x101820);
+            g.fillRect(0, 0, getWidth(), getHeight());
+            if (scaledTitleBackground != null)
+                g.drawImage(scaledTitleBackground, 0, 0, Graphics.TOP | Graphics.LEFT);
+
+            if (scaledLogo != null) {
+                int logoX = (getWidth() - scaledLogo.getWidth()) / 2;
+                int logoY = Math.max(8, getHeight() / 14);
+                g.drawImage(scaledLogo, logoX, logoY, Graphics.TOP | Graphics.LEFT);
+            } else {
+                g.setColor(0xFFFFFF);
+                g.drawString("ROBLOX 3DME", getWidth() / 2, getHeight() / 8,
+                        Graphics.TOP | Graphics.HCENTER);
+            }
+
+            int buttonWidth = Math.max(1, getWidth() - 32);
+            int buttonHeight = Math.max(28, getHeight() / 10);
+            int gap = Math.max(8, buttonHeight / 4);
+            int startY = getHeight() / 2 - buttonHeight - gap / 2;
+            String[] games = new String[] {"Obby", "Baseplate"};
+            Font font = g.getFont();
+            for (int i = 0; i < games.length; i++) {
+                int y = startY + i * (buttonHeight + gap);
+                g.setColor(i == selectedGame ? 0xF5C542 : 0x203040);
+                g.fillRoundRect((getWidth() - buttonWidth) / 2, y,
+                        buttonWidth, buttonHeight, 10, 10);
+                g.setColor(i == selectedGame ? 0x17202A : 0xFFFFFF);
+                g.drawString(games[i], getWidth() / 2, y + (buttonHeight - font.getHeight()) / 2,
+                        Graphics.TOP | Graphics.HCENTER);
+            }
+            g.setColor(0xFFFFFF);
+            g.drawString("UP/DOWN - FIRE TO PLAY", getWidth() / 2,
+                    getHeight() - font.getHeight() - 8, Graphics.TOP | Graphics.HCENTER);
+            if (modelError.length() > 0)
+                g.drawString(modelError, 4, 4, Graphics.TOP | Graphics.LEFT);
+            if (initError.length() > 0)
+                g.drawString(initError, 4, font.getHeight() + 6, Graphics.TOP | Graphics.LEFT);
         }
 
         // Small atan2 approximation for older CLDC profiles lacking Math.atan2.
@@ -122,6 +306,7 @@ public final class main extends MIDlet {
         }
 
         private void update(int dt) {
+            if (menuMode) return;
             animTime += dt;
             float step = dt * 0.004f;
             float cameraTurn = dt * 0.0025f;
@@ -180,6 +365,10 @@ public final class main extends MIDlet {
         }
 
         protected void paint(Graphics g) {
+            if (menuMode) {
+                drawMenu(g);
+                return;
+            }
             g.setColor(0x78BCE8);
             g.fillRect(0, 0, getWidth(), getHeight());
             if (loaded && world != null) {
@@ -189,6 +378,7 @@ public final class main extends MIDlet {
                     bound = true;
                     g3d.setViewport(0, 0, getWidth(), getHeight());
                     camera.setPerspective(65.0f, (float)getWidth()/(float)getHeight(), 0.1f, 100.0f);
+                    updateSkyCrop();
                     g3d.render(world);
                 } catch (Throwable t) {
                     g.setColor(0xFFFFFF);
@@ -503,6 +693,28 @@ public final class main extends MIDlet {
 
         protected void keyPressed(int keyCode) {
             int k = getGameAction(keyCode);
+            if (menuMode) {
+                if (k == UP || keyCode == KEY_NUM2) selectedGame = 0;
+                else if (k == DOWN || keyCode == KEY_NUM8) selectedGame = 1;
+                else if (keyCode == KEY_NUM5 || k == FIRE) {
+                    try {
+                        initError = "";
+                        startGame(selectedGame);
+                    } catch (Throwable t) {
+                        menuMode = true;
+                        loaded = false;
+                        initError = "Game: " + t.toString();
+                    }
+                }
+                repaint();
+                return;
+            }
+            if (keyCode == KEY_NUM0) {
+                menuMode = true;
+                loaded = false;
+                repaint();
+                return;
+            }
             if (keyCode == KEY_NUM2) forward = true;
             else if (keyCode == KEY_NUM8) back = true;
             else if (keyCode == KEY_NUM4) left = true;
