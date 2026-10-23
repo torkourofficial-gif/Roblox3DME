@@ -3,14 +3,11 @@ package meblox;
 import javax.microedition.midlet.*;
 import javax.microedition.lcdui.*;
 import javax.microedition.m3g.*;
-import javax.bluetooth.*;
-import javax.microedition.io.*;
-import java.io.*;
 
 /**
  * Roblox3DME: minimal JSR-184 playground/controller.
  * The character is generated in Java; put faceNEW.png and faceZomb.png in /meblox/ (or the JAR root).
- * Intended for MIDP 2.0 + JSR-184 (M3G) + JSR-82 (Bluetooth) devices.
+ * Intended for MIDP 2.0 + JSR-184 (M3G) devices.
  */
 public final class main extends MIDlet {
     private Game game;
@@ -21,7 +18,7 @@ public final class main extends MIDlet {
     }
     protected void pauseApp() { if (game != null) game.stop(); }
     protected void destroyApp(boolean unconditional) {
-        if (game != null) { game.shutdownBluetooth(); game.stop(); }
+        if (game != null) game.stop();
     }
     void quit() { destroyApp(true); notifyDestroyed(); }
 
@@ -56,23 +53,6 @@ public final class main extends MIDlet {
         private StudioObject[] studioObjects = new StudioObject[40];
         private int studioObjectCount, studioSelected = -1, studioPalette, studioProperty;
         private boolean studioTesting;
-        private boolean settingsMode;
-        private int settingsSelection;
-        private volatile boolean bluetoothEnabled, bluetoothHosting, bluetoothConnected;
-        private volatile boolean bluetoothPeerVisible, bluetoothConnectAttempted;
-        private volatile float bluetoothPeerX, bluetoothPeerY, bluetoothPeerZ, bluetoothPeerYaw;
-        private volatile String bluetoothStatus = "Bluetooth disabled";
-        private LocalDevice bluetoothLocalDevice;
-        private DiscoveryAgent bluetoothAgent;
-        private DiscoveryListener bluetoothDiscoveryListener;
-        private StreamConnectionNotifier bluetoothNotifier;
-        private StreamConnection bluetoothConnection;
-        private DataInputStream bluetoothInput;
-        private DataOutputStream bluetoothOutput;
-        private Thread bluetoothListenThread, bluetoothReadThread;
-        private Group bluetoothPeerAvatar;
-        private long bluetoothLastSend;
-        private static final String BLUETOOTH_UUID = "8f4bbd3e557c4f09994b31f21e03a001";
         private static final String[] STUDIO_TYPE_NAMES =
                 {"Block", "Platform", "Hazard", "Pillar", "Spawn Pad"};
         private static final String[] STUDIO_PROPERTY_NAMES =
@@ -309,8 +289,6 @@ public final class main extends MIDlet {
             deathPieces = null;
 
             world = new World();
-            bluetoothPeerAvatar = null;
-            bluetoothLastSend = 0;
             sceneBackground = new Background();
             sceneBackground.setColor(0x78BCE8);
             sceneBackground.setDepthClearEnable(true);
@@ -741,64 +719,30 @@ public final class main extends MIDlet {
                         Graphics.TOP | Graphics.HCENTER);
             }
 
-            if (settingsMode) {
-                drawSettingsMenu(g);
-            } else {
-                int buttonWidth = Math.max(1, getWidth() - 32);
-                int buttonHeight = Math.max(18, Math.min(26, getHeight() / 11));
-                int gap = Math.max(3, buttonHeight / 5);
-                String[] games = new String[] {"Obby", "Baseplate", "Horda zombi", "Studio", "Ajustes"};
-                int listHeight = games.length * buttonHeight + (games.length - 1) * gap;
-                int startY = Math.max(getHeight() / 3, getHeight() / 2 - listHeight / 2 + 18);
-                Font font = g.getFont();
-                for (int i = 0; i < games.length; i++) {
-                    int y = startY + i * (buttonHeight + gap);
-                    g.setColor(i == selectedGame ? 0xF5C542 : 0x203040);
-                    g.fillRoundRect((getWidth() - buttonWidth) / 2, y,
-                            buttonWidth, buttonHeight, 10, 10);
-                    g.setColor(i == selectedGame ? 0x17202A : 0xFFFFFF);
-                    g.drawString(games[i], getWidth() / 2,
-                            y + (buttonHeight - font.getHeight()) / 2,
-                            Graphics.TOP | Graphics.HCENTER);
-                }
-                g.setColor(0xFFFFFF);
-                g.drawString("UP/DOWN - FIRE TO SELECT", getWidth() / 2,
-                        getHeight() - font.getHeight() - 8, Graphics.TOP | Graphics.HCENTER);
+            int buttonWidth = Math.max(1, getWidth() - 32);
+            int buttonHeight = Math.max(18, Math.min(26, getHeight() / 11));
+            int gap = Math.max(3, buttonHeight / 5);
+            String[] games = new String[] {"Obby", "Baseplate", "Horda zombi", "Studio"};
+            int listHeight = games.length * buttonHeight + (games.length - 1) * gap;
+            int startY = Math.max(getHeight() / 3, getHeight() / 2 - listHeight / 2 + 18);
+            Font font = g.getFont();
+            for (int i = 0; i < games.length; i++) {
+                int y = startY + i * (buttonHeight + gap);
+                g.setColor(i == selectedGame ? 0xF5C542 : 0x203040);
+                g.fillRoundRect((getWidth() - buttonWidth) / 2, y,
+                        buttonWidth, buttonHeight, 10, 10);
+                g.setColor(i == selectedGame ? 0x17202A : 0xFFFFFF);
+                g.drawString(games[i], getWidth() / 2,
+                        y + (buttonHeight - font.getHeight()) / 2,
+                        Graphics.TOP | Graphics.HCENTER);
             }
+            g.setColor(0xFFFFFF);
+            g.drawString("UP/DOWN - FIRE TO SELECT", getWidth() / 2,
+                    getHeight() - font.getHeight() - 8, Graphics.TOP | Graphics.HCENTER);
             if (modelError.length() > 0)
                 g.drawString(modelError, 4, 4, Graphics.TOP | Graphics.LEFT);
             if (initError.length() > 0)
                 g.drawString(initError, 4, g.getFont().getHeight() + 6, Graphics.TOP | Graphics.LEFT);
-        }
-
-        private void drawSettingsMenu(Graphics g) {
-            Font font = g.getFont();
-            String[] options = new String[] {
-                "Bluetooth: " + (bluetoothEnabled ? "ON" : "OFF"),
-                "Host multiplayer",
-                "Find multiplayer host",
-                "Back"
-            };
-            int buttonWidth = Math.max(1, getWidth() - 32);
-            int buttonHeight = Math.max(22, Math.min(30, getHeight() / 8));
-            int gap = Math.max(4, buttonHeight / 5);
-            int total = options.length * buttonHeight + (options.length - 1) * gap;
-            int startY = Math.max(getHeight() / 3, getHeight() / 2 - total / 2 + 22);
-            for (int i=0; i<options.length; i++) {
-                int y = startY + i * (buttonHeight + gap);
-                g.setColor(i == settingsSelection ? 0xF5C542 : 0x203040);
-                g.fillRoundRect((getWidth()-buttonWidth)/2,y,buttonWidth,buttonHeight,10,10);
-                g.setColor(i == settingsSelection ? 0x17202A : 0xFFFFFF);
-                g.drawString(options[i],getWidth()/2,
-                        y+(buttonHeight-font.getHeight())/2,Graphics.TOP|Graphics.HCENTER);
-            }
-            g.setColor(0xFFFFFF);
-            int statusY = Math.min(getHeight()-font.getHeight()*2-6,
-                    startY+total+6);
-            g.drawString(bluetoothStatus,getWidth()/2,statusY,
-                    Graphics.TOP|Graphics.HCENTER);
-            g.drawString("UP/DOWN select  FIRE confirm  0 back",getWidth()/2,
-                    getHeight()-font.getHeight()-5,Graphics.TOP|Graphics.HCENTER);
         }
 
         private void drawMenuPanorama(Graphics g) {
@@ -852,7 +796,6 @@ public final class main extends MIDlet {
                 return;
             }
             gameClock += dt;
-            updateBluetoothMultiplayer();
             if (dead) {
                 if (currentGame == 2) updateZombies(dt);
                 updateWorldObjects(dt);
@@ -1304,9 +1247,6 @@ public final class main extends MIDlet {
             g.setColor(0xFFFFFF);
             g.drawString("ROBLOX 3DME", 3, 2, Graphics.TOP|Graphics.LEFT);
             g.drawString(modelStatus, 3, 20, Graphics.TOP|Graphics.LEFT);
-            if (bluetoothConnected)
-                g.drawString("BT: PLAYER CONNECTED", getWidth()-3, 2,
-                        Graphics.TOP|Graphics.RIGHT);
             if (modelError.length() > 0) drawWrapped(g, modelError, 3, 38, getWidth() - 6);
             if (initError.length() > 0) drawWrapped(g, initError, 3, 72, getWidth() - 6);
             if (currentGame == 2) drawInventory(g);
@@ -1983,282 +1923,21 @@ public final class main extends MIDlet {
             }
         }
 
-        private void activateSettingsOption() {
-            if (settingsSelection == 0) toggleBluetooth();
-            else if (settingsSelection == 1) startBluetoothHost();
-            else if (settingsSelection == 2) startBluetoothSearch();
-            else settingsMode = false;
-        }
-
-        private void toggleBluetooth() {
-            if (bluetoothEnabled) {
-                shutdownBluetoothTransport();
-                bluetoothEnabled = false;
-                bluetoothStatus = "Bluetooth disabled";
-                return;
-            }
-            bluetoothEnabled = true;
-            try {
-                bluetoothLocalDevice = LocalDevice.getLocalDevice();
-                bluetoothAgent = bluetoothLocalDevice.getDiscoveryAgent();
-                bluetoothStatus = LocalDevice.isPowerOn() ?
-                        "Bluetooth ready" : "Turn Bluetooth on in device settings";
-            } catch (Throwable t) {
-                // JSR-82 cannot power on a radio that is disabled by the operating system.
-                bluetoothStatus = "Enable radio in device settings, then host or search";
-            }
-        }
-
-        private boolean bluetoothReady() {
-            if (!bluetoothEnabled) {
-                bluetoothStatus = "Enable Bluetooth in Settings first";
-                return false;
-            }
-            try {
-                if (bluetoothLocalDevice == null)
-                    bluetoothLocalDevice = LocalDevice.getLocalDevice();
-                if (!LocalDevice.isPowerOn()) {
-                    bluetoothStatus = "Turn Bluetooth on in device settings";
-                    return false;
-                }
-                if (bluetoothAgent == null)
-                    bluetoothAgent = bluetoothLocalDevice.getDiscoveryAgent();
-                return true;
-            } catch (Throwable t) {
-                bluetoothStatus = "Bluetooth unavailable: " + t.toString();
-                return false;
-            }
-        }
-
-        private void startBluetoothHost() {
-            if (!bluetoothReady()) { repaint(); return; }
-            if (bluetoothConnected) { bluetoothStatus = "Already connected"; repaint(); return; }
-            if (bluetoothListenThread != null && bluetoothListenThread.isAlive()) {
-                bluetoothStatus = "Already hosting - waiting for a player";
-                repaint(); return;
-            }
-            try {
-                bluetoothLocalDevice.setDiscoverable(DiscoveryAgent.GIAC);
-                bluetoothHosting = true;
-                bluetoothStatus = "Hosting - waiting for a player";
-                bluetoothListenThread = new Thread(new Runnable() {
-                    public void run() {
-                        try {
-                            StreamConnectionNotifier notifier = (StreamConnectionNotifier)
-                                    Connector.open("btspp://localhost:" + BLUETOOTH_UUID +
-                                            ";name=Roblox3DME");
-                            synchronized (Game.this) {
-                                if (!bluetoothEnabled) { notifier.close(); return; }
-                                bluetoothNotifier = notifier;
-                            }
-                            StreamConnection accepted = notifier.acceptAndOpen();
-                            attachBluetoothConnection(accepted);
-                        } catch (Throwable t) {
-                            if (bluetoothEnabled && !bluetoothConnected)
-                                bluetoothStatus = "Host error: " + t.toString();
-                        }
-                        repaint();
-                    }
-                });
-                bluetoothListenThread.start();
-            } catch (Throwable t) {
-                bluetoothStatus = "Cannot host: " + t.toString();
-            }
-            repaint();
-        }
-
-        private void startBluetoothSearch() {
-            if (!bluetoothReady()) { repaint(); return; }
-            if (bluetoothConnected) { bluetoothStatus = "Already connected"; repaint(); return; }
-            try {
-                bluetoothConnectAttempted = false;
-                bluetoothStatus = "Searching for Roblox3DME hosts...";
-                bluetoothDiscoveryListener = new BluetoothSearchListener();
-                bluetoothAgent.startInquiry(DiscoveryAgent.GIAC, bluetoothDiscoveryListener);
-            } catch (Throwable t) {
-                bluetoothStatus = "Search failed: " + t.toString();
-            }
-            repaint();
-        }
-
-        private final class BluetoothSearchListener implements DiscoveryListener {
-            public void deviceDiscovered(RemoteDevice device, DeviceClass deviceClass) {
-                try {
-                    bluetoothAgent.searchServices(new int[] {0x0100},
-                            new UUID[] {new UUID(BLUETOOTH_UUID, false)},
-                            device, this);
-                } catch (Throwable ignored) {}
-            }
-            public void inquiryCompleted(int result) {
-                if (!bluetoothConnected && !bluetoothConnectAttempted)
-                    bluetoothStatus = "No Roblox3DME host found";
-                repaint();
-            }
-            public void servicesDiscovered(int transactionId, ServiceRecord[] records) {
-                if (records == null || bluetoothConnectAttempted) return;
-                for (int i=0; i<records.length; i++) {
-                    String url = records[i].getConnectionURL(
-                            ServiceRecord.NOAUTHENTICATE_NOENCRYPT, false);
-                    if (url != null) {
-                        bluetoothConnectAttempted = true;
-                        openBluetoothClient(url);
-                        return;
-                    }
-                }
-            }
-            public void serviceSearchCompleted(int transactionId, int result) {
-                if (result == DiscoveryListener.SERVICE_SEARCH_NO_RECORDS)
-                    bluetoothStatus = "Searching nearby devices...";
-                repaint();
-            }
-        }
-
-        private void openBluetoothClient(final String url) {
-            bluetoothStatus = "Connecting to multiplayer host...";
-            Thread connector = new Thread(new Runnable() {
-                public void run() {
-                    try {
-                        attachBluetoothConnection((StreamConnection)Connector.open(url));
-                    } catch (Throwable t) {
-                        bluetoothStatus = "Connection failed: " + t.toString();
-                    }
-                    repaint();
-                }
-            });
-            connector.start();
-        }
-
-        private synchronized void attachBluetoothConnection(StreamConnection connection)
-                throws IOException {
-            if (!bluetoothEnabled) { connection.close(); return; }
-            shutdownBluetoothConnection();
-            bluetoothConnection = connection;
-            bluetoothInput = connection.openDataInputStream();
-            bluetoothOutput = connection.openDataOutputStream();
-            bluetoothConnected = true;
-            bluetoothPeerVisible = false;
-            bluetoothStatus = "Multiplayer connected";
-            final DataInputStream input = bluetoothInput;
-            bluetoothReadThread = new Thread(new Runnable() {
-                public void run() {
-                    try {
-                        while (bluetoothConnected) {
-                            bluetoothPeerX = input.readFloat();
-                            bluetoothPeerY = input.readFloat();
-                            bluetoothPeerZ = input.readFloat();
-                            bluetoothPeerYaw = input.readFloat();
-                            bluetoothPeerVisible = true;
-                        }
-                    } catch (Throwable t) {
-                        bluetoothPeerVisible = false;
-                        bluetoothConnected = false;
-                        bluetoothStatus = "Multiplayer disconnected";
-                    }
-                    repaint();
-                }
-            });
-            bluetoothReadThread.start();
-            repaint();
-        }
-
-        private void updateBluetoothMultiplayer() {
-            if (world == null) return;
-            if (bluetoothPeerVisible) {
-                if (bluetoothPeerAvatar == null) {
-                    Mesh oldLeft=leftArm, oldRight=rightArm, oldLegL=leftLeg, oldLegR=rightLeg;
-                    Group oldSword=swordVisual;
-                    try {
-                        bluetoothPeerAvatar=buildNoob();
-                    } catch (Throwable t) {
-                        bluetoothPeerAvatar=null;
-                        bluetoothPeerVisible=false;
-                        bluetoothStatus="Avatar error: " + t.toString();
-                    } finally {
-                        leftArm=oldLeft; rightArm=oldRight; leftLeg=oldLegL; rightLeg=oldLegR;
-                        swordVisual=oldSword;
-                    }
-                    if (bluetoothPeerAvatar != null) world.addChild(bluetoothPeerAvatar);
-                }
-                bluetoothPeerAvatar.setTranslation(bluetoothPeerX,bluetoothPeerY,bluetoothPeerZ);
-                bluetoothPeerAvatar.setOrientation(
-                        bluetoothPeerYaw*57.29578f,0,1,0);
-            } else if (bluetoothPeerAvatar != null) {
-                try { world.removeChild(bluetoothPeerAvatar); } catch (Throwable ignored) {}
-                bluetoothPeerAvatar=null;
-            }
-            if (!bluetoothConnected || menuMode || gameClock - bluetoothLastSend < 100) return;
-            bluetoothLastSend = gameClock;
-            try {
-                synchronized (this) {
-                    if (bluetoothOutput != null && bluetoothConnected) {
-                        bluetoothOutput.writeFloat(px);
-                        bluetoothOutput.writeFloat(jumpY);
-                        bluetoothOutput.writeFloat(pz);
-                        bluetoothOutput.writeFloat(yaw);
-                        bluetoothOutput.flush();
-                    }
-                }
-            } catch (Throwable t) {
-                bluetoothStatus = "Multiplayer send failed";
-                bluetoothConnected = false;
-            }
-        }
-
-        private synchronized void shutdownBluetoothConnection() {
-            bluetoothConnected = false;
-            bluetoothPeerVisible = false;
-            try { if (bluetoothInput != null) bluetoothInput.close(); } catch (Throwable ignored) {}
-            try { if (bluetoothOutput != null) bluetoothOutput.close(); } catch (Throwable ignored) {}
-            try { if (bluetoothConnection != null) bluetoothConnection.close(); } catch (Throwable ignored) {}
-            bluetoothInput=null; bluetoothOutput=null; bluetoothConnection=null;
-        }
-
-        private void shutdownBluetoothTransport() {
-            try {
-                if (bluetoothDiscoveryListener != null && bluetoothAgent != null)
-                    bluetoothAgent.cancelInquiry(bluetoothDiscoveryListener);
-            } catch (Throwable ignored) {}
-            try { if (bluetoothNotifier != null) bluetoothNotifier.close(); } catch (Throwable ignored) {}
-            bluetoothNotifier=null;
-            shutdownBluetoothConnection();
-            bluetoothHosting=false;
-        }
-
-        void shutdownBluetooth() {
-            shutdownBluetoothTransport();
-            bluetoothEnabled=false;
-        }
-
         protected void keyPressed(int keyCode) {
             int k = getGameAction(keyCode);
             if (menuMode) {
-                if (settingsMode) {
-                    if (k == UP || keyCode == KEY_NUM2)
-                        settingsSelection = (settingsSelection + 3) % 4;
-                    else if (k == DOWN || keyCode == KEY_NUM8)
-                        settingsSelection = (settingsSelection + 1) % 4;
-                    else if (keyCode == KEY_NUM0) settingsMode = false;
-                    else if (keyCode == KEY_NUM5 || k == FIRE)
-                        activateSettingsOption();
-                } else {
-                    if (k == UP || keyCode == KEY_NUM2)
-                        selectedGame = (selectedGame + 4) % 5;
-                    else if (k == DOWN || keyCode == KEY_NUM8)
-                        selectedGame = (selectedGame + 1) % 5;
-                    else if (keyCode == KEY_NUM5 || k == FIRE) {
-                        if (selectedGame == 4) {
-                            settingsMode = true;
-                            settingsSelection = 0;
-                        } else {
-                            try {
-                                initError = "";
-                                startGame(selectedGame);
-                            } catch (Throwable t) {
-                                menuMode = true;
-                                loaded = false;
-                                initError = "Game: " + t.toString();
-                            }
-                        }
+                if (k == UP || keyCode == KEY_NUM2)
+                    selectedGame = (selectedGame + 3) % 4;
+                else if (k == DOWN || keyCode == KEY_NUM8)
+                    selectedGame = (selectedGame + 1) % 4;
+                else if (keyCode == KEY_NUM5 || k == FIRE) {
+                    try {
+                        initError = "";
+                        startGame(selectedGame);
+                    } catch (Throwable t) {
+                        menuMode = true;
+                        loaded = false;
+                        initError = "Game: " + t.toString();
                     }
                 }
                 repaint();
