@@ -363,7 +363,7 @@ public final class main extends MIDlet {
             final int segments = 16;
             float[] ringY = new float[] {-0.25f, -0.245f, -0.23f, -0.20f, 0.20f, 0.23f, 0.245f, 0.25f};
             float[] ringRadius = new float[] {0.25f, 0.266f, 0.278f, 0.28f, 0.28f, 0.278f, 0.266f, 0.25f};
-            int bandCount = ringZ.length - 1;
+            int bandCount = ringY.length - 1;
             int verticesPerBand = (segments + 1) * 2;
             short[] shellCoords = new short[bandCount * verticesPerBand * 3];
             int[] shellStrips = new int[bandCount];
