@@ -396,7 +396,7 @@ public final class main extends MIDlet {
                 }else if((currentGame==4||currentGame==6)&&modeBlockCount>0){
                     x=modeBlocks[0][0]+(i-2)*0.42f;z=modeBlocks[0][2]+0.85f;
                 }else{x=(i-2)*1.25f;z=2.0f+(i%2);}
-                PlayerBot bot=new PlayerBot(x,z);playerBots[i]=bot;addPlayerBotModel(bot,true);
+                PlayerBot bot=new PlayerBot(x,z);bot.y=botGroundTop(x,z);playerBots[i]=bot;addPlayerBotModel(bot,true);
             }
         }
         private void addPlayerBotModel(PlayerBot bot,boolean protectedSpawn) {
@@ -423,7 +423,7 @@ public final class main extends MIDlet {
             for(int i=0;i<playerBotCount;i++){
                 PlayerBot bot=playerBots[i];if(bot==null)continue;
                 if(!bot.alive){if(gameClock>=bot.respawnAt){bot.x=bot.spawnX;bot.z=bot.spawnZ;
-                    bot.y=0;bot.velocityY=0;bot.grounded=true;addPlayerBotModel(bot,true);}continue;}
+                    bot.y=botGroundTop(bot.x,bot.z);bot.velocityY=0;bot.grounded=true;addPlayerBotModel(bot,true);}continue;}
                 if(bot.attackUntil>0&&gameClock>=bot.attackUntil){
                     if(bot.swordArm!=null)bot.swordArm.setOrientation(0,1,0,0);
                     if(bot.sword!=null)bot.sword.setRenderingEnable(false);
