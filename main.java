@@ -308,10 +308,16 @@ public final class main extends MIDlet {
             stopMusic();
             java.io.InputStream in=null;
             try {
-                String resource="/R"+track+".mid";
+                String resource="/meblox/R"+track+".mid";
                 in=getClass().getResourceAsStream(resource);
                 if(in==null)in=midlet.getClass().getResourceAsStream(resource);
-                if(in==null)throw new java.io.IOException("Missing "+resource);
+                if(in==null) {
+                    resource="/R"+track+".mid";
+                    in=getClass().getResourceAsStream(resource);
+                    if(in==null)in=midlet.getClass().getResourceAsStream(resource);
+                }
+                if(in==null)throw new java.io.IOException("Missing /meblox/R"+track+
+                        ".mid and /R"+track+".mid");
                 Player next=Manager.createPlayer(in,"audio/midi");
                 next.realize();
                 next.setLoopCount(-1);
