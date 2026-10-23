@@ -1,10 +1,10 @@
 # Roblox3DME — controlador y escenario de prueba M3G
 
-El punto de entrada es `main.java`, dentro del paquete `meblox`. Es un MIDlet para **MIDP 2.0 + JSR-184 (M3G)**.
+El punto de entrada es `main.java`, dentro del paquete `meblox`. Es un MIDlet para **MIDP 2.0 + JSR-184 (M3G) + JSR-82 (Bluetooth)**.
 
 ## Menú
 
-Al iniciar, elige **Obby**, **Baseplate**, **Horda zombi** o **Studio** con arriba/abajo y confirma con **5 / FIRE**. Obby tiene una ruta larga de 81 plataformas en zigzag y una plataforma verde de meta; el jugador aparece sobre la primera plataforma flotante. Baseplate deja el suelo verde y un bloque rojo de prueba que elimina al jugador al tocarlo. Horda zombi tiene una arena con coberturas, plataformas elevadas y escalones saltables; los enemigos usan el modelo del avatar con piel verde y ropa marrón, persiguen al jugador en oleadas y lo eliminan al alcanzarlo. Pulsa **0** durante el juego para volver al menú. El fondo `bgtitle.png` se dibuja directamente en el tamaño de pantalla y se desplaza en bucle como una panorámica.
+Al iniciar, elige **Obby**, **Baseplate**, **Horda zombi**, **Studio** o **Ajustes** con arriba/abajo y confirma con **5 / FIRE**. Obby tiene una ruta larga de 81 plataformas en zigzag y una plataforma verde de meta; el jugador aparece sobre la primera plataforma flotante. Baseplate deja el suelo verde y un bloque rojo de prueba que elimina al jugador al tocarlo. Horda zombi tiene una arena con coberturas, plataformas elevadas y escalones saltables; los enemigos usan el modelo del avatar con piel verde y ropa marrón, persiguen al jugador en oleadas y lo eliminan al alcanzarlo. Pulsa **0** durante el juego para volver al menú. El fondo `bgtitle.png` se dibuja directamente en el tamaño de pantalla y se desplaza en bucle como una panorámica.
 
 ## Controles en los juegos
 
