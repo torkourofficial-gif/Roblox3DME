@@ -768,7 +768,7 @@ public final class main extends MIDlet {
             if (modelError.length() > 0)
                 g.drawString(modelError, 4, 4, Graphics.TOP | Graphics.LEFT);
             if (initError.length() > 0)
-                g.drawString(initError, 4, font.getHeight() + 6, Graphics.TOP | Graphics.LEFT);
+                g.drawString(initError, 4, g.getFont().getHeight() + 6, Graphics.TOP | Graphics.LEFT);
         }
 
         private void drawSettingsMenu(Graphics g) {
@@ -2167,10 +2167,17 @@ public final class main extends MIDlet {
                 if (bluetoothPeerAvatar == null) {
                     Mesh oldLeft=leftArm, oldRight=rightArm, oldLegL=leftLeg, oldLegR=rightLeg;
                     Group oldSword=swordVisual;
-                    bluetoothPeerAvatar=buildNoob();
-                    leftArm=oldLeft; rightArm=oldRight; leftLeg=oldLegL; rightLeg=oldLegR;
-                    swordVisual=oldSword;
-                    world.addChild(bluetoothPeerAvatar);
+                    try {
+                        bluetoothPeerAvatar=buildNoob();
+                    } catch (Throwable t) {
+                        bluetoothPeerAvatar=null;
+                        bluetoothPeerVisible=false;
+                        bluetoothStatus="Avatar error: " + t.toString();
+                    } finally {
+                        leftArm=oldLeft; rightArm=oldRight; leftLeg=oldLegL; rightLeg=oldLegR;
+                        swordVisual=oldSword;
+                    }
+                    if (bluetoothPeerAvatar != null) world.addChild(bluetoothPeerAvatar);
                 }
                 bluetoothPeerAvatar.setTranslation(bluetoothPeerX,bluetoothPeerY,bluetoothPeerZ);
                 bluetoothPeerAvatar.setOrientation(
