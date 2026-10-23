@@ -2,28 +2,29 @@
 
 El punto de entrada es `main.java`, dentro del paquete `meblox`. Es un MIDlet para **MIDP 2.0 + JSR-184 (M3G)**.
 
-## Controles
+## Menú
 
-- **D-pad:** gira la cámara en horizontal y permite mirar arriba/abajo.
+Al iniciar, elige **Obby** o **Baseplate** con arriba/abajo y confirma con **5 / FIRE**. Obby incluye los bloques de salto; Baseplate deja solo el suelo verde. Pulsa **0** durante el juego para volver al menú.
+
+## Controles en los juegos
+
+- **D-pad:** orbita la cámara y permite mirar arriba/abajo.
 - **2 / 8:** avanzar y retroceder en relación con la cámara.
 - **4 / 6:** desplazamiento lateral.
 - **5 / FIRE:** saltar.
 - *** / #:** acercar / alejar la cámara.
-
-La cámara orbita de forma independiente. El avatar conserva su orientación al mover la cámara y solo gira cuando camina, hacia la dirección de movimiento. La cabeza es un cilindro vertical con bordes redondeados; el personaje y sus animaciones se construyen en Java, sin cargar los modelos `.m3g` separados.
+- El avatar gira al caminar, hacia el movimiento; la cámara puede orbitar mientras permanece quieto.
 
 ## Recursos
 
-Incluye `face.png` como recurso del proyecto en `/meblox/face.png` o en la raíz del JAR. El código adapta sus dimensiones a las que requiere una textura JSR-184 y la aplica a la cara frontal de la cabeza. Si no se encuentra o falla la textura, el juego muestra el detalle del error en pantalla.
+Incluye `face.png`, `logoR.png`, `bgtitle.png` y `skyboxR.png` como recursos del proyecto en `/meblox/` o en la raíz del JAR. El menú ajusta `logoR.png` para que quepa en pantalla y recorta `bgtitle.png` como fondo panorámico. Los dos juegos usan `skyboxR.png` como imagen de fondo del mundo.
 
-Los archivos `noobidle.m3g`, `noobrun.m3g` y `noobjump.m3g` ya no son necesarios para ejecutar el modelo generado.
+El código adapta `face.png` a las dimensiones que requiere una textura JSR-184 y la curva sobre la cara del cilindro. Si falta una textura, el juego muestra el detalle del error.
 
-## Escenario
-
-El juego genera el suelo verde, los bloques de colores y el avatar con geometría M3G desde Java.
+Los archivos `noobidle.m3g`, `noobrun.m3g` y `noobjump.m3g` no son necesarios: el personaje y los escenarios se construyen desde Java.
 
 ## Compilación
 
-Compila `main.java` con un SDK MIDP 2.0 que incluya JSR-184, agrega `face.png` a los recursos del JAR y vuelve a instalar el JAR generado para probar los últimos cambios.
+Compila `main.java` con un SDK MIDP 2.0 que incluya JSR-184, copia los cuatro PNG al directorio de recursos del proyecto y vuelve a instalar el JAR generado.
 
-**Estado:** el código se actualizó en GitHub, pero no se ha compilado ni probado en un emulador o teléfono.
+**Estado:** los cambios se guardaron en GitHub, pero no se han compilado ni probado en un emulador o teléfono.
