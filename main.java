@@ -2078,19 +2078,55 @@ public final class main extends MIDlet {
         private void drawBotDialogue(Graphics g) {
             if(botDialogue.length()==0||gameClock>=botDialogueUntil||talkingBot<0||
                     talkingBot>=playerBotCount||playerBots[talkingBot]==null||!playerBots[talkingBot].alive)return;
+            PlayerBot bot=playerBots[talkingBot];
+            float targetX=px,targetY=1.2f+jumpY,targetZ=pz;
+            if(dead&&deathPieces!=null&&deathPieces.length>1&&deathPieces[1]!=null){
+                PhysicsPiece torso=deathPieces[1];
+                targetX=torso.x;targetY=torso.y;targetZ=torso.z;
+            }
+            float cp=(float)Math.cos(camPitch),sp=(float)Math.sin(camPitch);
+            float horizontal=cp*camDistance;
+            float cameraX=targetX-(float)Math.sin(camYaw)*horizontal;
+            float cameraY=targetY+sp*camDistance;
+            float cameraZ=targetZ+(float)Math.cos(camYaw)*horizontal;
+            float forwardX=(float)Math.sin(camYaw)*cp;
+            float forwardY=-sp;
+            float forwardZ=-(float)Math.cos(camYaw)*cp;
+            float rightX=(float)Math.cos(camYaw),rightZ=(float)Math.sin(camYaw);
+            float upX=(float)Math.sin(camYaw)*sp;
+            float upY=cp;
+            float upZ=-(float)Math.cos(camYaw)*sp;
+            float relX=bot.x-cameraX,relY=bot.y+3.0f-cameraY,relZ=bot.z-cameraZ;
+            float depth=relX*forwardX+relY*forwardY+relZ*forwardZ;
+            if(depth<=0.2f)return;
+            float screenScale=(getHeight()*0.5f)/(float)Math.tan(1.134464f*0.5f);
+            int screenX=(int)(getWidth()*0.5f+(relX*rightX+relZ*rightZ)*screenScale/depth);
+            int screenY=(int)(getHeight()*0.5f-(relX*upX+relY*upY+relZ*upZ)*screenScale/depth);
+            if(screenX<-getWidth()/2||screenX>getWidth()*3/2||screenY<0||screenY>getHeight())return;
+
             Font font=g.getFont();
-            String label="BOT "+(talkingBot+1)+": "+botDialogue;
-            int maxTextWidth=Math.max(1,getWidth()-16);
+            String label=botDialogue;
+            int maxTextWidth=Math.max(1,getWidth()-24);
             if(font.stringWidth(label)>maxTextWidth){
                 while(label.length()>0&&font.stringWidth(label+"...")>maxTextWidth)
                     label=label.substring(0,label.length()-1);
                 label+="...";
             }
-            int x=4,y=42,h=font.getHeight()+6;
-            g.setColor(0x102030);
-            g.fillRoundRect(x,y,Math.max(1,getWidth()-8),h,8,8);
+            int boxWidth=Math.min(getWidth()-8,font.stringWidth(label)+14);
+            int boxHeight=font.getHeight()+8;
+            int boxX=screenX-boxWidth/2;
+            if(boxX<4)boxX=4;
+            if(boxX+boxWidth>getWidth()-4)boxX=getWidth()-4-boxWidth;
+            int boxY=screenY-boxHeight-11;
+            if(boxY<30)boxY=30;
+            if(boxY+boxHeight>getHeight()-2)boxY=getHeight()-boxHeight-2;
+            int tailX=boxX+boxWidth/2;
             g.setColor(0xFFFFFF);
-            g.drawString(label,getWidth()/2,y+3,Graphics.TOP|Graphics.HCENTER);
+            g.drawLine(tailX,boxY+boxHeight-1,screenX,screenY-3);
+            g.fillRoundRect(boxX,boxY,boxWidth,boxHeight,10,10);
+            g.setColor(0x303030);
+            g.drawRoundRect(boxX,boxY,boxWidth,boxHeight,10,10);
+            g.drawString(label,boxX+7,boxY+4,Graphics.TOP|Graphics.LEFT);
         }
 
         private void drawExtraHud(Graphics g) {
