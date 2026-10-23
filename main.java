@@ -95,14 +95,23 @@ public final class main extends MIDlet {
 
             // Load the three exported JSR-184 models from the JAR resources.
             idleObject = loadModel("/meblox/noobidle.m3g", "/noobidle.m3g");
+            String idleError = modelError;
+            modelError = "";
             runObject  = loadModel("/meblox/noobrun.m3g",  "/noobrun.m3g");
+            String runError = modelError;
+            modelError = "";
             jumpObject = loadModel("/meblox/noobjump.m3g", "/noobjump.m3g");
+            String jumpError = modelError;
+            modelError = "";
 
             idleModel = asGroup(idleObject);
             runModel = asGroup(runObject);
             jumpModel = asGroup(jumpObject);
             if (idleModel == null || runModel == null || jumpModel == null) {
-                throw new Exception("Cannot load idle/run/jump M3G models. " + modelError);
+                if (idleModel == null) modelError += "idle: " + idleError + " ";
+                if (runModel == null) modelError += "run: " + runError + " ";
+                if (jumpModel == null) modelError += "jump: " + jumpError;
+                throw new Exception("Cannot load required M3G model(s). " + modelError);
             }
 
             avatar = new Group();
