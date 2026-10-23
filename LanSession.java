@@ -29,6 +29,7 @@ final class LanSession {
     private final int localSlot;
     private final PlayerState[] players = new PlayerState[MAX_PLAYERS];
     private final Peer[] peers = new Peer[MAX_PLAYERS];
+    private final PlayerState[] broadcastSnapshot = new PlayerState[MAX_PLAYERS];
     private final boolean[] readConnected = new boolean[MAX_PLAYERS];
     private final float[][] readPosition = new float[MAX_PLAYERS][4];
     private final int[] readHealth = new int[MAX_PLAYERS];
@@ -191,7 +192,8 @@ final class LanSession {
     }
 
     private void broadcast() {
-        PlayerState[] copy = snapshot();
+        copySnapshot(broadcastSnapshot);
+        PlayerState[] copy = broadcastSnapshot;
         for (int slot = 1; slot < MAX_PLAYERS; slot++) {
             Peer peer;
             synchronized (this) { peer = peers[slot]; }
