@@ -93,6 +93,7 @@ public final class main extends MIDlet {
         private int pauseOverlayWidth = -1, pauseOverlayHeight = -1;
         private long menuPanTime;
         private float playerVelocityY;
+        private int playerHealth=100;
         private boolean grounded = true, dead, lobbyMode;
         private long gameClock, respawnAt, invulnerableUntil;
         private PhysicsPiece[] deathPieces;
@@ -102,6 +103,7 @@ public final class main extends MIDlet {
         private String botDialogue="";
         private long botDialogueUntil,nextBotDialogueAt;
         private int talkingBot=-1;
+        private int projectedScreenX,projectedScreenY;
         private WorldObject[] worldObjects = new WorldObject[80];
         private MeteorBurst[] meteorBursts = new MeteorBurst[4];
         private Group protectionAura;
@@ -162,6 +164,8 @@ public final class main extends MIDlet {
             "Alguien vio mi pala?",
             "No voy a caer otra vez!"
         };
+        private static final float[] SIMON_PAD_X={-4.0f,4.0f,-4.0f,4.0f};
+        private static final float[] SIMON_PAD_Z={-4.0f,-4.0f,4.0f,4.0f};
         private static final int[] BOT_SKIN_COLORS =
                 {0xF5C542,0xC68642,0xF1C27D,0x8D5524,0xE0AC69,0xD9A066};
         private static final int[] BOT_SHIRT_COLORS =
@@ -174,8 +178,9 @@ public final class main extends MIDlet {
             float x,y,z,spawnX,spawnZ,targetX,targetZ,velocityY,yaw;
             PhysicsPiece[] deathPieces;
             long nextThink,nextJump,nextAttack,respawnAt,invulnerableUntil,auraUntil;
-            int skinColor, shirtColor, legColor;
-            boolean alive=true,grounded=true;
+            int skinColor, shirtColor, legColor, health=100, simonRoundSeen;
+            long simonMoveAt;
+            boolean simonMoving,alive=true,grounded=true;
             Mesh swordArm, leftArm, rightArm, leftLeg, rightLeg;
             Group sword;
             long attackUntil;
@@ -303,6 +308,7 @@ public final class main extends MIDlet {
             worldObjects = new WorldObject[80];
             grounded = true;
             dead = false;
+            playerHealth=100;
             lobbyMode = game == 1;
             gameClock = 0;
             invulnerableUntil = 0;
@@ -467,7 +473,8 @@ public final class main extends MIDlet {
                 bot.swordArm=rightArm;bot.sword=swordVisual;
                 leftArm=l;rightArm=r;leftLeg=ll;rightLeg=rl;swordVisual=sword;
                 if(bot.sword!=null)bot.sword.setRenderingEnable(false);
-                bot.model.setTranslation(bot.x,bot.y,bot.z);world.addChild(bot.model);bot.alive=true;
+                bot.model.setTranslation(bot.x,bot.y,bot.z);world.addChild(bot.model);
+                bot.alive=true;bot.health=100;
                 if(protectedSpawn){bot.aura=makeBotAura();bot.model.addChild(bot.aura);
                     bot.invulnerableUntil=gameClock+4000;bot.auraUntil=bot.invulnerableUntil;}
             }catch(Throwable t){
@@ -496,6 +503,9 @@ public final class main extends MIDlet {
         }
         private void killPlayerBot(PlayerBot bot) {
             if(bot==null||!bot.alive||gameClock<bot.invulnerableUntil)return;
+            bot.health-=35;
+            if(bot.health>0){bot.invulnerableUntil=gameClock+850;return;}
+            bot.health=0;
             bot.alive=false;bot.grounded=false;bot.respawnAt=gameClock+2600;
             if(talkingBot>=0&&talkingBot<playerBotCount&&playerBots[talkingBot]==bot){
                 botDialogue="";talkingBot=-1;botDialogueUntil=0;
@@ -557,6 +567,13 @@ public final class main extends MIDlet {
                         bot.aura=null;}
                 }
 
+                boolean simonActive=currentGame==12&&simonRound>0&&simonRound<=12;
+                if(simonActive&&bot.simonRoundSeen!=simonRound){
+                    bot.simonRoundSeen=simonRound;
+                    bot.simonMoveAt=gameClock+700+nextRandom(2300);
+                    bot.simonMoving=false;
+                    bot.targetX=bot.x;bot.targetZ=bot.z;
+                }
                 boolean attackPlayer=currentGame==10;
                 boolean attackZombies=currentGame==2||currentGame==14;
                 int targetZombie=attackZombies?nearestLivingZombie(bot.x,bot.z):-1;
@@ -571,7 +588,7 @@ public final class main extends MIDlet {
                         bot.model.setOrientation(bot.yaw*57.29578f,0,1,0);
                         animatePlayerBotWeapon(bot);
                         if(attackPlayer){
-                            if(!dead&&gameClock>=invulnerableUntil)beginDeath();
+                            if(!dead&&gameClock>=invulnerableUntil)damagePlayer(35);
                         }else if(targetZombie>=0&&zombies[targetZombie]!=null&&zombies[targetZombie].alive){
                             Zombie target=zombies[targetZombie];
                             target.alive=false;
@@ -591,9 +608,19 @@ public final class main extends MIDlet {
                         animatePlayerBotWeapon(bot);
                     }
                 }
+                if(simonActive&&!bot.simonMoving&&gameClock>=bot.simonMoveAt){
+                    bot.simonMoving=true;
+                    bot.targetX=SIMON_PAD_X[simonTarget]+(i-2)*0.10f;
+                    bot.targetZ=SIMON_PAD_Z[simonTarget]+((i%2==0)?-0.10f:0.10f);
+                }
                 if(gameClock>=bot.nextThink||(armed&&d>3.0f)){
                     bot.nextThink=gameClock+900+nextRandom(1400);
-                    if(armed){bot.targetX=targetX;bot.targetZ=targetZ;}
+                    if(simonActive){
+                        if(bot.simonMoving){
+                            bot.targetX=SIMON_PAD_X[simonTarget]+(i-2)*0.10f;
+                            bot.targetZ=SIMON_PAD_Z[simonTarget]+((i%2==0)?-0.10f:0.10f);
+                        }else{bot.targetX=bot.x;bot.targetZ=bot.z;}
+                    }else if(armed){bot.targetX=targetX;bot.targetZ=targetZ;}
                     else{bot.targetX=bot.spawnX+(nextRandom(160)-80)*0.1f;
                         bot.targetZ=bot.spawnZ+(nextRandom(160)-80)*0.1f;}
                     if(bot.grounded&&gameClock>=bot.nextJump&&
@@ -819,7 +846,7 @@ public final class main extends MIDlet {
                 lavaHeight+=dt*0.00004f;
                 if (lavaNode!=null) lavaNode.setTranslation(0,lavaHeight-0.12f,0);
                 if (jumpY<lavaHeight+0.85f && Math.abs(px)<11.5f && Math.abs(pz)<11.5f) {
-                    beginDeath(); return;
+                    damagePlayer(35); return;
                 }
                 if (jumpY>8.0f) modeStatus("Lava escaped!");
             } else if (currentGame==5) {
@@ -836,7 +863,7 @@ public final class main extends MIDlet {
                     float dx=o.body.x-px,dz=o.body.z-pz;
                     if(gameClock>=invulnerableUntil&&o.body.y<jumpY+1.6f&&
                             o.body.y>jumpY-0.5f&&dx*dx+dz*dz<1.0f) {
-                        removeWorldObject(o); beginDeath(); return;
+                        removeWorldObject(o); damagePlayer(35); return;
                     }
                 }
                 if(gameClock-modeStartAt>=30000) modeStatus("Meteor shower survived!");
@@ -945,20 +972,42 @@ public final class main extends MIDlet {
         }
 
         private void updateSimonGame() {
-            if(simonRound>12 || gameClock<modeEventAt) return;
-            if(simonRound>0) {
-                float[][] pos=new float[][] {{-4,-4},{4,-4},{-4,4},{4,4}};
-                if(Math.abs(px-pos[simonTarget][0])>1.85f ||
-                        Math.abs(pz-pos[simonTarget][1])>1.85f) {
-                    beginDeath(); return;
+            if(simonRound>12||gameClock<modeEventAt)return;
+            if(simonRound>0){
+                if(!isOnSimonPad(px,pz,simonTarget)){
+                    damagePlayer(35);
+                    if(dead)return;
+                }else modeScore++;
+                for(int i=0;i<playerBotCount;i++){
+                    PlayerBot bot=playerBots[i];
+                    if(bot!=null&&bot.alive&&!isOnSimonPad(bot.x,bot.z,simonTarget))
+                        killPlayerBot(bot);
                 }
-                modeScore++;
+                if(simonRound>=12){
+                    simonRound=13;
+                    modeStatus("Simon Says complete!");
+                    return;
+                }
             }
-            simonTarget=(int)((gameClock/3200L*17L+3L)%4L);
-            simonRound++; modeEventAt=gameClock+3200;
+            simonTarget=nextRandom(4);
+            simonRound++;
+            modeEventAt=gameClock+6200;
+            for(int i=0;i<playerBotCount;i++){
+                PlayerBot bot=playerBots[i];
+                if(bot==null||!bot.alive)continue;
+                bot.simonRoundSeen=simonRound;
+                bot.simonMoveAt=gameClock+700+nextRandom(2300);
+                bot.simonMoving=false;
+                bot.targetX=bot.x;bot.targetZ=bot.z;
+            }
             String[] color=new String[] {"RED","BLUE","GREEN","YELLOW"};
-            modeStatus("SIMON SAYS: "+color[simonTarget]+"! Round "+simonRound);
-            if(simonRound>12) modeStatus("Simon Says complete!");
+            modeStatus("SIMON SAYS: "+color[simonTarget]+"! Move!");
+        }
+
+        private boolean isOnSimonPad(float x,float z,int target) {
+            if(target<0||target>=SIMON_PAD_X.length)return false;
+            return Math.abs(x-SIMON_PAD_X[target])<=1.85f&&
+                    Math.abs(z-SIMON_PAD_Z[target])<=1.85f;
         }
 
         private void useTycoonAction() {
@@ -1016,7 +1065,7 @@ public final class main extends MIDlet {
                     z.alive=false; defenseLeaked++;
                     try {world.removeChild(z.model);}catch(Throwable ignored){}
                     modeStatus("Base lives: "+(3-defenseLeaked));
-                    if(defenseLeaked>=3) {beginDeath();return;}
+                    if(defenseLeaked>=3) {damagePlayer(35);return;}
                 } else {
                     float step=dt*0.00065f;
                     z.x+=dx/d*step; z.z+=dz/d*step;
@@ -1097,7 +1146,7 @@ public final class main extends MIDlet {
                 if (distance < 0.9f && gameClock >= z.attackAt) {
                     z.attackAt = gameClock + 900;
                     if (gameClock >= invulnerableUntil && !dead) {
-                        beginDeath();
+                        damagePlayer(35);
                         return;
                     }
                 }
@@ -1303,7 +1352,7 @@ public final class main extends MIDlet {
             float radiusSquared=1.55f*1.55f;
             float dx=px-x,dz=pz-z;
             if(!dead&&gameClock>=invulnerableUntil&&dx*dx+dz*dz<=radiusSquared)
-                beginDeath();
+                damagePlayer(35);
             for(int i=0;i<playerBotCount;i++){
                 PlayerBot bot=playerBots[i];
                 if(bot==null||!bot.alive||gameClock<bot.invulnerableUntil)continue;
@@ -1340,7 +1389,7 @@ public final class main extends MIDlet {
             }
             float playerX = px - bx, playerZ = pz - bz;
             if (!bomb.botOwned && !dead && gameClock >= invulnerableUntil &&
-                    playerX * playerX + playerZ * playerZ <= radiusSquared) beginDeath();
+                    playerX * playerX + playerZ * playerZ <= radiusSquared) damagePlayer(35);
             updateHordeStatus();
         }
 
@@ -1637,16 +1686,16 @@ public final class main extends MIDlet {
             }
             resolveLanding(previousY);
             if (isTouchingStudioHazard()) {
-                beginDeath();
+                damagePlayer(35);
                 return;
             }
             if (!grounded && jumpY < -8.0f) {
-                beginDeath();
+                damagePlayer(35);
                 return;
             }
             if (lobbyMode && gameClock >= invulnerableUntil && jumpY < 1.1f &&
                     Math.abs(px - 3.0f) < 0.95f && Math.abs(pz + 3.0f) < 0.95f) {
-                beginDeath();
+                damagePlayer(35);
                 return;
             }
             if (currentGame == 0 || currentGame == 7) {
@@ -1735,8 +1784,22 @@ public final class main extends MIDlet {
             return Math.abs(px - x) <= halfX + 0.22f && Math.abs(pz - z) <= halfZ + 0.22f;
         }
 
+        private void damagePlayer(int amount) {
+            if(dead||gameClock<invulnerableUntil)return;
+            if(amount<1)amount=1;
+            playerHealth-=amount;
+            if(playerHealth<=0){
+                playerHealth=0;
+                beginDeath();
+            }else{
+                invulnerableUntil=gameClock+850;
+                modeStatus("Health "+playerHealth+"/100");
+            }
+        }
+
         private void beginDeath() {
             if (dead || gameClock < invulnerableUntil) return;
+            playerHealth=0;
             dead = true;
             grounded = false;
             jumping = false;
@@ -1955,6 +2018,7 @@ public final class main extends MIDlet {
                 avatar.addChild(protectionAura);
                 world.addChild(avatar);
                 dead = false;
+                playerHealth=100;
                 invulnerableUntil = gameClock + 4000;
                 updateCamera();
             } catch (Throwable t) {
@@ -2070,15 +2134,16 @@ public final class main extends MIDlet {
             if (currentGame == 2 || currentGame == 10 || currentGame == 14) drawInventory(g);
             if (currentGame >= 4) drawExtraHud(g);
             if (currentGame == 3 && !paused) drawStudioHud(g);
-            if (!paused) drawBotDialogue(g);
+            if (!paused) {
+                drawHealthBars(g);
+                drawBotDialogue(g);
+            }
             if (paused) drawPauseMenu(g);
         }
 
 
-        private void drawBotDialogue(Graphics g) {
-            if(botDialogue.length()==0||gameClock>=botDialogueUntil||talkingBot<0||
-                    talkingBot>=playerBotCount||playerBots[talkingBot]==null||!playerBots[talkingBot].alive)return;
-            PlayerBot bot=playerBots[talkingBot];
+        private boolean projectWorldToScreen(float x,float y,float z) {
+            if(getWidth()<=0||getHeight()<=0)return false;
             float targetX=px,targetY=1.2f+jumpY,targetZ=pz;
             if(dead&&deathPieces!=null&&deathPieces.length>1&&deathPieces[1]!=null){
                 PhysicsPiece torso=deathPieces[1];
@@ -2089,21 +2154,53 @@ public final class main extends MIDlet {
             float cameraX=targetX-(float)Math.sin(camYaw)*horizontal;
             float cameraY=targetY+sp*camDistance;
             float cameraZ=targetZ+(float)Math.cos(camYaw)*horizontal;
-            float forwardX=(float)Math.sin(camYaw)*cp;
-            float forwardY=-sp;
+            float forwardX=(float)Math.sin(camYaw)*cp,forwardY=-sp;
             float forwardZ=-(float)Math.cos(camYaw)*cp;
             float rightX=(float)Math.cos(camYaw),rightZ=(float)Math.sin(camYaw);
-            float upX=(float)Math.sin(camYaw)*sp;
-            float upY=cp;
+            float upX=(float)Math.sin(camYaw)*sp,upY=cp;
             float upZ=-(float)Math.cos(camYaw)*sp;
-            float relX=bot.x-cameraX,relY=bot.y+3.0f-cameraY,relZ=bot.z-cameraZ;
+            float relX=x-cameraX,relY=y-cameraY,relZ=z-cameraZ;
             float depth=relX*forwardX+relY*forwardY+relZ*forwardZ;
-            if(depth<=0.2f)return;
-            float screenScale=(getHeight()*0.5f)/(float)Math.tan(1.134464f*0.5f);
-            int screenX=(int)(getWidth()*0.5f+(relX*rightX+relZ*rightZ)*screenScale/depth);
-            int screenY=(int)(getHeight()*0.5f-(relX*upX+relY*upY+relZ*upZ)*screenScale/depth);
-            if(screenX<-getWidth()/2||screenX>getWidth()*3/2||screenY<0||screenY>getHeight())return;
+            if(depth<=0.2f)return false;
+            float scale=(getHeight()*0.5f)/(float)Math.tan(1.134464f*0.5f);
+            projectedScreenX=(int)(getWidth()*0.5f+
+                    (relX*rightX+relZ*rightZ)*scale/depth);
+            projectedScreenY=(int)(getHeight()*0.5f-
+                    (relX*upX+relY*upY+relZ*upZ)*scale/depth);
+            return projectedScreenX>=-getWidth()/2&&projectedScreenX<=getWidth()*3/2&&
+                    projectedScreenY>=0&&projectedScreenY<=getHeight();
+        }
 
+        private void drawHealthBars(Graphics g) {
+            for(int i=0;i<playerBotCount;i++){
+                PlayerBot bot=playerBots[i];
+                if(bot==null||!bot.alive)continue;
+                if(projectWorldToScreen(bot.x,bot.y+2.58f,bot.z))
+                    drawCharacterHealthBar(g,projectedScreenX,projectedScreenY,bot.health,34,5);
+            }
+            if(!dead&&projectWorldToScreen(px,jumpY+2.65f,pz))
+                drawCharacterHealthBar(g,projectedScreenX,projectedScreenY,playerHealth,48,6);
+        }
+
+        private void drawCharacterHealthBar(Graphics g,int centerX,int centerY,int value,int width,int height) {
+            if(value<0)value=0;if(value>100)value=100;
+            int x=centerX-width/2,y=centerY-height/2;
+            g.setColor(0x202020);g.fillRect(x-1,y-1,width+2,height+2);
+            g.setColor(0x5A2020);g.fillRect(x,y,width,height);
+            int fill=width*value/100;
+            if(value>60)g.setColor(0x35D05A);
+            else if(value>30)g.setColor(0xE6C832);
+            else g.setColor(0xE34343);
+            if(fill>0)g.fillRect(x,y,fill,height);
+            g.setColor(0xFFFFFF);g.drawRect(x-1,y-1,width+1,height+1);
+        }
+
+        private void drawBotDialogue(Graphics g) {
+            if(botDialogue.length()==0||gameClock>=botDialogueUntil||talkingBot<0||
+                    talkingBot>=playerBotCount||playerBots[talkingBot]==null||!playerBots[talkingBot].alive)return;
+            PlayerBot bot=playerBots[talkingBot];
+            if(!projectWorldToScreen(bot.x,bot.y+3.0f,bot.z))return;
+            int screenX=projectedScreenX,screenY=projectedScreenY;
             Font font=g.getFont();
             String label=botDialogue;
             int maxTextWidth=Math.max(1,getWidth()-24);
@@ -2121,11 +2218,9 @@ public final class main extends MIDlet {
             if(boxY<30)boxY=30;
             if(boxY+boxHeight>getHeight()-2)boxY=getHeight()-boxHeight-2;
             int tailX=boxX+boxWidth/2;
-            g.setColor(0xFFFFFF);
-            g.drawLine(tailX,boxY+boxHeight-1,screenX,screenY-3);
+            g.setColor(0xFFFFFF);g.drawLine(tailX,boxY+boxHeight-1,screenX,screenY-3);
             g.fillRoundRect(boxX,boxY,boxWidth,boxHeight,10,10);
-            g.setColor(0x303030);
-            g.drawRoundRect(boxX,boxY,boxWidth,boxHeight,10,10);
+            g.setColor(0x303030);g.drawRoundRect(boxX,boxY,boxWidth,boxHeight,10,10);
             g.drawString(label,boxX+7,boxY+4,Graphics.TOP|Graphics.LEFT);
         }
 
@@ -2141,7 +2236,8 @@ public final class main extends MIDlet {
             else if(currentGame==11) label="FOUND "+(modeGoal-countZombies())+"/"+modeGoal;
             else if(currentGame==12) {
                 String[] colors=new String[] {"RED","BLUE","GREEN","YELLOW"};
-                label=simonRound>12?"SIMON SAYS COMPLETE":(simonRound==0?"GET READY":"GO TO "+colors[simonTarget]);
+                label=simonRound>12?"SIMON SAYS COMPLETE":(simonRound==0?"GET READY":
+                        "GO TO "+colors[simonTarget]+" "+Math.max(0,(int)((modeEventAt-gameClock)/1000))+"s");
             } else if(currentGame==13) label="CASH "+modeCash+"  BUILD "+tycoonLevel+"/9  (3)";
             else if(currentGame==14) label="LIVES "+Math.max(0,3-defenseLeaked)+"  3 ATTACK";
             g.setColor(0xFFFFFF);
