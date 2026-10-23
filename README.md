@@ -4,7 +4,7 @@ El punto de entrada es `main.java`, dentro del paquete `meblox`. Es un MIDlet pa
 
 ## Menú
 
-El menú contiene **15 juegos**, repartidos en páginas de cinco opciones (cuatro en pantallas pequeñas). Usa arriba/abajo para elegir, **7/9** para cambiar de página y **5 / FIRE** para entrar. Incluye Obby, Baseplate, Horda zombi y Studio, además de Lava ascendente, Lluvia de meteoritos, Plataformas que caen, Carrera contrarreloj, Caza de monedas, Rey de la colina, Arena de espadas, Escondite, Simon dice, Mini tycoon y Defensa de base. El fondo `bgtitle.png` se desplaza como una panorámica detrás del logo. Pulsa **0** durante un juego para volver al menú.
+El menú contiene **15 juegos**, repartidos en páginas de cinco opciones (cuatro en pantallas pequeñas). Usa arriba/abajo para elegir, **7/9** para cambiar de página y **5 / FIRE** para entrar. El menú reproduce siempre `R3.mid`; cada nueva partida elige la música al azar entre `R1.mid`, `R2.mid` y `R3.mid`, recorriendo las tres antes de repetir una. Incluye Obby, Baseplate, Horda zombi y Studio, además de Lava ascendente, Lluvia de meteoritos, Plataformas que caen, Carrera contrarreloj, Caza de monedas, Rey de la colina, Arena de espadas, Escondite, Simon dice, Mini tycoon y Defensa de base. El fondo `bgtitle.png` se desplaza como una panorámica detrás del logo. Pulsa **0** durante un juego para volver al menú.
 
 ## Controles en los juegos
 
@@ -23,7 +23,13 @@ En la Horda zombi, **7/9** cambian entre **Espada**, **Bomba** y **Pala**, y **3
 
 ## Compatibilidad
 
-Esta variante no requiere JSR-82 ni permisos de Bluetooth y no incluye multijugador. Para dispositivos con Bluetooth, usa la rama `fix-m3g-model-import`.
+Esta variante no requiere JSR-82 ni permisos de Bluetooth. Incluye multijugador TCP por LAN cuando el dispositivo lo soporta:
+- En el menú, pulsa **#** para abrir LAN. El anfitrión inicia el juego seleccionado y muestra la dirección y el puerto **47653**.
+- Los demás dispositivos deben estar en la misma Wi-Fi; eligen **Join by host IP**, escriben la IPv4 del anfitrión y pulsan Connect.
+- Se admiten hasta cinco jugadores contando al anfitrión. Se sincronizan la posición, orientación, vida y estado vivo/reaparecido de los avatares.
+- Para volver al menú, el anfitrión cierra la sesión LAN. Las partidas de los niveles y sus NPC continúan simulándose localmente en cada dispositivo.
+
+Las conexiones de socket y de servidor son opcionales en MIDP 2.0 y el sistema de seguridad del teléfono puede bloquearlas. El JAD debe solicitar `javax.microedition.io.Connector.socket` y `javax.microedition.io.Connector.serversocket`; si el teléfono no ofrece esos protocolos o deniega el permiso, el menú muestra el error de conexión. Hace falta un firmware/emulador con soporte de sockets y conceder acceso de red de entrada y salida.
 
 ## Niveles
 
