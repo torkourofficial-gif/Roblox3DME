@@ -63,12 +63,15 @@ public final class main extends MIDlet {
         private static final class PhysicsPiece {
             Node node;
             float x, y, z, vx, vy, vz, rotation, spin, spinX, spinY, spinZ;
+            float halfX, halfY, halfZ, extentX, extentY, extentZ;
             PhysicsPiece(Node n, float px, float py, float pz,
                     float velX, float velY, float velZ, float spinRate,
-                    float axisX, float axisY, float axisZ) {
+                    float axisX, float axisY, float axisZ,
+                    float sizeX, float sizeY, float sizeZ) {
                 node = n; x = px; y = py; z = pz;
                 vx = velX; vy = velY; vz = velZ; spin = spinRate;
                 spinX = axisX; spinY = axisY; spinZ = axisZ;
+                halfX = sizeX; halfY = sizeY; halfZ = sizeZ;
             }
         }
 
@@ -487,16 +490,16 @@ public final class main extends MIDlet {
             if (avatar != null) world.removeChild(avatar);
             deathPieces = new PhysicsPiece[6];
             float c = (float)Math.cos(yaw), sn = (float)Math.sin(yaw);
-            addDeathPiece(0, makeRoundedCylinderHead(), 0, 2.19f, 0, 0xF5C542, c, sn);
-            addDeathPiece(1, makeBox(0,0,0,0.78f,0.95f,0.40f,0x1769AA), 0,1.45f,0,0x1769AA,c,sn);
-            addDeathPiece(2, makeBox(0,0,0,0.30f,0.88f,0.40f,0xF5C542), -0.54f,1.48f,0,0xF5C542,c,sn);
-            addDeathPiece(3, makeBox(0,0,0,0.30f,0.88f,0.40f,0xF5C542), 0.54f,1.48f,0,0xF5C542,c,sn);
-            addDeathPiece(4, makeBox(0,0,0,0.36f,0.78f,0.40f,0x2E9E45), -0.20f,0.52f,0,0x2E9E45,c,sn);
-            addDeathPiece(5, makeBox(0,0,0,0.36f,0.78f,0.40f,0x2E9E45), 0.20f,0.52f,0,0x2E9E45,c,sn);
+            addDeathPiece(0, makeRoundedCylinderHead(), 0, 2.19f, 0, 0.28f, 0.25f, 0.28f, c, sn);
+            addDeathPiece(1, makeBox(0,0,0,0.78f,0.95f,0.40f,0x1769AA), 0,1.45f,0, 0.39f,0.475f,0.20f, c,sn);
+            addDeathPiece(2, makeBox(0,0,0,0.30f,0.88f,0.40f,0xF5C542), -0.54f,1.48f,0, 0.15f,0.44f,0.20f, c,sn);
+            addDeathPiece(3, makeBox(0,0,0,0.30f,0.88f,0.40f,0xF5C542), 0.54f,1.48f,0, 0.15f,0.44f,0.20f, c,sn);
+            addDeathPiece(4, makeBox(0,0,0,0.36f,0.78f,0.40f,0x2E9E45), -0.20f,0.52f,0, 0.18f,0.39f,0.20f, c,sn);
+            addDeathPiece(5, makeBox(0,0,0,0.36f,0.78f,0.40f,0x2E9E45), 0.20f,0.52f,0, 0.18f,0.39f,0.20f, c,sn);
         }
 
         private void addDeathPiece(int index, Node node, float ox, float oy, float oz,
-                int color, float c, float sn) {
+                float halfX, float halfY, float halfZ, float c, float sn) {
             float x = px + ox * c + oz * sn;
             float z = pz - ox * sn + oz * c;
             node.setTranslation(x, jumpY + oy, z);
@@ -510,7 +513,7 @@ public final class main extends MIDlet {
             axisX /= axisLength; axisY /= axisLength; axisZ /= axisLength;
             deathPieces[index] = new PhysicsPiece(node, x, jumpY + oy, z,
                     outward, 0.0035f + (index % 3) * 0.001f, direction * 0.001f,
-                    35 + index * 5, axisX, axisY, axisZ);
+                    35 + index * 5, axisX, axisY, axisZ, halfX, halfY, halfZ);
         }
 
         private void updateDeathPieces(int dt) {
@@ -520,16 +523,102 @@ public final class main extends MIDlet {
                 if (p == null) continue;
                 p.vy -= 0.000018f * dt;
                 p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-                if (p.y < 0.0f) {
-                    p.y = 0.0f;
-                    if (p.vy < -0.0005f) p.vy = -p.vy * 0.28f;
-                    else p.vy = 0.0f;
-                    p.vx *= 0.86f; p.vz *= 0.86f;
-                }
                 p.rotation += p.spin * dt * 0.001f;
+                updatePieceExtents(p);
+                resolvePieceEnvironment(p);
+            }
+            for (int i = 0; i < deathPieces.length; i++) {
+                PhysicsPiece a = deathPieces[i];
+                if (a == null) continue;
+                for (int j = i + 1; j < deathPieces.length; j++) {
+                    PhysicsPiece b = deathPieces[j];
+                    if (b != null) resolvePiecePair(a, b);
+                }
+            }
+            for (int i = 0; i < deathPieces.length; i++) {
+                PhysicsPiece p = deathPieces[i];
+                if (p == null) continue;
                 p.node.setTranslation(p.x, p.y, p.z);
                 p.node.setOrientation(p.rotation, p.spinX, p.spinY, p.spinZ);
             }
+        }
+
+        private void updatePieceExtents(PhysicsPiece p) {
+            float radians = p.rotation * 0.017453293f;
+            float c = (float)Math.cos(radians), s = (float)Math.sin(radians);
+            float t = 1.0f - c;
+            float r00=t*p.spinX*p.spinX+c, r01=t*p.spinX*p.spinY-s*p.spinZ;
+            float r02=t*p.spinX*p.spinZ+s*p.spinY;
+            float r10=t*p.spinX*p.spinY+s*p.spinZ, r11=t*p.spinY*p.spinY+c;
+            float r12=t*p.spinY*p.spinZ-s*p.spinX;
+            float r20=t*p.spinX*p.spinZ-s*p.spinY, r21=t*p.spinY*p.spinZ+s*p.spinX;
+            float r22=t*p.spinZ*p.spinZ+c;
+            p.extentX=Math.abs(r00)*p.halfX+Math.abs(r01)*p.halfY+Math.abs(r02)*p.halfZ;
+            p.extentY=Math.abs(r10)*p.halfX+Math.abs(r11)*p.halfY+Math.abs(r12)*p.halfZ;
+            p.extentZ=Math.abs(r20)*p.halfX+Math.abs(r21)*p.halfY+Math.abs(r22)*p.halfZ;
+        }
+
+        private void resolvePieceEnvironment(PhysicsPiece p) {
+            if (!lobbyMode) {
+                resolvePieceAgainstBox(p, 0, 0.25f, -5, 1, 0.5f, 1);
+                resolvePieceAgainstBox(p, 3, 0.5f, -8, 1, 1, 1);
+                resolvePieceAgainstBox(p, -3, 0.75f, -8, 1, 1.5f, 1);
+                resolvePieceAgainstBox(p, 0, 1.5f, -11, 1.5f, 2, 1.5f);
+            } else {
+                resolvePieceAgainstBox(p, 3, 0.35f, -3, 0.6f, 0.35f, 0.6f);
+            }
+            if (Math.abs(p.x) <= 12.0f + p.extentX && Math.abs(p.z) <= 12.0f + p.extentZ &&
+                    p.y - p.extentY < 0.0f) {
+                p.y = p.extentY;
+                if (p.vy < -0.0005f) p.vy = -p.vy * 0.28f;
+                else p.vy = 0.0f;
+                p.vx *= 0.86f; p.vz *= 0.86f; p.spin *= 0.82f;
+            }
+        }
+
+        private void resolvePieceAgainstBox(PhysicsPiece p, float x, float y, float z,
+                float hx, float hy, float hz) {
+            float dx=p.x-x, dy=p.y-y, dz=p.z-z;
+            float ox=p.extentX+hx-Math.abs(dx);
+            float oy=p.extentY+hy-Math.abs(dy);
+            float oz=p.extentZ+hz-Math.abs(dz);
+            if (ox <= 0 || oy <= 0 || oz <= 0) return;
+            if (ox <= oy && ox <= oz) {
+                float n = dx >= 0 ? 1.0f : -1.0f;
+                p.x += n * (ox + 0.001f);
+                if (p.vx * n < 0) p.vx = -p.vx * 0.28f;
+            } else if (oy <= ox && oy <= oz) {
+                float n = dy >= 0 ? 1.0f : -1.0f;
+                p.y += n * (oy + 0.001f);
+                if (p.vy * n < 0) p.vy = -p.vy * 0.28f;
+            } else {
+                float n = dz >= 0 ? 1.0f : -1.0f;
+                p.z += n * (oz + 0.001f);
+                if (p.vz * n < 0) p.vz = -p.vz * 0.28f;
+            }
+            p.vx *= 0.92f; p.vz *= 0.92f; p.spin *= 0.90f;
+        }
+
+        private void resolvePiecePair(PhysicsPiece a, PhysicsPiece b) {
+            float dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z;
+            float ox=a.extentX+b.extentX-Math.abs(dx);
+            float oy=a.extentY+b.extentY-Math.abs(dy);
+            float oz=a.extentZ+b.extentZ-Math.abs(dz);
+            if (ox <= 0 || oy <= 0 || oz <= 0) return;
+            float nx=0, ny=0, nz=0, penetration;
+            if (ox <= oy && ox <= oz) { nx=dx >= 0 ? 1 : -1; penetration=ox; }
+            else if (oy <= ox && oy <= oz) { ny=dy >= 0 ? 1 : -1; penetration=oy; }
+            else { nz=dz >= 0 ? 1 : -1; penetration=oz; }
+            float push=penetration * 0.5f + 0.001f;
+            a.x+=nx*push; a.y+=ny*push; a.z+=nz*push;
+            b.x-=nx*push; b.y-=ny*push; b.z-=nz*push;
+            float relative=(a.vx-b.vx)*nx+(a.vy-b.vy)*ny+(a.vz-b.vz)*nz;
+            if (relative < 0) {
+                float impulse=-0.65f*relative;
+                a.vx+=impulse*nx; a.vy+=impulse*ny; a.vz+=impulse*nz;
+                b.vx-=impulse*nx; b.vy-=impulse*ny; b.vz-=impulse*nz;
+            }
+            a.spin*=0.94f; b.spin*=0.94f;
         }
 
         private void respawnPlayer() {
