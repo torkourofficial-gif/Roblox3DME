@@ -34,6 +34,12 @@ public final class main extends MIDlet {
         private float px = 0, pz = 0, yaw = 0;
         private float camYaw = 0, camPitch = 0.22f;
         private float camDistance = 5.0f;
+        private float cameraSensitivity = 0.0025f;
+        private int sensitivityLevel = 1;
+        private boolean invertCamera;
+        private int currentGame;
+        private boolean paused, configMode;
+        private int pauseSelection, configSelection;
         private float jumpY = 0;
         private long lastTime;
         private int animTime;
@@ -59,6 +65,19 @@ public final class main extends MIDlet {
         private String modelStatus = "Select a game";
         private String modelError = "";
         private String initError = "";
+
+        private static final float[][] OBBY_BLOCKS = new float[][] {
+            {0,0.30f,-3,2,0.60f,2,0xD94B45},
+            {2,0.45f,-6,1.6f,0.90f,1.6f,0xE3C44D},
+            {4,0.40f,-9,1.8f,0.80f,1.8f,0x4779D1},
+            {2,0.65f,-12,1.5f,1.30f,1.5f,0xB56AC8},
+            {-1,0.45f,-15,2,0.90f,2,0xD94B45},
+            {-4,0.65f,-18,1.6f,1.30f,1.6f,0xE3C44D},
+            {-2,0.40f,-21,1.8f,0.80f,1.8f,0x4779D1},
+            {1,0.60f,-24,1.8f,1.20f,1.8f,0xB56AC8},
+            {4,0.45f,-27,2,0.90f,2,0xD94B45},
+            {4,0.25f,-31,4,0.50f,4,0x63C7A5}
+        };
 
         private static final class PhysicsPiece {
             Node node;
@@ -139,7 +158,10 @@ public final class main extends MIDlet {
         }
 
         private void startGame(int game) throws Exception {
+            currentGame = game;
             menuMode = false;
+            paused = false;
+            configMode = false;
             loaded = false;
             px = 0;
             pz = 0;
@@ -176,11 +198,11 @@ public final class main extends MIDlet {
             // Both selections share the same green baseplate.
             world.addChild(makeBox(0, -0.25f, 0, 24, 0.5f, 24, 0x54A64B));
             if (game == 0) {
-                // Obby course: stepping blocks are only present in this selection.
-                world.addChild(makeBox(0, 0.25f, -5, 2, 1, 2, 0xD94B45));
-                world.addChild(makeBox(3, 0.5f, -8, 2, 2, 2, 0xE3C44D));
-                world.addChild(makeBox(-3, 0.75f, -8, 2, 3, 2, 0x4779D1));
-                world.addChild(makeBox(0, 1.5f, -11, 3, 4, 3, 0xB56AC8));
+                // A ten-platform zigzag obby ending on the green finish platform.
+                for (int i = 0; i < OBBY_BLOCKS.length; i++) {
+                    float[] b = OBBY_BLOCKS[i];
+                    world.addChild(makeBox(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]));
+                }
             } else {
                 // Red touch-to-die test block in the baseplate lobby.
                 world.addChild(makeBox(3, 0.35f, -3, 1.2f, 0.7f, 1.2f, 0xE32636));
@@ -396,13 +418,14 @@ public final class main extends MIDlet {
             }
             animTime += dt;
             float step = dt * 0.004f;
-            float cameraTurn = dt * 0.0025f;
-            if (camLeft) camYaw -= cameraTurn;
-            if (camRight) camYaw += cameraTurn;
+            float cameraTurn = dt * cameraSensitivity;
+            float cameraDirection = invertCamera ? -1.0f : 1.0f;
+            if (camLeft) camYaw -= cameraTurn * cameraDirection;
+            if (camRight) camYaw += cameraTurn * cameraDirection;
             if (camYaw > 3.14159265f) camYaw -= 6.2831853f;
             if (camYaw < -3.14159265f) camYaw += 6.2831853f;
-            if (camUp) camPitch += cameraTurn;
-            if (camDown) camPitch -= cameraTurn;
+            if (camUp) camPitch += cameraTurn * cameraDirection;
+            if (camDown) camPitch -= cameraTurn * cameraDirection;
             // Classic third-person camera: allow looking up/down, but never flip over.
             if (camPitch > 1.20f) camPitch = 1.20f;
             if (camPitch < -1.20f) camPitch = -1.20f;
@@ -429,6 +452,8 @@ public final class main extends MIDlet {
                 beginDeath();
                 return;
             }
+            if (!lobbyMode && onPlatform(4, -31, 2, 2) && jumpY >= 0.45f)
+                modelStatus = "Obby complete!";
             // Turn only while moving, toward the world-space travel direction.
             if (dx != 0.0f || dz != 0.0f) yaw = fastAtan2(-dx, -dz);
             jumping = !grounded;
@@ -452,10 +477,12 @@ public final class main extends MIDlet {
             float top = Float.NEGATIVE_INFINITY;
             if (Math.abs(px) < 11.5f && Math.abs(pz) < 11.5f) top = 0.0f;
             if (!lobbyMode) {
-                if (onPlatform(0, -5, 1, 1) && platformCanSupport(previousY, 0.75f)) top = Math.max(top, 0.75f);
-                if (onPlatform(3, -8, 1, 1) && platformCanSupport(previousY, 1.5f)) top = Math.max(top, 1.5f);
-                if (onPlatform(-3, -8, 1, 1) && platformCanSupport(previousY, 2.25f)) top = Math.max(top, 2.25f);
-                if (onPlatform(0, -11, 1.5f, 1.5f) && platformCanSupport(previousY, 3.5f)) top = Math.max(top, 3.5f);
+                for (int i = 0; i < OBBY_BLOCKS.length; i++) {
+                    float[] b = OBBY_BLOCKS[i];
+                    float platformTop = b[1] + b[4] * 0.5f;
+                    if (onPlatform(b[0], b[2], b[3] * 0.5f, b[5] * 0.5f) &&
+                            platformCanSupport(previousY, platformTop)) top = Math.max(top, platformTop);
+                }
             }
             if (!grounded && playerVelocityY <= 0.0f && top != Float.NEGATIVE_INFINITY &&
                     previousY >= top && jumpY <= top) {
@@ -560,10 +587,10 @@ public final class main extends MIDlet {
 
         private void resolvePieceEnvironment(PhysicsPiece p) {
             if (!lobbyMode) {
-                resolvePieceAgainstBox(p, 0, 0.25f, -5, 1, 0.5f, 1);
-                resolvePieceAgainstBox(p, 3, 0.5f, -8, 1, 1, 1);
-                resolvePieceAgainstBox(p, -3, 0.75f, -8, 1, 1.5f, 1);
-                resolvePieceAgainstBox(p, 0, 1.5f, -11, 1.5f, 2, 1.5f);
+                for (int i = 0; i < OBBY_BLOCKS.length; i++) {
+                    float[] b = OBBY_BLOCKS[i];
+                    resolvePieceAgainstBox(p,b[0],b[1],b[2],b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
+                }
             } else {
                 resolvePieceAgainstBox(p, 3, 0.35f, -3, 0.6f, 0.35f, 0.6f);
             }
@@ -749,6 +776,7 @@ public final class main extends MIDlet {
             g.drawString(modelStatus, 3, 20, Graphics.TOP|Graphics.LEFT);
             if (modelError.length() > 0) drawWrapped(g, modelError, 3, 38, getWidth() - 6);
             if (initError.length() > 0) drawWrapped(g, initError, 3, 72, getWidth() - 6);
+            if (paused) drawPauseMenu(g);
         }
 
 
