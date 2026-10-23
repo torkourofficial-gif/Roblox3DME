@@ -241,7 +241,7 @@ public final class main extends MIDlet {
 
             // Classic blocky noob proportions, in local coordinates.
             model.addChild(makeBox(0, 1.45f, 0, 0.78f, 0.95f, 0.40f, 0x1769AA)); // classic blue torso
-            model.addChild(makeBox(0, 2.16f, 0, 0.68f, 0.38f, 0.40f, 0xF5C542)); // wide, flat classic Roblox head
+            model.addChild(makeBox(0, 2.17f, 0, 0.42f, 0.42f, 0.42f, 0xF5C542)); // cubic classic Roblox head
             model.addChild(makeTexturedFace()); // face.png decal on the front (-Z)
             leftArm = (Mesh)makeBox(-0.54f, 1.48f, 0, 0.30f, 0.88f, 0.40f, 0xF5C542);
             rightArm = (Mesh)makeBox(0.54f, 1.48f, 0, 0.30f, 0.88f, 0.40f, 0xF5C542);
@@ -263,7 +263,7 @@ public final class main extends MIDlet {
                     try { img = javax.microedition.lcdui.Image.createImage(in); }
                     finally { try { in.close(); } catch (Throwable ignored) {} }
                 }
-                if (img == null) return makeBox(0, 2.16f, -0.202f, 0.50f, 0.30f, 0.008f, 0xFFFFFF);
+                if (img == null) return makeBox(0, 2.17f, -0.212f, 0.34f, 0.34f, 0.008f, 0xFFFFFF);
 
                 Image2D image2D = new Image2D(Image2D.RGBA, img);
                 Texture2D texture = new Texture2D(image2D);
@@ -278,7 +278,7 @@ public final class main extends MIDlet {
                 ap.setMaterial(mat);
 
                 // Quad on the front (-Z) side of the head, with full-image UVs.
-                short[] p = new short[] {-250,-170,0, 250,-170,0, -250,170,0, 250,170,0};
+                short[] p = new short[] {-170,-170,0, 170,-170,0, -170,170,0, 170,170,0};
                 VertexArray pos = new VertexArray(4, 3, 2);
                 pos.set(0, 4, p);
                 short[] uv = new short[] {0,1000, 1000,1000, 0,0, 1000,0};
@@ -289,10 +289,10 @@ public final class main extends MIDlet {
                 vb.setTexCoords(0, texCoords, 0.001f, null);
                 TriangleStripArray indices = new TriangleStripArray(0, new int[] {4});
                 Mesh face = new Mesh(vb, new IndexBuffer[] {indices}, new Appearance[] {ap});
-                face.setTranslation(0, 2.16f, -0.202f);
+                face.setTranslation(0, 2.17f, -0.212f);
                 return face;
             } catch (Throwable t) {
-                return makeBox(0, 2.16f, -0.202f, 0.50f, 0.30f, 0.008f, 0xFFFFFF);
+                return makeBox(0, 2.17f, -0.212f, 0.34f, 0.34f, 0.008f, 0xFFFFFF);
             }
         }
 
