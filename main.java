@@ -139,7 +139,7 @@ public final class main extends MIDlet {
             pz = 0;
             yaw = 0;
             jumpY = 0;
-            jumpVelocity = 0;
+            playerVelocityY = 0;
             jumping = false;
             forward = back = left = right = false;
             playerVelocityY = 0;
@@ -435,20 +435,29 @@ public final class main extends MIDlet {
             float top = Float.NEGATIVE_INFINITY;
             if (Math.abs(px) < 11.5f && Math.abs(pz) < 11.5f) top = 0.0f;
             if (!lobbyMode) {
-                if (onPlatform(0, -5, 1, 1)) top = Math.max(top, 0.75f);
-                if (onPlatform(3, -8, 1, 1)) top = Math.max(top, 1.5f);
-                if (onPlatform(-3, -8, 1, 1)) top = Math.max(top, 2.25f);
-                if (onPlatform(0, -11, 1.5f, 1.5f)) top = Math.max(top, 3.5f);
+                if (onPlatform(0, -5, 1, 1) && platformCanSupport(previousY, 0.75f)) top = Math.max(top, 0.75f);
+                if (onPlatform(3, -8, 1, 1) && platformCanSupport(previousY, 1.5f)) top = Math.max(top, 1.5f);
+                if (onPlatform(-3, -8, 1, 1) && platformCanSupport(previousY, 2.25f)) top = Math.max(top, 2.25f);
+                if (onPlatform(0, -11, 1.5f, 1.5f) && platformCanSupport(previousY, 3.5f)) top = Math.max(top, 3.5f);
             }
-            if (!grounded && playerVelocityY <= 0.0f && previousY >= top && jumpY <= top) {
+            if (!grounded && playerVelocityY <= 0.0f && top != Float.NEGATIVE_INFINITY &&
+                    previousY >= top && jumpY <= top) {
                 jumpY = top;
                 playerVelocityY = 0.0f;
                 grounded = true;
+            } else if (grounded) {
+                if (top != Float.NEGATIVE_INFINITY && jumpY <= top + 0.05f) {
+                    jumpY = top;
+                    playerVelocityY = 0.0f;
+                } else {
+                    grounded = false;
+                }
             }
-            if (grounded && jumpY <= top) {
-                jumpY = top;
-                playerVelocityY = 0.0f;
-            }
+        }
+
+        private boolean platformCanSupport(float previousY, float platformTop) {
+            return (grounded && jumpY >= platformTop - 0.05f) ||
+                    (!grounded && playerVelocityY <= 0.0f && previousY >= platformTop && jumpY <= platformTop);
         }
 
         private boolean onPlatform(float x, float z, float halfX, float halfZ) {
