@@ -31,7 +31,7 @@ public final class main extends MIDlet {
         private Group activeModel;
         private Mesh leftArm, rightArm, leftLeg, rightLeg;
         private int animation = 0; // 0 idle, 1 run, 2 jump
-        private float px = 0, pz = 0, yaw = 0;
+        private float px = 0, pz = 0;
         private float camYaw = 0, camPitch = 0.22f;
         private float camDistance = 5.0f;
         private float jumpY = 0, jumpVelocity = 0;
@@ -139,10 +139,7 @@ public final class main extends MIDlet {
             if (left) { dx -= cos * step; dz -= sin * step; }
             if (right) { dx += cos * step; dz += sin * step; }
             px += dx; pz += dz;
-            // Roblox-style character facing: follow the camera's horizontal heading,
-            // even while standing still. Movement remains camera-relative.
-            // Keep the avatar's front facing away from the orbit camera.
-            yaw = camYaw;
+            // Camera orbit does not change the avatar's orientation.
             if (jumping) {
                 jumpY += jumpVelocity * dt;
                 jumpVelocity -= 0.00003f * dt;
@@ -154,7 +151,6 @@ public final class main extends MIDlet {
             }
             if (avatar != null) {
                 avatar.setTranslation(px, jumpY, pz);
-                avatar.setOrientation((float)(yaw * 57.29578f), 0, 1, 0);
             }
             updateCamera();
             int wantedAnimation;
@@ -241,8 +237,8 @@ public final class main extends MIDlet {
 
             // Classic blocky noob proportions, in local coordinates.
             model.addChild(makeBox(0, 1.45f, 0, 0.78f, 0.95f, 0.40f, 0x1769AA)); // classic blue torso
-            model.addChild(makeRoundedCylinderHead()); // rounded cylindrical yellow head
-            model.addChild(makeTexturedFace()); // square face.png decal on the front (-Z)
+            model.addChild(makeRoundedCylinderHead()); // upright rounded cylindrical yellow head
+            model.addChild(makeTexturedFace()); // curved face.png decal on the front (-Z)
             leftArm = (Mesh)makeBox(-0.54f, 1.48f, 0, 0.30f, 0.88f, 0.40f, 0xF5C542);
             rightArm = (Mesh)makeBox(0.54f, 1.48f, 0, 0.30f, 0.88f, 0.40f, 0xF5C542);
             leftLeg = (Mesh)makeBox(-0.20f, 0.52f, 0, 0.36f, 0.78f, 0.40f, 0x2E9E45);
@@ -265,7 +261,7 @@ public final class main extends MIDlet {
                 }
                 if (img == null) {
                     modelError = "face.png not found in /meblox/ or JAR root";
-                    return makeBox(0, 2.19f, -0.256f, 0.32f, 0.32f, 0.002f, 0xF5C542);
+                    return makeCurvedTexturedFace(makeSolidAppearance(0xF5C542));
                 }
 
                 // JSR-184 textures require power-of-two dimensions; face.png is 126x128.
@@ -286,24 +282,59 @@ public final class main extends MIDlet {
                 polygonMode.setCulling(PolygonMode.CULL_NONE);
                 ap.setPolygonMode(polygonMode);
 
-                // Quad on the front (-Z) side of the cubic head, wound toward the camera.
-                short[] p = new short[] {-160,-160,0, -160,160,0, 160,-160,0, 160,160,0};
-                VertexArray pos = new VertexArray(4, 3, 2);
-                pos.set(0, 4, p);
-                short[] uv = new short[] {0,1000, 0,0, 1000,1000, 1000,0};
-                VertexArray texCoords = new VertexArray(4, 2, 2);
-                texCoords.set(0, 4, uv);
-                VertexBuffer vb = new VertexBuffer();
-                vb.setPositions(pos, 0.001f, null);
-                vb.setTexCoords(0, texCoords, 0.001f, null);
-                TriangleStripArray indices = new TriangleStripArray(0, new int[] {4});
-                Mesh face = new Mesh(vb, new IndexBuffer[] {indices}, new Appearance[] {ap});
-                face.setTranslation(0, 2.19f, -0.256f);
-                return face;
+                return makeCurvedTexturedFace(ap);
             } catch (Throwable t) {
                 modelError = "face.png texture: " + t.toString();
-                return makeBox(0, 2.19f, -0.256f, 0.32f, 0.32f, 0.002f, 0xF5C542);
+                return makeCurvedTexturedFace(makeSolidAppearance(0xF5C542));
             }
+        }
+
+        private Mesh makeCurvedTexturedFace(Appearance ap) {
+            final int segments = 8;
+            final float radius = 0.286f; // 0.006 units outside the cylinder's 0.28 radius
+            short[] positions = new short[(segments + 1) * 2 * 3];
+            short[] texCoords = new short[(segments + 1) * 2 * 2];
+            int p = 0;
+            int uv = 0;
+            for (int i = 0; i <= segments; i++) {
+                double angle = -0.60 + 1.20 * i / segments;
+                float x = (float)(radius * Math.sin(angle));
+                float z = (float)(-radius * Math.cos(angle));
+                int u = 1000 * i / segments;
+                // The curved strip follows the cylinder; bottom/top vertices keep the face off the surface.
+                positions[p++] = (short)(x * 1000.0f);
+                positions[p++] = 2030;
+                positions[p++] = (short)(z * 1000.0f);
+                positions[p++] = (short)(x * 1000.0f);
+                positions[p++] = 2350;
+                positions[p++] = (short)(z * 1000.0f);
+                texCoords[uv++] = (short)u;
+                texCoords[uv++] = 1000;
+                texCoords[uv++] = (short)u;
+                texCoords[uv++] = 0;
+            }
+            VertexArray pos = new VertexArray((segments + 1) * 2, 3, 2);
+            pos.set(0, (segments + 1) * 2, positions);
+            VertexArray uvArray = new VertexArray((segments + 1) * 2, 2, 2);
+            uvArray.set(0, (segments + 1) * 2, texCoords);
+            VertexBuffer vb = new VertexBuffer();
+            vb.setPositions(pos, 0.001f, null);
+            vb.setTexCoords(0, uvArray, 0.001f, null);
+            TriangleStripArray strip = new TriangleStripArray(0, new int[] {(segments + 1) * 2});
+            return new Mesh(vb, new IndexBuffer[] {strip}, new Appearance[] {ap});
+        }
+
+        private Appearance makeSolidAppearance(int color) {
+            Appearance ap = new Appearance();
+            Material mat = new Material();
+            mat.setColor(Material.AMBIENT, color);
+            mat.setColor(Material.DIFFUSE, color);
+            mat.setColor(Material.EMISSIVE, color);
+            ap.setMaterial(mat);
+            PolygonMode pm = new PolygonMode();
+            pm.setCulling(PolygonMode.CULL_NONE);
+            ap.setPolygonMode(pm);
+            return ap;
         }
 
         private Image makePowerOfTwoImage(Image source) {
@@ -330,7 +361,7 @@ public final class main extends MIDlet {
 
         private Node makeRoundedCylinderHead() {
             final int segments = 16;
-            float[] ringZ = new float[] {-0.25f, -0.245f, -0.23f, -0.20f, 0.20f, 0.23f, 0.245f, 0.25f};
+            float[] ringY = new float[] {-0.25f, -0.245f, -0.23f, -0.20f, 0.20f, 0.23f, 0.245f, 0.25f};
             float[] ringRadius = new float[] {0.25f, 0.266f, 0.278f, 0.28f, 0.28f, 0.278f, 0.266f, 0.25f};
             int bandCount = ringZ.length - 1;
             int verticesPerBand = (segments + 1) * 2;
@@ -343,12 +374,12 @@ public final class main extends MIDlet {
                     double angle = 6.283185307179586 * point / segments;
                     float c = (float)Math.cos(angle);
                     float sn = (float)Math.sin(angle);
-                    shellCoords[out++] = (short)(ringRadius[band] * c * 1000.0f);
                     shellCoords[out++] = (short)(ringRadius[band] * sn * 1000.0f);
-                    shellCoords[out++] = (short)(ringZ[band] * 1000.0f);
-                    shellCoords[out++] = (short)(ringRadius[band + 1] * c * 1000.0f);
+                    shellCoords[out++] = (short)(ringY[band] * 1000.0f);
+                    shellCoords[out++] = (short)(-ringRadius[band] * c * 1000.0f);
                     shellCoords[out++] = (short)(ringRadius[band + 1] * sn * 1000.0f);
-                    shellCoords[out++] = (short)(ringZ[band + 1] * 1000.0f);
+                    shellCoords[out++] = (short)(ringY[band + 1] * 1000.0f);
+                    shellCoords[out++] = (short)(-ringRadius[band + 1] * c * 1000.0f);
                 }
             }
 
@@ -360,7 +391,7 @@ public final class main extends MIDlet {
             return head;
         }
 
-        private Mesh makeCylinderDisk(float z, float radius, int segments, int color) {
+        private Mesh makeCylinderDisk(float y, float radius, int segments, int color) {
             short[] coords = new short[segments * 3 * 3];
             int[] strips = new int[segments];
             int out = 0;
@@ -368,13 +399,13 @@ public final class main extends MIDlet {
                 strips[i] = 3;
                 double a0 = 6.283185307179586 * i / segments;
                 double a1 = 6.283185307179586 * (i + 1) / segments;
-                coords[out++] = 0; coords[out++] = 0; coords[out++] = (short)(z * 1000.0f);
-                coords[out++] = (short)(radius * Math.cos(a0) * 1000.0); 
+                coords[out++] = 0; coords[out++] = (short)(y * 1000.0f); coords[out++] = 0;
                 coords[out++] = (short)(radius * Math.sin(a0) * 1000.0);
-                coords[out++] = (short)(z * 1000.0f);
-                coords[out++] = (short)(radius * Math.cos(a1) * 1000.0);
+                coords[out++] = (short)(y * 1000.0f);
+                coords[out++] = (short)(-radius * Math.cos(a0) * 1000.0);
                 coords[out++] = (short)(radius * Math.sin(a1) * 1000.0);
-                coords[out++] = (short)(z * 1000.0f);
+                coords[out++] = (short)(y * 1000.0f);
+                coords[out++] = (short)(-radius * Math.cos(a1) * 1000.0);
             }
             return makeSolidMesh(coords, strips, color);
         }
