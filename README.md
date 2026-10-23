@@ -1,6 +1,6 @@
 # Roblox3DME — controlador y escenario de prueba M3G
 
-El punto de entrada es `main.java`, dentro del paquete `meblox`. Es un MIDlet para **MIDP 2.0 + JSR-184 (M3G) + JSR-82 (Bluetooth)**.
+El punto de entrada es `main.java`, dentro del paquete `meblox`. Es un MIDlet para **MIDP 2.0 + JSR-184 (M3G)**.
 
 ## Menú
 
@@ -20,11 +20,9 @@ El menú de pausa tiene un fondo oscuro semitransparente y permite reanudar, con
 
 En la Horda zombi, **7/9** cambian entre **Espada**, **Bomba** y **Pala**, y **3** usa el objeto. La espada anima el brazo y la pierna y golpea a un zombi cercano que esté delante. La bomba cae con gravedad, parpadea y explota tras 2,6 segundos; elimina zombis dentro de 4,8 unidades y también puede alcanzar al jugador. La pala suelta seis bloques que caen, chocan entre sí y forman una pared temporal.
 
-## Ajustes y multijugador Bluetooth
+## Compatibilidad
 
-El menú principal incluye **Ajustes**. Activa Bluetooth y elige **Host multiplayer** en un dispositivo; en el otro, activa Bluetooth y usa **Find multiplayer host**. Cuando aparezca **Multiplayer connected**, ambos jugadores deben iniciar el mismo juego desde el menú. La conexión intercambia la posición y orientación de un avatar remoto mediante JSR-82 (Bluetooth SPP); por ahora admite una pareja de jugadores.
-
-El interruptor habilita el uso de Bluetooth por el juego. Java ME no puede encender por sí solo una radio que esté desactivada por el sistema, así que actívala en los ajustes del dispositivo cuando se indique. La compilación requiere un SDK que incluya **JSR-82** además de **JSR-184**. En el JAD o manifiesto solicita `javax.microedition.io.Connector.bluetooth.client` y `javax.microedition.io.Connector.bluetooth.server`; el teléfono puede pedir autorización para conexiones y descubrimiento.
+Esta variante no requiere JSR-82 ni permisos de Bluetooth y no incluye multijugador. Para dispositivos con Bluetooth, usa la rama `fix-m3g-model-import`.
 
 ## Studio
 
@@ -44,6 +42,6 @@ Los archivos `noobidle.m3g`, `noobrun.m3g` y `noobjump.m3g` no son necesarios: e
 
 ## Compilación
 
-Compila `main.java` con un SDK MIDP 2.0 que incluya JSR-184 y JSR-82, declara los permisos Bluetooth cliente y servidor en el JAD/manifiesto, copia los cinco PNG al directorio de recursos del proyecto y vuelve a instalar el JAR generado.
+Compila `main.java` con un SDK MIDP 2.0 que incluya JSR-184, copia los cinco PNG al directorio de recursos del proyecto y vuelve a instalar el JAR generado.
 
-**Estado:** los cambios se guardaron en GitHub, pero no se han compilado ni probado en un emulador o teléfono.
+**Estado:** esta variante sin Bluetooth no se ha compilado ni probado en un emulador o teléfono.
