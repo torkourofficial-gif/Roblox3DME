@@ -98,8 +98,10 @@ public final class main extends MIDlet {
             jumpObject = loadModel("/meblox/noobjump.m3g", "/noobjump.m3g");
 
             Group idleModel = asGroup(idleObject);
-            if (idleModel == null) {
-                throw new Exception("Cannot load /meblox/noobidle.m3g. " + modelError);
+            Group runModel = asGroup(runObject);
+            Group jumpModel = asGroup(jumpObject);
+            if (idleModel == null || runModel == null || jumpModel == null) {
+                throw new Exception("Cannot load idle/run/jump M3G models. " + modelError);
             }
 
             avatar = new Group();
@@ -177,16 +179,46 @@ public final class main extends MIDlet {
                         continue;
                     }
 
-                    // Root order is unspecified. Prefer a Group, then another scene Node.
+                    // Root order is unspecified. Prefer a model Group over a World.
                     for (int i = 0; i < objects.length; i++) {
                         if (objects[i] instanceof Group && !(objects[i] instanceof World))
                             return objects[i];
                     }
+
+                    // A World is a scene container, and M3G forbids adding it under the avatar.
+                    // Extract its model Group when present; otherwise wrap its non-camera children.
                     for (int i = 0; i < objects.length; i++) {
-                        if (objects[i] instanceof Node && !(objects[i] instanceof Camera))
+                        if (objects[i] instanceof World) {
+                            World sourceWorld = (World)objects[i];
+                            for (int childIndex = 0; childIndex < sourceWorld.getChildCount(); childIndex++) {
+                                Node child = sourceWorld.getChild(childIndex);
+                                if (child instanceof Group && !(child instanceof World)) {
+                                    sourceWorld.removeChild(child);
+                                    return child;
+                                }
+                            }
+
+                            Group extracted = new Group();
+                            while (sourceWorld.getChildCount() > 0) {
+                                Node child = sourceWorld.getChild(0);
+                                if (child instanceof Camera) {
+                                    sourceWorld.removeChild(child);
+                                } else {
+                                    sourceWorld.removeChild(child);
+                                    extracted.addChild(child);
+                                }
+                            }
+                            if (extracted.getChildCount() > 0) return extracted;
+                        }
+                    }
+
+                    for (int i = 0; i < objects.length; i++) {
+                        if (objects[i] instanceof Node &&
+                                !(objects[i] instanceof Camera) &&
+                                !(objects[i] instanceof World))
                             return objects[i];
                     }
-                    lastError = path + ": no usable Node among " + objects.length + " roots";
+                    lastError = path + ": no usable model Node among " + objects.length + " roots";
                 } catch (Throwable t) {
                     lastError = path + ": " + t.toString();
                 } finally {
