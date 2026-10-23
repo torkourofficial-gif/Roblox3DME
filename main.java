@@ -168,6 +168,9 @@ public final class main extends MIDlet {
         private static final float[] HIDE_FLEE_SIN={0.0f,0.707107f,-0.707107f,1.0f,-1.0f,0.707107f,-0.707107f,0.0f};
         private static final float[] HIDE_SPAWN_X={-15.65f,15.65f,-15.65f,15.65f,-1.25f};
         private static final float[] HIDE_SPAWN_Z={-13.15f,-13.15f,14.35f,14.35f,-17.15f};
+        private static final float TYCOON_PLAYER_X=0.0f,TYCOON_PLAYER_Z=-7.0f;
+        private static final float[] TYCOON_BOT_X={-7.0f,0.0f,7.0f};
+        private static final float[] TYCOON_BOT_Z={6.0f,7.0f,6.0f};
         private static final float[] SIMON_PAD_X={-4.0f,4.0f,-4.0f,4.0f};
         private static final float[] SIMON_PAD_Z={-4.0f,-4.0f,4.0f,4.0f};
         private static final int[] BOT_SKIN_COLORS =
@@ -183,7 +186,8 @@ public final class main extends MIDlet {
             PhysicsPiece[] deathPieces;
             long nextThink,nextJump,nextAttack,respawnAt,invulnerableUntil,auraUntil;
             int skinColor, shirtColor, legColor, health=100, simonRoundSeen;
-            long simonMoveAt;
+            int tycoonLevel,tycoonCash;
+            long simonMoveAt,tycoonAt,tycoonIncomeAt;
             boolean simonMoving,alive=true,grounded=true;
             Mesh swordArm, leftArm, rightArm, leftLeg, rightLeg;
             Group sword;
@@ -379,6 +383,7 @@ public final class main extends MIDlet {
             } else if (game >= 4) {
                 buildExtraGame(game);
                 resetPlayerSpawn();
+                if(game==13){px=TYCOON_PLAYER_X;pz=TYCOON_PLAYER_Z;jumpY=0;}
             }
 
             avatar = new Group();
@@ -448,7 +453,7 @@ public final class main extends MIDlet {
         }
         private void spawnPlayerBots() {
             if(currentGame==11){playerBotCount=0;return;}
-            playerBotCount=3+nextRandom(3);
+            playerBotCount=currentGame==13?3:3+nextRandom(3);
             botDialogue="";
             talkingBot=-1;
             botDialogueUntil=0;
@@ -458,7 +463,9 @@ public final class main extends MIDlet {
             int legStart=nextRandom(BOT_LEG_COLORS.length);
             for(int i=0;i<playerBotCount;i++) {
                 float x,z;
-                if((currentGame==0||currentGame==7)&&OBBY_BLOCKS.length>0){
+                if(currentGame==13){
+                    x=TYCOON_BOT_X[i];z=TYCOON_BOT_Z[i];
+                }else if((currentGame==0||currentGame==7)&&OBBY_BLOCKS.length>0){
                     x=OBBY_BLOCKS[0][0]+(i-2)*0.48f;z=OBBY_BLOCKS[0][2]+1.0f;
                 }else if((currentGame==4||currentGame==6)&&modeBlockCount>0){
                     x=modeBlocks[0][0]+(i-2)*0.42f;z=modeBlocks[0][2]+0.85f;
@@ -467,7 +474,14 @@ public final class main extends MIDlet {
                 bot.skinColor=BOT_SKIN_COLORS[(i+skinStart)%BOT_SKIN_COLORS.length];
                 bot.shirtColor=BOT_SHIRT_COLORS[(i+shirtStart)%BOT_SHIRT_COLORS.length];
                 bot.legColor=BOT_LEG_COLORS[(i+legStart)%BOT_LEG_COLORS.length];
-                bot.y=botGroundTop(x,z);playerBots[i]=bot;addPlayerBotModel(bot,true);
+                bot.y=botGroundTop(x,z);
+                if(currentGame==13){
+                    bot.tycoonCash=12;
+                    bot.tycoonAt=gameClock+4000+nextRandom(3000);
+                    bot.tycoonIncomeAt=gameClock+2200;
+                    bot.nextThink=gameClock+500+nextRandom(1000);
+                }
+                playerBots[i]=bot;addPlayerBotModel(bot,true);
             }
         }
         private void addPlayerBotModel(PlayerBot bot,boolean protectedSpawn) {
@@ -544,6 +558,48 @@ public final class main extends MIDlet {
             }
             bot.deathPieces=null;
         }
+        private void updateTycoonBot(PlayerBot bot,int dt,int baseIndex){
+            float baseX=TYCOON_BOT_X[baseIndex],baseZ=TYCOON_BOT_Z[baseIndex];
+            if(gameClock>=bot.tycoonIncomeAt){
+                bot.tycoonCash+=2;
+                bot.tycoonIncomeAt=gameClock+2200;
+            }
+            if(bot.tycoonLevel<9&&gameClock>=bot.tycoonAt){
+                int cost=5+bot.tycoonLevel*3;
+                if(bot.tycoonCash>=cost){
+                    bot.tycoonCash-=cost;
+                    int level=++bot.tycoonLevel;
+                    int column=(level-1)%3,row=(level-1)/3;
+                    float x=baseX+(column-1)*1.5f;
+                    float z=baseZ+(row-1)*1.5f;
+                    float sy=0.48f+row*0.16f;
+                    int color=BOT_SHIRT_COLORS[baseIndex%BOT_SHIRT_COLORS.length];
+                    addModeBlock(x,sy*0.5f,z,0.70f,sy,0.70f,color);
+                    modeStatus("Tycoon bot "+(baseIndex+1)+" upgraded to "+level);
+                }
+                bot.tycoonAt=gameClock+4500+nextRandom(2200);
+            }
+            if(gameClock>=bot.nextThink){
+                bot.nextThink=gameClock+1100+nextRandom(1100);
+                bot.targetX=baseX+(nextRandom(49)-24)*0.055f;
+                bot.targetZ=baseZ+(nextRandom(49)-24)*0.055f;
+            }
+            float dx=bot.targetX-bot.x,dz=bot.targetZ-bot.z;
+            float distance=(float)Math.sqrt(dx*dx+dz*dz);
+            if(distance>0.08f){
+                float step=Math.min(dt*0.0008f,distance);
+                float moveX=dx/distance*step,moveZ=dz/distance*step;
+                float nx=bot.x+moveX,nz=bot.z+moveZ;
+                if(!isWorldBlocked(nx,bot.z,bot.y,1.9f))bot.x=nx;
+                if(!isWorldBlocked(bot.x,nz,bot.y,1.9f))bot.z=nz;
+                if(moveX!=0||moveZ!=0){
+                    bot.yaw=fastAtan2(-moveX,-moveZ);
+                    bot.model.setOrientation(bot.yaw*57.29578f,0,1,0);
+                }
+            }
+            bot.model.setTranslation(bot.x,bot.y,bot.z);
+        }
+
         private void updatePlayerBots(int dt) {
             if(playerBots==null||world==null)return;
             updateBotDialogue();
@@ -572,6 +628,10 @@ public final class main extends MIDlet {
                         bot.aura=null;}
                 }
 
+                if(currentGame==13){
+                    updateTycoonBot(bot,dt,i);
+                    continue;
+                }
                 boolean simonActive=currentGame==12&&simonRound>0&&simonRound<=12;
                 if(simonActive&&bot.simonRoundSeen!=simonRound){
                     bot.simonRoundSeen=simonRound;
@@ -834,7 +894,7 @@ public final class main extends MIDlet {
             for(int i=0;i<count;i++) if(zombies[i]!=null) {
                 zombies[i].hidden=true;
                 zombies[i].fleeing=false;
-                zombies[i].model.setRenderingEnable(false);
+                try{world.removeChild(zombies[i].model);}catch(Throwable ignored){}
             }
             modeGoal=count;
             modeStartAt=gameClock;
@@ -974,6 +1034,7 @@ public final class main extends MIDlet {
                     if(bot==null||!bot.alive)continue;
                     bot.hidden=false;
                     bot.model.setRenderingEnable(true);
+                    try{world.addChild(bot.model);}catch(Throwable ignored){}
                 }
                 modeEventAt=0;
                 modeStatus("Find the bots! Turn the camera to spot them.");
@@ -1091,19 +1152,24 @@ public final class main extends MIDlet {
         }
 
         private void useTycoonAction() {
-            if(currentGame!=13) return;
-            if(Math.abs(px)>1.2f||Math.abs(pz+3.0f)>1.2f) {
-                modeStatus("Stand on the yellow build pad at center");
+            if(currentGame!=13)return;
+            if(Math.abs(px-TYCOON_PLAYER_X)>2.4f||
+                    Math.abs(pz-TYCOON_PLAYER_Z)>2.4f){
+                modeStatus("Return to your yellow base to build");
                 return;
             }
+            if(tycoonLevel>=9){modeStatus("Your base is fully upgraded!");return;}
             int cost=5+tycoonLevel*3;
-            if(modeCash<cost) {modeStatus("Need "+cost+" cash");return;}
-            modeCash-=cost; tycoonLevel++;
-            float x=((tycoonLevel-1)%3-1)*2.2f;
-            float z=-2.0f-(tycoonLevel-1)/3*2.2f;
-            addModeBlock(x,0.8f,z,1.8f,1.6f,1.8f,STUDIO_COLORS[tycoonLevel%STUDIO_COLORS.length]);
-            modeStatus("Built "+tycoonLevel+" / 9 - cash "+modeCash);
-            if(tycoonLevel>=9) modeStatus("Tycoon completed!");
+            if(modeCash<cost){modeStatus("Need "+cost+" cash");return;}
+            modeCash-=cost;
+            int level=++tycoonLevel;
+            int column=(level-1)%3,row=(level-1)/3;
+            float x=TYCOON_PLAYER_X+(column-1)*1.5f;
+            float z=TYCOON_PLAYER_Z+(row-1)*1.5f;
+            float sy=0.48f+row*0.16f;
+            addModeBlock(x,sy*0.5f,z,0.70f,sy,0.70f,STUDIO_COLORS[level%STUDIO_COLORS.length]);
+            modeStatus("Your base upgraded "+level+"/9 - cash "+modeCash);
+            if(tycoonLevel>=9)modeStatus("Your base is fully upgraded!");
         }
 
         private void useArenaSword() {
@@ -1277,6 +1343,7 @@ public final class main extends MIDlet {
                 for (int i=0;i<modeBlockCount;i++) {
                     if (!modeBlockActive[i]) continue;
                     float[] b=modeBlocks[i];
+                    if(currentGame==13&&b[4]<=0.20f&&b[1]+b[4]*0.5f<=0.05f)continue;
                     if (overlapsBlock(x,z,bottom,height,b[0],b[2],b[1],
                             b[3]*0.5f,b[5]*0.5f,b[4]*0.5f,0.30f)) return true;
                 }
@@ -1764,6 +1831,7 @@ public final class main extends MIDlet {
                 jumpY += playerVelocityY * dt;
                 playerVelocityY -= 0.000018f * dt;
             }
+            resolveHideSeekCeiling(previousY);
             resolveLanding(previousY);
             if (isTouchingStudioHazard()) {
                 damagePlayer(35);
@@ -1851,6 +1919,22 @@ public final class main extends MIDlet {
                     playerVelocityY = 0.0f;
                 } else {
                     grounded = false;
+                }
+            }
+        }
+
+        private void resolveHideSeekCeiling(float previousY){
+            if(currentGame!=11||grounded||playerVelocityY<=0.0f)return;
+            float oldHead=previousY+1.9f,newHead=jumpY+1.9f;
+            for(int i=0;i<modeBlockCount;i++){
+                if(!modeBlockActive[i])continue;
+                float[] b=modeBlocks[i];
+                float underside=b[1]-b[4]*0.5f;
+                if(onPlatform(b[0],b[2],b[3]*0.5f,b[5]*0.5f)&&
+                        oldHead<=underside&&newHead>=underside){
+                    jumpY=underside-1.9f;
+                    playerVelocityY=0.0f;
+                    return;
                 }
             }
         }
@@ -2070,7 +2154,7 @@ public final class main extends MIDlet {
             } else if (currentGame == 9) {
                 px=0; pz=0; jumpY=0.70f;
             } else if (currentGame == 13) {
-                px=0; pz=0; jumpY=0.36f;
+                px=TYCOON_PLAYER_X;pz=TYCOON_PLAYER_Z;jumpY=0.0f;
             } else if (currentGame == 14) {
                 px=0; pz=0; jumpY=0.50f;
             } else {
@@ -2329,7 +2413,7 @@ public final class main extends MIDlet {
                 String[] colors=new String[] {"RED","BLUE","GREEN","YELLOW"};
                 label=simonRound>12?"SIMON SAYS COMPLETE":(simonRound==0?"GET READY":
                         "GO TO "+colors[simonTarget]+" "+Math.max(0,(int)((modeEventAt-gameClock)/1000))+"s");
-            } else if(currentGame==13) label="CASH "+modeCash+"  BUILD "+tycoonLevel+"/9  (3)";
+            } else if(currentGame==13) label="CASH "+modeCash+" YOU "+tycoonLevel+"/9  3 BUILD";
             else if(currentGame==14) label="LIVES "+Math.max(0,3-defenseLeaked)+"  3 ATTACK";
             g.setColor(0xFFFFFF);
             g.drawString(label,getWidth()/2,getHeight()-3,Graphics.BOTTOM|Graphics.HCENTER);
