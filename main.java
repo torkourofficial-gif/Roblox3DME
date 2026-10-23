@@ -225,8 +225,12 @@ public final class main extends MIDlet {
         private void prepareMenuImages() {
             int width = getWidth();
             int height = getHeight();
-            if (width <= 0 || height <= 0 ||
-                    (width == cachedMenuWidth && height == cachedMenuHeight)) return;
+            if (width <= 0 || height <= 0) return;
+            boolean logoReady = logoSource == null || scaledLogo != null;
+            boolean backgroundReady = titleBackgroundSource == null ||
+                    (menuPanPixels != null && menuPanScale > 0.0f);
+            if (width == cachedMenuWidth && height == cachedMenuHeight &&
+                    logoReady && backgroundReady) return;
             cachedMenuWidth = width;
             cachedMenuHeight = height;
             scaledLogo = scaleToFit(logoSource, width - 24, Math.max(1, height / 4));
@@ -373,6 +377,10 @@ public final class main extends MIDlet {
             gameClock += dt;
             if (dead) {
                 updateDeathPieces(dt);
+                if (deathPieces != null && deathPieces.length > 1 && deathPieces[1] != null) {
+                    PhysicsPiece torso = deathPieces[1];
+                    updateCameraAt(torso.x, torso.y, torso.z);
+                }
                 if (gameClock >= respawnAt) respawnPlayer();
                 return;
             }
@@ -602,10 +610,14 @@ public final class main extends MIDlet {
         }
 
         private void updateCamera() {
+            updateCameraAt(px, 1.2f + jumpY, pz);
+        }
+
+        private void updateCameraAt(float targetX, float targetY, float targetZ) {
             float horizontal = (float)Math.cos(camPitch) * camDistance;
-            float cx = px - (float)Math.sin(camYaw) * horizontal;
-            float cy = 1.2f + jumpY + (float)Math.sin(camPitch) * camDistance;
-            float cz = pz + (float)Math.cos(camYaw) * horizontal;
+            float cx = targetX - (float)Math.sin(camYaw) * horizontal;
+            float cy = targetY + (float)Math.sin(camPitch) * camDistance;
+            float cz = targetZ + (float)Math.cos(camYaw) * horizontal;
             // M3G Transform has no setLookAt helper; set camera position and orientation.
             // Camera looks along local -Z. Orbit position is opposite the look direction,
             // so yaw must have the opposite sign to camYaw.
