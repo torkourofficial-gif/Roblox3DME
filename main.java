@@ -30,6 +30,7 @@ public final class main extends MIDlet {
         private Group avatar;
         private Object3D idleObject, runObject, jumpObject;
         private Group activeModel;
+        private Group idleModel, runModel, jumpModel;
         private Mesh leftArm, rightArm, leftLeg, rightLeg;
         private int animation = 0; // 0 idle, 1 run, 2 jump
         private float px = 0, pz = 0, yaw = 0;
@@ -97,9 +98,9 @@ public final class main extends MIDlet {
             runObject  = loadModel("/meblox/noobrun.m3g",  "/noobrun.m3g");
             jumpObject = loadModel("/meblox/noobjump.m3g", "/noobjump.m3g");
 
-            Group idleModel = asGroup(idleObject);
-            Group runModel = asGroup(runObject);
-            Group jumpModel = asGroup(jumpObject);
+            idleModel = asGroup(idleObject);
+            runModel = asGroup(runObject);
+            jumpModel = asGroup(jumpObject);
             if (idleModel == null || runModel == null || jumpModel == null) {
                 throw new Exception("Cannot load idle/run/jump M3G models. " + modelError);
             }
@@ -268,14 +269,13 @@ public final class main extends MIDlet {
 
         private void switchAnimation(int next) {
             if (next == animation) return;
-            Object3D chosen = next == 1 ? runObject : (next == 2 ? jumpObject : idleObject);
-            Group replacement = asGroup(chosen);
+            Group replacement = next == 1 ? runModel : (next == 2 ? jumpModel : idleModel);
             if (replacement == null || avatar == null) { animation = next; return; }
             try {
                 if (activeModel != null) avatar.removeChild(activeModel);
                 activeModel = replacement;
                 avatar.addChild(activeModel);
-                playAnimation(chosen, next);
+                playAnimation(replacement, next);
             } catch (Throwable t) {}
             animation = next;
         }
