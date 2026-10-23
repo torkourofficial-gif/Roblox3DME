@@ -19,11 +19,15 @@ El menú contiene **15 juegos**, repartidos en páginas de cinco opciones (cuatr
 
 El menú de pausa tiene un fondo oscuro semitransparente y permite reanudar, configurar sensibilidad e inversión de cámara, reiniciar la partida o volver al menú de juegos. Al abrirlo, el mundo sigue avanzando detrás del menú, como en Roblox.
 
-En la Horda zombi, **7/9** cambian entre **Espada**, **Bomba** y **Pala**, y **3** usa el objeto. La Arena de espadas y Defensa de base usan **3** para atacar enemigos; Mini tycoon usa **3** para comprar cuando estás sobre la plataforma amarilla. Lava ascendente exige saltar por la ruta antes de que suba la lava; Lluvia de meteoritos dura 30 segundos; Plataformas que caen premia cruzar la ruta antes de perder los bloques; Carrera contrarreloj usa el obby y muestra el tiempo; Caza de monedas tiene 12 monedas; Rey de la colina exige controlar la plataforma central durante 20 segundos; Escondite requiere encontrar cinco NPC; Simon dice pide llegar al color indicado.
+En la Horda zombi, **7/9** cambian entre **Espada**, **Bomba** y **Pala**, y **3** usa el objeto. En Horda zombi, Arena de espadas y Defensa de base, **7/9** seleccionan espada/bomba y **3** usa el objeto; Horda zombi conserva también la pala. La Arena y Defensa comparten la espada, su animación y la bomba de la Horda. Mini tycoon usa **3** para comprar desde la plataforma amarilla, situada delante del punto de aparición. Lava ascendente exige saltar por la ruta antes de que suba la lava; Lluvia de meteoritos dura 30 segundos; Plataformas que caen premia cruzar la ruta antes de perder los bloques; Carrera contrarreloj usa el obby y muestra el tiempo; Caza de monedas tiene 12 monedas; Rey de la colina exige controlar la plataforma central durante 20 segundos; Escondite es un mapa amplio con refugios y NPC ocultos que se revelan cuando te acercas; Simon dice pide llegar al color indicado. Cada partida genera entre 3 y 5 avatares bot: caminan, saltan ante obstáculos y, en los modos armados, atacan con espada o bomba. Al reaparecer reciben un aura verde temporal.
 
 ## Compatibilidad
 
 Esta variante no requiere JSR-82 ni permisos de Bluetooth y no incluye multijugador. Para dispositivos con Bluetooth, usa la rama `fix-m3g-model-import`.
+
+## Niveles
+
+Cada juego tiene su propia clase Java (`ObbyLevel.java`, `HideSeekLevel.java`, etc.) para mantener separados el nombre y la geometría del mapa; `LevelCatalog.java` registra los 15 niveles. `main.java` conserva el motor común de renderizado, controles y físicas.
 
 ## Studio
 
@@ -43,6 +47,6 @@ Los archivos `noobidle.m3g`, `noobrun.m3g` y `noobjump.m3g` no son necesarios: e
 
 ## Compilación
 
-Compila `main.java` con un SDK MIDP 2.0 que incluya JSR-184, copia los cinco PNG al directorio de recursos del proyecto y vuelve a instalar el JAR generado.
+Compila todos los archivos `.java` del paquete `meblox` con un SDK MIDP 2.0 que incluya JSR-184, copia los recursos PNG del proyecto al JAR y vuelve a instalarlo.
 
-**Estado:** la rama incluye una variante sin Bluetooth; los 15 juegos aún no se han compilado ni probado en un emulador o teléfono.
+**Estado:** la rama incluye una variante sin Bluetooth; los 15 juegos y los bots aún no se han compilado ni probado en un emulador o teléfono.

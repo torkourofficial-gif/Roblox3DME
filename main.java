@@ -53,12 +53,7 @@ public final class main extends MIDlet {
         private StudioObject[] studioObjects = new StudioObject[40];
         private int studioObjectCount, studioSelected = -1, studioPalette, studioProperty;
         private boolean studioTesting;
-        private static final String[] GAME_NAMES = new String[] {
-            "Obby", "Baseplate", "Horda zombi", "Studio", "Lava ascendente",
-            "Lluvia de meteoritos", "Plataformas que caen", "Carrera contrarreloj",
-            "Caza de monedas", "Rey de la colina", "Arena de espadas", "Escondite",
-            "Simon dice", "Mini tycoon", "Defensa de base"
-        };
+        private static final String[] GAME_NAMES = LevelCatalog.names();
         private float[][] modeBlocks = new float[96][7];
         private Node[] modeBlockNodes = new Node[96];
         private boolean[] modeBlockActive = new boolean[96];
@@ -101,6 +96,8 @@ public final class main extends MIDlet {
         private long gameClock, respawnAt, invulnerableUntil;
         private PhysicsPiece[] deathPieces;
         private Zombie[] zombies = new Zombie[12];
+        private PlayerBot[] playerBots = new PlayerBot[5];
+        private int playerBotCount, randomState;
         private WorldObject[] worldObjects = new WorldObject[80];
         private Group protectionAura;
         private Material protectionAuraMaterial;
@@ -109,54 +106,9 @@ public final class main extends MIDlet {
         private String initError = "";
 
         private static final int OBBY_PLATFORM_COUNT = 81;
-        private static final float[][] OBBY_BLOCKS = createObbyBlocks();
+        private static final float[][] OBBY_BLOCKS = ObbyLevel.blocks();
 
-        private static final float[][] ZOMBIE_BLOCKS = new float[][] {
-            // Low cover around the arena.
-            {-7.5f,0.75f,-2.0f, 2.8f,1.5f,0.8f, 0x74614A},
-            { 7.5f,0.75f,-2.0f, 2.8f,1.5f,0.8f, 0x74614A},
-            {-7.5f,0.75f, 3.0f, 2.8f,1.5f,0.8f, 0x66563F},
-            { 7.5f,0.75f, 3.0f, 2.8f,1.5f,0.8f, 0x66563F},
-            {-3.2f,0.55f,-1.8f, 1.2f,1.1f,1.2f, 0x8B6B45},
-            { 3.2f,0.55f, 1.8f, 1.2f,1.1f,1.2f, 0x8B6B45},
-            { 0.0f,0.45f, 5.8f, 3.2f,0.9f,0.8f, 0x6D5842},
-            // Jumpable stepped platforms make a raised route through the arena.
-            {-5.5f,0.30f,-5.0f, 3.0f,0.6f,3.0f, 0x6BAA55},
-            {-5.5f,0.80f,-7.8f, 2.6f,0.5f,2.6f, 0xD2A84B},
-            {-3.4f,1.30f,-9.3f, 2.4f,0.5f,2.4f, 0x6688C7},
-            {-0.7f,1.80f,-9.0f, 2.5f,0.5f,2.5f, 0xA26BC0},
-            { 2.3f,1.30f,-8.0f, 2.4f,0.5f,2.4f, 0xD2A84B},
-            { 5.1f,0.80f,-6.0f, 2.8f,0.5f,2.8f, 0x6BAA55},
-            { 5.7f,0.30f,-3.0f, 3.0f,0.6f,2.4f, 0x6688C7},
-            // Side ledges and a central raised island.
-            {-9.0f,0.35f, 0.0f, 1.8f,0.7f,4.0f, 0x6BAA55},
-            { 9.0f,0.35f, 0.0f, 1.8f,0.7f,4.0f, 0x6BAA55},
-            {-3.8f,0.40f, 7.3f, 2.6f,0.8f,2.6f, 0xD2A84B},
-            { 0.0f,0.85f, 8.0f, 3.4f,0.7f,2.8f, 0x6688C7},
-            { 3.8f,0.40f, 7.3f, 2.6f,0.8f,2.6f, 0xA26BC0}
-        };
-
-        private static float[][] createObbyBlocks() {
-            float[][] blocks = new float[OBBY_PLATFORM_COUNT][7];
-            float[] routeX = new float[] {0, 1.5f, 3, 3, 1.5f, 0, -1.5f, -3, -3, -1.5f};
-            int[] colors = new int[] {0xD94B45, 0xE3C44D, 0x4779D1, 0xB56AC8};
-            for (int i = 0; i < OBBY_PLATFORM_COUNT; i++) {
-                boolean finish = i == OBBY_PLATFORM_COUNT - 1;
-                float top = 0.65f + ((i * 7) % 4) * 0.12f;
-                float width = finish ? 5.0f : 2.2f;
-                float depth = finish ? 5.0f : 2.0f;
-                float height = finish ? 0.60f : 0.80f;
-                if (finish) top = height;
-                blocks[i][0] = routeX[i % routeX.length];
-                blocks[i][1] = top - height * 0.5f;
-                blocks[i][2] = -3.0f - i * 2.8f;
-                blocks[i][3] = width;
-                blocks[i][4] = height;
-                blocks[i][5] = depth;
-                blocks[i][6] = finish ? 0x63C7A5 : colors[i % colors.length];
-            }
-            return blocks;
-        }
+        private static final float[][] ZOMBIE_BLOCKS = ZombieHordeLevel.blocks();
 
         private static final class PhysicsPiece {
             Node node;
@@ -177,9 +129,22 @@ public final class main extends MIDlet {
             Group model;
             float x, z;
             long attackAt;
-            boolean alive = true;
+            boolean alive = true, hidden;
             Zombie(Group model, float x, float z) {
                 this.model = model; this.x = x; this.z = z;
+            }
+        }
+
+        private static final class PlayerBot {
+            Group model, aura;
+            float x,y,z,spawnX,spawnZ,targetX,targetZ,velocityY;
+            long nextThink,nextJump,nextAttack,respawnAt,invulnerableUntil,auraUntil;
+            boolean alive=true,grounded=true;
+            Mesh swordArm, leftArm, rightArm, leftLeg, rightLeg;
+            Group sword;
+            long attackUntil;
+            PlayerBot(float x,float z) {
+                this.x=x; this.z=z; spawnX=x; spawnZ=z; targetX=x; targetZ=z;
             }
         }
 
@@ -287,6 +252,8 @@ public final class main extends MIDlet {
             zombieWave = 0;
             nextWaveAt = 0;
             zombies = new Zombie[12];
+            playerBots = new PlayerBot[5]; playerBotCount = 0;
+            randomState = (int)(System.currentTimeMillis() ^ (game * 7919L));
             worldObjects = new WorldObject[80];
             grounded = true;
             dead = false;
@@ -308,7 +275,7 @@ public final class main extends MIDlet {
                 tokenNodes[i]=null;
             }
             tokenCount=0; modeCollected=0; modeGoal=0; modeScore=0; modeLives=3;
-            modeCash=10; tycoonLevel=0; simonTarget=0; simonRound=0;
+            modeCash=25; tycoonLevel=0; simonTarget=0; simonRound=0;
             defenseLeaked=0; lavaHeight=-1.0f; lavaNode=null;
             modeStartAt=0; modeEventAt=0; modeScoreAt=0;
             world = new World();
@@ -329,7 +296,8 @@ public final class main extends MIDlet {
             world.setActiveCamera(camera);
 
             // Every mode uses a compact procedural scene; Lava Rise replaces the floor with lava.
-            if (game != 4) world.addChild(makeBox(0, -0.25f, 0, 24, 0.5f, 24, 0x54A64B));
+            if (game != 4) world.addChild(makeBox(0, -0.25f, 0,
+                    game == 11 ? 44 : 24, 0.5f, game == 11 ? 44 : 24, 0x54A64B));
             if (game == 0) {
                 // An 80-platform zigzag course ending on an enlarged green finish.
                 for (int i = 0; i < OBBY_BLOCKS.length; i++) {
@@ -338,7 +306,8 @@ public final class main extends MIDlet {
                 }
             } else if (game == 1) {
                 // Red touch-to-die test block in the baseplate lobby.
-                world.addChild(makeBox(3, 0.35f, -3, 1.2f, 0.7f, 1.2f, 0xE32636));
+                float[] hazard=BaseplateLevel.blocks()[0];
+                world.addChild(makeBox(hazard[0],hazard[1],hazard[2],hazard[3],hazard[4],hazard[5],(int)hazard[6]));
             } else if (game == 2) {
                 // Multi-level zombie arena with cover, side ledges and jumpable steps.
                 for (int i = 0; i < ZOMBIE_BLOCKS.length; i++) {
@@ -372,6 +341,7 @@ public final class main extends MIDlet {
             if (game == 9) spawnKingBots();
             if (game == 11) spawnSeekBots();
             if (game == 14) spawnDefenseWave();
+            spawnPlayerBots();
         }
 
         private int addModeBlock(float x, float y, float z, float sx, float sy,
@@ -395,82 +365,175 @@ public final class main extends MIDlet {
         }
 
         private void buildExtraGame(int game) {
+            GameLevel level = LevelCatalog.get(game);
+            float[][] blocks = level.blocks();
+            for (int i = 0; i < blocks.length; i++) {
+                float[] b = blocks[i];
+                addModeBlock(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]);
+            }
             if (game == 4) {
                 lavaNode=makeBox(0,lavaHeight-0.12f,0,24,0.24f,24,0xF04B25);
                 world.addChild(lavaNode);
-                for (int i=0;i<18;i++) {
-                    float x=(float)Math.sin(i*1.7)*4.0f;
-                    float z=-1.0f-i*1.05f;
-                    float y=0.62f+i*0.48f;
-                    addModeBlock(x,y,z,2.8f,0.45f,2.8f,
-                            new int[] {0xE9B44C,0xD97B35,0xC85C3C,0xE5CF66}[i%4]);
-                }
-            } else if (game == 5) {
-                addModeBlock(-6,0.75f,-4,2.4f,1.5f,1.0f,0x74614A);
-                addModeBlock(6,0.75f,-2,2.4f,1.5f,1.0f,0x66563F);
-                addModeBlock(-3,0.55f,4,1.5f,1.1f,1.5f,0x8B6B45);
-                addModeBlock(3,0.55f,-7,1.5f,1.1f,1.5f,0x8B6B45);
-                addModeBlock(0,0.35f,7,3.0f,0.7f,1.0f,0x6688C7);
-            } else if (game == 6) {
-                for (int i=0;i<18;i++) {
-                    float x=(i%3-1)*2.4f + ((i/3)%2==0?0:1.0f);
-                    float z=-1.0f-(i/3)*2.4f;
-                    addModeBlock(x,0.28f,z,2.0f,0.56f,2.0f,
-                            new int[] {0xD94B45,0xE3C44D,0x4779D1}[i%3]);
-                }
-            } else if (game == 7) {
-                for (int i=0;i<OBBY_BLOCKS.length;i++) {
-                    float[] b=OBBY_BLOCKS[i];
-                    addModeBlock(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]);
-                }
             } else if (game == 8) {
-                addModeBlock(-5,0.5f,-5,2,1,2,0x6688C7);
-                addModeBlock(5,0.5f,-4,2,1,2,0xA26BC0);
-                addModeBlock(-4,0.5f,5,2,1,2,0xD2A84B);
-                addModeBlock(5,0.5f,5,2,1,2,0x6BAA55);
                 for (int i=0;i<12;i++) {
-                    float x=-9.0f+(i%4)*6.0f;
-                    float z=-8.0f+(i/4)*7.5f;
+                    float x=-9.0f+(i%4)*6.0f, z=-8.0f+(i/4)*7.5f;
                     addToken(x,0.55f,z);
                 }
                 modeGoal=tokenCount;
-            } else if (game == 9) {
-                addModeBlock(0,0.35f,0,5.0f,0.7f,5.0f,0xD2A84B);
-                addModeBlock(-4,0.18f,0,2.0f,0.36f,3.0f,0x6BAA55);
-                addModeBlock(4,0.18f,0,2.0f,0.36f,3.0f,0x6BAA55);
-                addModeBlock(0,0.18f,-4,3.0f,0.36f,2.0f,0x6688C7);
-                addModeBlock(0,0.18f,4,3.0f,0.36f,2.0f,0x6688C7);
-            } else if (game == 10) {
-                for (int i=0;i<8;i++) {
-                    double a=6.2831853*i/8.0;
-                    addModeBlock((float)Math.cos(a)*7.0f,0.8f,
-                            (float)Math.sin(a)*7.0f,1.3f,1.6f,1.3f,
-                            i%2==0?0x74614A:0x6688C7);
-                }
-            } else if (game == 11) {
-                addModeBlock(0,1.0f,-3,8,2,0.7f,0x74614A);
-                addModeBlock(-4,0.7f,2,0.7f,1.4f,7,0x66563F);
-                addModeBlock(4,0.7f,3,0.7f,1.4f,6,0x795438);
-                addModeBlock(-1,0.5f,7,5,1,0.7f,0x8B6B45);
-                addModeBlock(1,0.5f,-8,4,1,0.7f,0x795438);
-            } else if (game == 12) {
-                addModeBlock(-4,0.18f,-4,3.5f,0.36f,3.5f,0xE34B4B);
-                addModeBlock(4,0.18f,-4,3.5f,0.36f,3.5f,0x4B78E3);
-                addModeBlock(-4,0.18f,4,3.5f,0.36f,3.5f,0x55B66A);
-                addModeBlock(4,0.18f,4,3.5f,0.36f,3.5f,0xE3C44D);
-            } else if (game == 13) {
-                addModeBlock(0,0.18f,0,8,0.36f,8,0x6BAA55);
-                addModeBlock(-8,0.8f,0,1,1.6f,10,0x6688C7);
-                addModeBlock(8,0.8f,0,1,1.6f,10,0x6688C7);
-                addModeBlock(0,0.8f,-8,10,1.6f,1,0x6688C7);
-                addModeBlock(0,0.18f,5,1.8f,0.36f,1.8f,0xE3C44D);
-            } else if (game == 14) {
-                addModeBlock(-5,0.2f,-5,1.5f,0.4f,1.5f,0x6688C7);
-                addModeBlock(5,0.2f,-5,1.5f,0.4f,1.5f,0x6688C7);
-                addModeBlock(-5,0.2f,5,1.5f,0.4f,1.5f,0x6688C7);
-                addModeBlock(5,0.2f,5,1.5f,0.4f,1.5f,0x6688C7);
-                addModeBlock(0,0.25f,0,3.0f,0.5f,3.0f,0xD2A84B);
             }
+        }
+
+        private int nextRandom(int limit) {
+            randomState=randomState*1103515245+12345;
+            return limit<=0?0:((randomState>>>8)&0x7fffffff)%limit;
+        }
+        private void spawnPlayerBots() {
+            playerBotCount=3+nextRandom(3);
+            for(int i=0;i<playerBotCount;i++) {
+                float x,z;
+                if((currentGame==0||currentGame==7)&&OBBY_BLOCKS.length>0){
+                    x=OBBY_BLOCKS[0][0]+(i-2)*0.48f;z=OBBY_BLOCKS[0][2]+1.0f;
+                }else if((currentGame==4||currentGame==6)&&modeBlockCount>0){
+                    x=modeBlocks[0][0]+(i-2)*0.42f;z=modeBlocks[0][2]+0.85f;
+                }else{x=(i-2)*1.25f;z=2.0f+(i%2);}
+                PlayerBot bot=new PlayerBot(x,z);playerBots[i]=bot;addPlayerBotModel(bot,true);
+            }
+        }
+        private void addPlayerBotModel(PlayerBot bot,boolean protectedSpawn) {
+            try{
+                Mesh l=leftArm,r=rightArm,ll=leftLeg,rl=rightLeg;Group sword=swordVisual;
+                bot.model=buildNoob(false);
+                bot.leftArm=leftArm;bot.rightArm=rightArm;bot.leftLeg=leftLeg;bot.rightLeg=rightLeg;
+                bot.swordArm=rightArm;bot.sword=swordVisual;
+                leftArm=l;rightArm=r;leftLeg=ll;rightLeg=rl;swordVisual=sword;
+                if(bot.sword!=null)bot.sword.setRenderingEnable(false);
+                bot.model.setTranslation(bot.x,bot.y,bot.z);world.addChild(bot.model);bot.alive=true;
+                if(protectedSpawn){bot.aura=makeBotAura();bot.model.addChild(bot.aura);
+                    bot.invulnerableUntil=gameClock+4000;bot.auraUntil=bot.invulnerableUntil;}
+            }catch(Throwable t){initError="Player bot: "+t.toString();}
+        }
+        private void killPlayerBot(PlayerBot bot) {
+            if(bot==null||!bot.alive||gameClock<bot.invulnerableUntil)return;
+            bot.alive=false;bot.respawnAt=gameClock+2600;
+            if(bot.model!=null)try{world.removeChild(bot.model);}catch(Throwable ignored){}
+            bot.model=null;bot.aura=null;
+        }
+        private void updatePlayerBots(int dt) {
+            if(playerBots==null||world==null)return;
+            for(int i=0;i<playerBotCount;i++){
+                PlayerBot bot=playerBots[i];if(bot==null)continue;
+                if(!bot.alive){if(gameClock>=bot.respawnAt){bot.x=bot.spawnX;bot.z=bot.spawnZ;
+                    bot.y=0;bot.velocityY=0;bot.grounded=true;addPlayerBotModel(bot,true);}continue;}
+                if(bot.attackUntil>0&&gameClock>=bot.attackUntil){
+                    if(bot.swordArm!=null)bot.swordArm.setOrientation(0,1,0,0);
+                    if(bot.sword!=null)bot.sword.setRenderingEnable(false);
+                    bot.model.setScale(1,1,1);bot.attackUntil=0;
+                }
+                if(bot.aura!=null){
+                    float pulse=1.0f+(float)Math.sin(gameClock*0.012f)*0.045f;
+                    bot.aura.setScale(pulse,pulse,pulse);
+                    if(gameClock>=bot.auraUntil){try{bot.model.removeChild(bot.aura);}catch(Throwable ignored){}
+                        bot.aura=null;}
+                }
+                boolean armed=currentGame==2||currentGame==10||currentGame==14;
+                float dx=px-bot.x,dz=pz-bot.z,d=(float)Math.sqrt(dx*dx+dz*dz);
+                if(armed&&d<4.2f&&gameClock>=bot.nextAttack&&gameClock>=bot.invulnerableUntil){
+                    bot.nextAttack=gameClock+2300+nextRandom(1200);
+                    if(d<2.3f){
+                        bot.model.setOrientation((float)(fastAtan2(-dx,-dz)*57.29578f),0,1,0);
+                        animatePlayerBotWeapon(bot);
+                        if(!dead&&gameClock>=invulnerableUntil)beginDeath();
+                    }else if(nextRandom(2)==0){
+                        float inv=1.0f/d;
+                        addWorldObject(makeBombModel(),bot.x+dx*inv*0.8f,bot.y+0.45f,
+                                bot.z+dz*inv*0.8f,dx*inv*0.0015f,0,dz*inv*0.0015f,
+                                0.34f,0.44f,0.34f,0,true,2600);
+                        animatePlayerBotWeapon(bot);
+                    }
+                }
+                if(gameClock>=bot.nextThink||(armed&&d>3.0f)){
+                    bot.nextThink=gameClock+900+nextRandom(1400);
+                    if(armed){bot.targetX=px;bot.targetZ=pz;}
+                    else{bot.targetX=bot.spawnX+(nextRandom(160)-80)*0.1f;
+                        bot.targetZ=bot.spawnZ+(nextRandom(160)-80)*0.1f;}
+                    if(bot.grounded&&gameClock>=bot.nextJump&&
+                            (nextRandom(4)==0||currentGame==0||currentGame==7)){
+                        bot.velocityY=0.0068f;bot.grounded=false;
+                        bot.nextJump=gameClock+1300+nextRandom(1000);}
+                }
+                float tx=bot.targetX-bot.x,tz=bot.targetZ-bot.z,dest=(float)Math.sqrt(tx*tx+tz*tz);
+                if(dest>0.18f){
+                    float move=Math.min(dt*0.00115f,dest),mx=tx/dest*move,mz=tz/dest*move;
+                    float nx=bot.x+mx,nz=bot.z+mz;
+                    if(!isWorldBlocked(nx,bot.z,bot.y,1.9f))bot.x=nx;
+                    else if(bot.grounded&&gameClock>=bot.nextJump){
+                        bot.velocityY=0.0075f;bot.grounded=false;bot.nextJump=gameClock+900;}
+                    if(!isWorldBlocked(bot.x,nz,bot.y,1.9f))bot.z=nz;
+                    bot.model.setOrientation((float)(fastAtan2(-mx,-mz)*57.29578f),0,1,0);
+                }
+                if(!bot.grounded){
+                    bot.y+=bot.velocityY*dt;bot.velocityY-=0.000018f*dt;
+                    float top=botGroundTop(bot.x,bot.z);
+                    if(bot.velocityY<0&&bot.y<=top){bot.y=top;bot.velocityY=0;bot.grounded=true;}}
+                if(bot.leftArm!=null&&distance>0.18f&&gameClock>=bot.attackUntil){
+                    float gait=(float)Math.sin(gameClock*0.016f)*24.0f;
+                    bot.leftArm.setOrientation(gait,1,0,0);
+                    bot.rightArm.setOrientation(-gait,1,0,0);
+                    bot.leftLeg.setOrientation(-gait,1,0,0);
+                    bot.rightLeg.setOrientation(gait,1,0,0);
+                }
+                bot.model.setTranslation(bot.x,bot.y,bot.z);
+            }
+        }
+        private void animatePlayerBotWeapon(PlayerBot bot) {
+            bot.attackUntil=gameClock+450;
+            if(bot.swordArm!=null)bot.swordArm.setOrientation(-42,1,0,0);
+            if(bot.sword!=null)bot.sword.setRenderingEnable(true);
+        }
+
+        private float botGroundTop(float x,float z) {
+            float top=currentGame==4?-20.0f:0.0f;
+            if(currentGame==0||currentGame==7)for(int i=0;i<OBBY_BLOCKS.length;i++){
+                float[] b=OBBY_BLOCKS[i];
+                if(Math.abs(x-b[0])<b[3]*0.5f+0.2f&&Math.abs(z-b[2])<b[5]*0.5f+0.2f)
+                    if(b[1]+b[4]*0.5f>top)top=b[1]+b[4]*0.5f;}
+            for(int i=0;i<modeBlockCount;i++)if(modeBlockActive[i]){
+                float[] b=modeBlocks[i];
+                if(Math.abs(x-b[0])<b[3]*0.5f+0.2f&&Math.abs(z-b[2])<b[5]*0.5f+0.2f)
+                    if(b[1]+b[4]*0.5f>top)top=b[1]+b[4]*0.5f;}
+            return top;
+        }
+        private Group makeBotAura() {
+            Group aura=new Group();aura.addChild(makeAuraMesh(0x5A43FF72));
+            aura.setTranslation(0,1.35f,0);return aura;
+        }
+        private Mesh makeAuraMesh(int color) {
+            final int rings=10,segments=20;int[] strips=new int[rings];
+            for(int i=0;i<rings;i++)strips[i]=(segments+1)*2;
+            short[] shell=new short[rings*(segments+1)*2*3];int out=0;
+            for(int r=0;r<rings;r++){
+                double a0=-1.57079632679+3.14159265359*r/rings;
+                double a1=-1.57079632679+3.14159265359*(r+1)/rings;
+                for(int q=0;q<=segments;q++){
+                    double lon=6.28318530718*q/segments;
+                    shell[out++]=(short)(Math.cos(a0)*Math.sin(lon)*1350);
+                    shell[out++]=(short)(Math.sin(a0)*1350);
+                    shell[out++]=(short)(Math.cos(a0)*Math.cos(lon)*1350);
+                    shell[out++]=(short)(Math.cos(a1)*Math.sin(lon)*1350);
+                    shell[out++]=(short)(Math.sin(a1)*1350);
+                    shell[out++]=(short)(Math.cos(a1)*Math.cos(lon)*1350);}
+            }
+            VertexArray va=new VertexArray(rings*(segments+1)*2,3,2);
+            va.set(0,rings*(segments+1)*2,shell);
+            VertexBuffer vb=new VertexBuffer();vb.setPositions(va,0.001f,null);
+            TriangleStripArray tris=new TriangleStripArray(0,strips);
+            Appearance ap=new Appearance();Material mat=new Material();
+            mat.setColor(Material.AMBIENT,color);mat.setColor(Material.DIFFUSE,color);
+            mat.setColor(Material.EMISSIVE,color);ap.setMaterial(mat);
+            CompositingMode cm=new CompositingMode();cm.setBlending(CompositingMode.ALPHA);
+            ap.setCompositingMode(cm);PolygonMode pm=new PolygonMode();
+            pm.setCulling(PolygonMode.CULL_NONE);ap.setPolygonMode(pm);
+            return new Mesh(vb,new IndexBuffer[]{tris},new Appearance[]{ap});
         }
 
         private void spawnSimpleBot(int slot, float x, float z) {
@@ -494,11 +557,14 @@ public final class main extends MIDlet {
 
         private void spawnSeekBots() {
             zombies=new Zombie[6];
-            spawnSimpleBot(0,-9,-8);
-            spawnSimpleBot(1,8,-8);
-            spawnSimpleBot(2,-8,8);
-            spawnSimpleBot(3,8,8);
-            spawnSimpleBot(4,0,-10);
+            spawnSimpleBot(0,-14,-12.2f);
+            spawnSimpleBot(1,14,-12.2f);
+            spawnSimpleBot(2,-14,13.8f);
+            spawnSimpleBot(3,14,13.8f);
+            spawnSimpleBot(4,-1.5f,-16.2f);
+            for(int i=0;i<5;i++) if(zombies[i]!=null) {
+                zombies[i].hidden=true; zombies[i].model.setRenderingEnable(false);
+            }
             modeGoal=5;
         }
 
@@ -631,7 +697,12 @@ public final class main extends MIDlet {
             for(int i=0;i<zombies.length;i++) {
                 Zombie z=zombies[i]; if(z==null||!z.alive) continue;
                 float dx=px-z.x,dz=pz-z.z;
-                if(dx*dx+dz*dz<1.1f*1.1f) {
+                float distanceSquared=dx*dx+dz*dz;
+                if(z.hidden && distanceSquared<3.4f*3.4f) {
+                    z.hidden=false; z.model.setRenderingEnable(true);
+                    modeStatus("Encontraste un escondite");
+                }
+                if(distanceSquared<1.1f*1.1f) {
                     z.alive=false;
                     try {world.removeChild(z.model);}catch(Throwable ignored){}
                     modeStatus("Found "+(modeGoal-countZombies())+"/"+modeGoal);
@@ -659,11 +730,11 @@ public final class main extends MIDlet {
 
         private void useTycoonAction() {
             if(currentGame!=13) return;
-            if(Math.abs(px)>2.0f||Math.abs(pz-5.0f)>2.0f) {
-                modeStatus("Stand on the yellow build pad");
+            if(Math.abs(px)>1.2f||Math.abs(pz+3.0f)>1.2f) {
+                modeStatus("Stand on the yellow build pad at center");
                 return;
             }
-            int cost=5+tycoonLevel*5;
+            int cost=5+tycoonLevel*3;
             if(modeCash<cost) {modeStatus("Need "+cost+" cash");return;}
             modeCash-=cost; tycoonLevel++;
             float x=((tycoonLevel-1)%3-1)*2.2f;
@@ -933,6 +1004,12 @@ public final class main extends MIDlet {
                     try { world.removeChild(z.model); } catch (Throwable ignored) {}
                 }
             }
+            for(int i=0;i<playerBotCount;i++){
+                PlayerBot bot=playerBots[i];
+                if(bot==null||!bot.alive||gameClock<bot.invulnerableUntil)continue;
+                float dx=bot.x-bx,dz=bot.z-bz;
+                if(dx*dx+dz*dz<=radiusSquared)killPlayerBot(bot);
+            }
             float playerX = px - bx, playerZ = pz - bz;
             if (!dead && gameClock >= invulnerableUntil &&
                     playerX * playerX + playerZ * playerZ <= radiusSquared) beginDeath();
@@ -940,55 +1017,41 @@ public final class main extends MIDlet {
         }
 
         private void useInventoryItem() {
-            if (dead || currentGame != 2) return;
-            if (inventorySelection == 0) {
-                if (gameClock < swordAttackUntil) return;
-                swordAttackUntil = gameClock + 600;
-                float fx = (float)Math.sin(yaw), fz = -(float)Math.cos(yaw);
-                int target = -1;
-                float closest = 2.55f * 2.55f;
-                for (int i = 0; i < zombies.length; i++) {
-                    Zombie z = zombies[i];
-                    if (z == null || !z.alive) continue;
-                    float dx = z.x - px, dz = z.z - pz;
-                    float distanceSquared = dx * dx + dz * dz;
-                    if (distanceSquared > closest) continue;
-                    float dot = dx * fx + dz * fz;
-                    if (dot < 0.10f) continue;
-                    target = i;
-                    closest = distanceSquared;
-                }
-                if (target >= 0) {
-                    zombies[target].alive = false;
-                    try { world.removeChild(zombies[target].model); } catch (Throwable ignored) {}
-                    updateHordeStatus();
-                }
-                animateNoob();
-            } else if (inventorySelection == 1) {
-                float fx = (float)Math.sin(yaw), fz = -(float)Math.cos(yaw);
-                Group bomb = new Group();
-                bomb.addChild(makeBox(0, 0, 0, 0.34f, 0.34f, 0.34f, 0xE52B2B));
-                bomb.addChild(makeBox(0, 0.21f, 0, 0.12f, 0.10f, 0.12f, 0x303030));
-                addWorldObject(bomb, px + fx * 0.85f, jumpY + 0.45f, pz + fz * 0.85f,
-                        fx * 0.0018f, 0.0f, fz * 0.0018f,
-                        0.34f, 0.44f, 0.34f, 0.0f, true, 2600);
-            } else {
-                float fx = (float)Math.sin(yaw), fz = -(float)Math.cos(yaw);
-                float rx = (float)Math.cos(yaw), rz = (float)Math.sin(yaw);
-                float centerX = px + fx * 1.75f, centerZ = pz + fz * 1.75f;
-                for (int row = 0; row < 2; row++) {
-                    for (int col = -1; col <= 1; col++) {
-                        Group block = new Group();
-                        block.addChild(makeBox(0, 0, 0, 0.88f, 0.82f, 0.36f,
-                                row == 0 ? 0x777777 : 0x969696));
-                        float x = centerX + rx * col * 0.86f;
-                        float z = centerZ + rz * col * 0.86f;
-                        addWorldObject(block, x, jumpY + 1.5f + row * 0.84f, z,
-                                0.0f, 0.0f, 0.0f, 0.88f, 0.82f, 0.36f,
-                                yaw * 57.29578f, false, 0);
-                    }
-                }
+            if(dead||(currentGame!=2&&currentGame!=10&&currentGame!=14))return;
+            int itemCount=currentGame==2?3:2;if(inventorySelection>=itemCount)inventorySelection=0;
+            if(inventorySelection==0){
+                if(gameClock<swordAttackUntil)return;swordAttackUntil=gameClock+600;
+                float fx=(float)Math.sin(yaw),fz=-(float)Math.cos(yaw);
+                int target=-1;float closest=2.55f*2.55f;
+                for(int i=0;i<zombies.length;i++){Zombie z=zombies[i];if(z==null||!z.alive)continue;
+                    float dx=z.x-px,dz=z.z-pz,d=dx*dx+dz*dz;
+                    if(d>closest||dx*fx+dz*fz<0.10f)continue;target=i;closest=d;}
+                if(target>=0){zombies[target].alive=false;
+                    try{world.removeChild(zombies[target].model);}catch(Throwable ignored){}
+                    if(currentGame!=2){modeScore++;modeStatus("Enemy down: "+modeScore);}}
+                else for(int i=0;i<playerBotCount;i++){PlayerBot bot=playerBots[i];
+                    if(bot==null||!bot.alive||gameClock<bot.invulnerableUntil)continue;
+                    float dx=bot.x-px,dz=bot.z-pz,d=dx*dx+dz*dz;
+                    if(d>closest||dx*fx+dz*fz<0.10f)continue;
+                    killPlayerBot(bot);modeScore++;if(currentGame!=2)modeStatus("Enemy down: "+modeScore);break;}
+                animateNoob();if(currentGame==2)updateHordeStatus();
+            }else if(inventorySelection==1){
+                float fx=(float)Math.sin(yaw),fz=-(float)Math.cos(yaw);
+                addWorldObject(makeBombModel(),px+fx*0.85f,jumpY+0.45f,pz+fz*0.85f,
+                        fx*0.0018f,0,fz*0.0018f,0.34f,0.44f,0.34f,0,true,2600);
+            }else if(currentGame==2){
+                float fx=(float)Math.sin(yaw),fz=-(float)Math.cos(yaw);
+                float rx=(float)Math.cos(yaw),rz=(float)Math.sin(yaw);
+                float cx=px+fx*1.75f,cz=pz+fz*1.75f;
+                for(int row=0;row<2;row++)for(int col=-1;col<=1;col++){
+                    Group block=new Group();block.addChild(makeBox(0,0,0,0.88f,0.82f,0.36f,row==0?0x777777:0x969696));
+                    addWorldObject(block,cx+rx*col*0.86f,jumpY+1.5f+row*0.84f,cz+rz*col*0.86f,
+                            0,0,0,0.88f,0.82f,0.36f,yaw,false,0);}
             }
+        }
+        private Group makeBombModel(){
+            Group bomb=new Group();bomb.addChild(makeBox(0,0,0,0.34f,0.34f,0.34f,0xE52B2B));
+            bomb.addChild(makeBox(0,0.21f,0,0.12f,0.10f,0.12f,0x303030));return bomb;
         }
 
         private Group makeSwordVisual() {
@@ -1192,7 +1255,8 @@ public final class main extends MIDlet {
             gameClock += dt;
             if (dead) {
                 if (currentGame == 2 || currentGame == 10) updateZombies(dt);
-                if (currentGame == 2 || currentGame == 5) updateWorldObjects(dt);
+                if (currentGame == 2 || currentGame == 5 || currentGame == 10 || currentGame == 14) updateWorldObjects(dt);
+                updatePlayerBots(dt);
                 updateDeathPieces(dt);
                 if (deathPieces != null && deathPieces.length > 1 && deathPieces[1] != null) {
                     PhysicsPiece torso = deathPieces[1];
@@ -1210,6 +1274,7 @@ public final class main extends MIDlet {
             }
             if (currentGame == 2 || currentGame == 10) updateZombies(dt);
             if (currentGame == 2 || currentGame == 5) updateWorldObjects(dt);
+            updatePlayerBots(dt);
             if (dead) return;
             animTime += dt;
             float step = dt * 0.004f;
@@ -1661,7 +1726,7 @@ public final class main extends MIDlet {
             g.drawString(modelStatus, 3, 20, Graphics.TOP|Graphics.LEFT);
             if (modelError.length() > 0) drawWrapped(g, modelError, 3, 38, getWidth() - 6);
             if (initError.length() > 0) drawWrapped(g, initError, 3, 72, getWidth() - 6);
-            if (currentGame == 2) drawInventory(g);
+            if (currentGame == 2 || currentGame == 10 || currentGame == 14) drawInventory(g);
             if (currentGame >= 4) drawExtraHud(g);
             if (currentGame == 3 && !paused) drawStudioHud(g);
             if (paused) drawPauseMenu(g);
@@ -1688,7 +1753,8 @@ public final class main extends MIDlet {
         }
 
         private void drawInventory(Graphics g) {
-            String[] items = new String[] {"Espada", "Bomba", "Pala"};
+            String[] items = currentGame==2 ? new String[] {"Espada","Bomba","Pala"} :
+                    new String[] {"Espada","Bomba"};
             int y = getHeight() - 2 * g.getFont().getHeight() - 6;
             g.setColor(0xFFFFFF);
             g.drawString("7/9 CAMBIAR   3 USAR", getWidth() / 2, y,
@@ -1962,7 +2028,8 @@ public final class main extends MIDlet {
             float swing = 0.0f;
             if (animation == 1) swing = (float)Math.sin(animTime * 0.012f) * 32.0f;
             else if (animation == 2) swing = -18.0f;
-            boolean swingingSword = currentGame == 2 && gameClock < swordAttackUntil;
+            boolean swingingSword = (currentGame == 2 || currentGame == 10 || currentGame == 14) &&
+                    gameClock < swordAttackUntil;
             leftArm.setOrientation(swing, 1, 0, 0);
             rightArm.setOrientation(swingingSword ? -35.0f : -swing, 1, 0, 0);
             leftLeg.setOrientation(-swing, 1, 0, 0);
@@ -2417,22 +2484,15 @@ public final class main extends MIDlet {
                 repaint();
                 return;
             }
-            if (currentGame == 2 &&
+            if ((currentGame == 2 || currentGame == 10 || currentGame == 14) &&
                     (keyCode == KEY_NUM7 || keyCode == KEY_NUM9)) {
-                inventorySelection = (inventorySelection +
-                        (keyCode == KEY_NUM9 ? 1 : 2)) % 3;
-                repaint();
-                return;
+                int n=currentGame==2?3:2;
+                inventorySelection=(inventorySelection+(keyCode==KEY_NUM9?1:n-1))%n;
+                repaint(); return;
             }
-            if (currentGame == 2 && keyCode == KEY_NUM3) {
-                useInventoryItem();
-                repaint();
-                return;
-            }
-            if ((currentGame == 10 || currentGame == 14) && keyCode == KEY_NUM3) {
-                useArenaSword();
-                repaint();
-                return;
+            if ((currentGame == 2 || currentGame == 10 || currentGame == 14) &&
+                    keyCode == KEY_NUM3) {
+                useInventoryItem(); repaint(); return;
             }
             if (currentGame == 13 && keyCode == KEY_NUM3) {
                 useTycoonAction();
