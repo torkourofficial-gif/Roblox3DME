@@ -136,10 +136,18 @@ public final class main extends MIDlet {
             }
         }
 
+        private static final int[] BOT_SKIN_COLORS =
+                {0xF5C542,0xC68642,0xF1C27D,0x8D5524,0xE0AC69,0xD9A066};
+        private static final int[] BOT_SHIRT_COLORS =
+                {0x1769AA,0xC43C35,0x7F58A5,0x2C8C65,0x303F9F,0xD87C22,0x444444};
+        private static final int[] BOT_LEG_COLORS =
+                {0x2E9E45,0x333333,0x365E9D,0x6D4635,0x6B3E76,0xB8A23A};
+
         private static final class PlayerBot {
             Group model, aura;
             float x,y,z,spawnX,spawnZ,targetX,targetZ,velocityY;
             long nextThink,nextJump,nextAttack,respawnAt,invulnerableUntil,auraUntil;
+            int skinColor, shirtColor, legColor;
             boolean alive=true,grounded=true;
             Mesh swordArm, leftArm, rightArm, leftLeg, rightLeg;
             Group sword;
@@ -151,7 +159,7 @@ public final class main extends MIDlet {
 
         private static final class WorldObject {
             PhysicsPiece body;
-            boolean bomb, active = true;
+            boolean bomb, botOwned, active = true;
             long explodeAt, removeAt;
             WorldObject(PhysicsPiece body, boolean bomb, long explodeAt, long removeAt) {
                 this.body = body; this.bomb = bomb;
@@ -397,13 +405,17 @@ public final class main extends MIDlet {
                 }else if((currentGame==4||currentGame==6)&&modeBlockCount>0){
                     x=modeBlocks[0][0]+(i-2)*0.42f;z=modeBlocks[0][2]+0.85f;
                 }else{x=(i-2)*1.25f;z=2.0f+(i%2);}
-                PlayerBot bot=new PlayerBot(x,z);bot.y=botGroundTop(x,z);playerBots[i]=bot;addPlayerBotModel(bot,true);
+                PlayerBot bot=new PlayerBot(x,z);
+                bot.skinColor=BOT_SKIN_COLORS[(i+skinStart)%BOT_SKIN_COLORS.length];
+                bot.shirtColor=BOT_SHIRT_COLORS[(i+shirtStart)%BOT_SHIRT_COLORS.length];
+                bot.legColor=BOT_LEG_COLORS[(i+legStart)%BOT_LEG_COLORS.length];
+                bot.y=botGroundTop(x,z);playerBots[i]=bot;addPlayerBotModel(bot,true);
             }
         }
         private void addPlayerBotModel(PlayerBot bot,boolean protectedSpawn) {
             try{
                 Mesh l=leftArm,r=rightArm,ll=leftLeg,rl=rightLeg;Group sword=swordVisual;
-                bot.model=buildBotNoob();
+                bot.model=buildBotNoob(bot);
                 bot.leftArm=leftArm;bot.rightArm=rightArm;bot.leftLeg=leftLeg;bot.rightLeg=rightLeg;
                 bot.swordArm=rightArm;bot.sword=swordVisual;
                 leftArm=l;rightArm=r;leftLeg=ll;rightLeg=rl;swordVisual=sword;
@@ -416,14 +428,15 @@ public final class main extends MIDlet {
                 initError="Player bot: "+t.toString();
             }
         }
-        private Group buildBotNoob() {
+        private Group buildBotNoob(PlayerBot bot) {
             Group model=new Group();
-            model.addChild(makeBox(0,1.45f,0,0.78f,0.95f,0.40f,0x1769AA));
-            model.addChild(makeRoundedCylinderHead(0xF5C542));
-            Mesh la=(Mesh)makeBox(-0.54f,1.48f,0,0.30f,0.88f,0.40f,0xF5C542);
-            Mesh ra=(Mesh)makeBox(0.54f,1.48f,0,0.30f,0.88f,0.40f,0xF5C542);
-            Mesh ll=(Mesh)makeBox(-0.20f,0.52f,0,0.36f,0.78f,0.40f,0x2E9E45);
-            Mesh rl=(Mesh)makeBox(0.20f,0.52f,0,0.36f,0.78f,0.40f,0x2E9E45);
+            model.addChild(makeBox(0,1.45f,0,0.78f,0.95f,0.40f,bot.shirtColor));
+            model.addChild(makeRoundedCylinderHead(bot.skinColor));
+            model.addChild(makeTexturedFace("faceNEW.png",bot.skinColor));
+            Mesh la=(Mesh)makeBox(-0.54f,1.48f,0,0.30f,0.88f,0.40f,bot.skinColor);
+            Mesh ra=(Mesh)makeBox(0.54f,1.48f,0,0.30f,0.88f,0.40f,bot.skinColor);
+            Mesh ll=(Mesh)makeBox(-0.20f,0.52f,0,0.36f,0.78f,0.40f,bot.legColor);
+            Mesh rl=(Mesh)makeBox(0.20f,0.52f,0,0.36f,0.78f,0.40f,bot.legColor);
             model.addChild(la);model.addChild(ra);model.addChild(ll);model.addChild(rl);
             leftArm=la;rightArm=ra;leftLeg=ll;rightLeg=rl;
             Group weapon=new Group();
@@ -444,8 +457,14 @@ public final class main extends MIDlet {
             if(playerBots==null||world==null)return;
             for(int i=0;i<playerBotCount;i++){
                 PlayerBot bot=playerBots[i];if(bot==null)continue;
-                if(!bot.alive){if(gameClock>=bot.respawnAt){bot.x=bot.spawnX;bot.z=bot.spawnZ;
-                    bot.y=botGroundTop(bot.x,bot.z);bot.velocityY=0;bot.grounded=true;addPlayerBotModel(bot,true);}continue;}
+                if(!bot.alive){
+                    if(gameClock>=bot.respawnAt){
+                        bot.x=bot.spawnX;bot.z=bot.spawnZ;
+                        bot.y=botGroundTop(bot.x,bot.z);bot.velocityY=0;bot.grounded=true;
+                        addPlayerBotModel(bot,true);
+                    }
+                    continue;
+                }
                 if(bot.model==null){bot.alive=false;bot.respawnAt=gameClock+10000;continue;}
                 if(bot.attackUntil>0&&gameClock>=bot.attackUntil){
                     if(bot.swordArm!=null)bot.swordArm.setOrientation(0,1,0,0);
@@ -458,25 +477,43 @@ public final class main extends MIDlet {
                     if(gameClock>=bot.auraUntil){try{bot.model.removeChild(bot.aura);}catch(Throwable ignored){}
                         bot.aura=null;}
                 }
-                boolean armed=currentGame==2||currentGame==10||currentGame==14;
-                float dx=px-bot.x,dz=pz-bot.z,d=(float)Math.sqrt(dx*dx+dz*dz);
+
+                boolean attackPlayer=currentGame==10;
+                boolean attackZombies=currentGame==2||currentGame==14;
+                int targetZombie=attackZombies?nearestLivingZombie(bot.x,bot.z):-1;
+                float targetX=attackPlayer?px:(targetZombie>=0?zombies[targetZombie].x:bot.spawnX);
+                float targetZ=attackPlayer?pz:(targetZombie>=0?zombies[targetZombie].z:bot.spawnZ);
+                float dx=targetX-bot.x,dz=targetZ-bot.z,d=(float)Math.sqrt(dx*dx+dz*dz);
+                boolean armed=attackPlayer||(attackZombies&&targetZombie>=0);
                 if(armed&&d<4.2f&&gameClock>=bot.nextAttack&&gameClock>=bot.invulnerableUntil){
                     bot.nextAttack=gameClock+2300+nextRandom(1200);
                     if(d<2.3f){
                         bot.model.setOrientation((float)(fastAtan2(-dx,-dz)*57.29578f),0,1,0);
                         animatePlayerBotWeapon(bot);
-                        if(!dead&&gameClock>=invulnerableUntil)beginDeath();
+                        if(attackPlayer){
+                            if(!dead&&gameClock>=invulnerableUntil)beginDeath();
+                        }else if(targetZombie>=0&&zombies[targetZombie]!=null&&zombies[targetZombie].alive){
+                            Zombie target=zombies[targetZombie];
+                            target.alive=false;
+                            try{world.removeChild(target.model);}catch(Throwable ignored){}
+                            if(currentGame!=2){modeScore++;modeStatus("Enemy down: "+modeScore);}
+                            if(currentGame==2)updateHordeStatus();
+                        }
                     }else if(nextRandom(2)==0){
                         float inv=1.0f/d;
-                        addWorldObject(makeBombModel(),bot.x+dx*inv*0.8f,bot.y+0.45f,
+                        Node bomb=makeBombModel();
+                        addWorldObject(bomb,bot.x+dx*inv*0.8f,bot.y+0.45f,
                                 bot.z+dz*inv*0.8f,dx*inv*0.0015f,0,dz*inv*0.0015f,
                                 0.34f,0.44f,0.34f,0,true,2600);
+                        for(int q=0;q<worldObjects.length;q++)
+                            if(worldObjects[q]!=null&&worldObjects[q].active&&worldObjects[q].body.node==bomb)
+                                worldObjects[q].botOwned=true;
                         animatePlayerBotWeapon(bot);
                     }
                 }
                 if(gameClock>=bot.nextThink||(armed&&d>3.0f)){
                     bot.nextThink=gameClock+900+nextRandom(1400);
-                    if(armed){bot.targetX=px;bot.targetZ=pz;}
+                    if(armed){bot.targetX=targetX;bot.targetZ=targetZ;}
                     else{bot.targetX=bot.spawnX+(nextRandom(160)-80)*0.1f;
                         bot.targetZ=bot.spawnZ+(nextRandom(160)-80)*0.1f;}
                     if(bot.grounded&&gameClock>=bot.nextJump&&
@@ -484,29 +521,99 @@ public final class main extends MIDlet {
                         bot.velocityY=0.0068f;bot.grounded=false;
                         bot.nextJump=gameClock+1300+nextRandom(1000);}
                 }
-                float tx=bot.targetX-bot.x,tz=bot.targetZ-bot.z,dest=(float)Math.sqrt(tx*tx+tz*tz);
+                float tx=bot.targetX-bot.x,tz=bot.targetZ-bot.z;
+                float dest=(float)Math.sqrt(tx*tx+tz*tz),mx=0,mz=0;
                 if(dest>0.18f){
-                    float move=Math.min(dt*0.00115f,dest),mx=tx/dest*move,mz=tz/dest*move;
+                    float move=Math.min(dt*0.00115f,dest);mx=tx/dest*move;mz=tz/dest*move;
                     float nx=bot.x+mx,nz=bot.z+mz;
                     if(!isWorldBlocked(nx,bot.z,bot.y,1.9f))bot.x=nx;
                     else if(bot.grounded&&gameClock>=bot.nextJump){
                         bot.velocityY=0.0075f;bot.grounded=false;bot.nextJump=gameClock+900;}
                     if(!isWorldBlocked(bot.x,nz,bot.y,1.9f))bot.z=nz;
-                    bot.model.setOrientation((float)(fastAtan2(-mx,-mz)*57.29578f),0,1,0);
+                    if(mx!=0||mz!=0)bot.model.setOrientation((float)(fastAtan2(-mx,-mz)*57.29578f),0,1,0);
                 }
+
+                float previousY=bot.y;
                 if(!bot.grounded){
                     bot.y+=bot.velocityY*dt;bot.velocityY-=0.000018f*dt;
-                    float top=botGroundTop(bot.x,bot.z);
-                    if(bot.velocityY<0&&bot.y<=top){bot.y=top;bot.velocityY=0;bot.grounded=true;}}
+                }
+                botResolveLanding(bot,previousY);
+                if(bot.y < -8.0f ||
+                        (currentGame==4&&bot.y<lavaHeight+0.85f&&Math.abs(bot.x)<12.0f&&Math.abs(bot.z)<12.0f) ||
+                        (currentGame==3&&studioTesting&&botTouchesStudioHazard(bot)) ||
+                        (currentGame==1&&gameClock>=bot.invulnerableUntil&&bot.y<1.1f&&
+                                Math.abs(bot.x-3.0f)<0.95f&&Math.abs(bot.z+3.0f)<0.95f)){
+                    killPlayerBot(bot);continue;
+                }
                 if(bot.leftArm!=null&&dest>0.18f&&gameClock>=bot.attackUntil){
                     float gait=(float)Math.sin(gameClock*0.016f)*24.0f;
-                    bot.leftArm.setOrientation(gait,1,0,0);
-                    bot.rightArm.setOrientation(-gait,1,0,0);
-                    bot.leftLeg.setOrientation(-gait,1,0,0);
-                    bot.rightLeg.setOrientation(gait,1,0,0);
+                    bot.leftArm.setOrientation(gait,1,0,0);bot.rightArm.setOrientation(-gait,1,0,0);
+                    bot.leftLeg.setOrientation(-gait,1,0,0);bot.rightLeg.setOrientation(gait,1,0,0);
                 }
                 bot.model.setTranslation(bot.x,bot.y,bot.z);
             }
+        }
+        private int nearestLivingZombie(float x,float z) {
+            int target=-1;float best=Float.MAX_VALUE;
+            if(zombies==null)return -1;
+            for(int i=0;i<zombies.length;i++){
+                Zombie enemy=zombies[i];if(enemy==null||!enemy.alive)continue;
+                float dx=enemy.x-x,dz=enemy.z-z,dist=dx*dx+dz*dz;
+                if(dist<best){best=dist;target=i;}
+            }
+            return target;
+        }
+        private boolean botOnPlatform(float x,float z,float bx,float bz,float halfX,float halfZ) {
+            return Math.abs(x-bx)<=halfX+0.22f&&Math.abs(z-bz)<=halfZ+0.22f;
+        }
+        private void botResolveLanding(PlayerBot bot,float previousY) {
+            float top=Float.NEGATIVE_INFINITY;
+            if(currentGame!=4&&Math.abs(bot.x)<11.5f&&Math.abs(bot.z)<11.5f)top=0.0f;
+            if(currentGame>=4){
+                for(int i=0;i<modeBlockCount;i++){
+                    if(!modeBlockActive[i])continue;
+                    float[] b=modeBlocks[i];float platformTop=b[1]+b[4]*0.5f;
+                    if(botOnPlatform(bot.x,bot.z,b[0],b[2],b[3]*0.5f,b[5]*0.5f)&&
+                            ((bot.grounded&&bot.y>=platformTop-0.05f)||
+                            (!bot.grounded&&bot.velocityY<=0&&previousY>=platformTop&&bot.y<=platformTop)))
+                        top=Math.max(top,platformTop);
+                }
+            }
+            if(currentGame==3&&studioTesting){
+                for(int i=0;i<studioObjectCount;i++){
+                    StudioObject o=studioObjects[i];if(o==null||o.type==2)continue;
+                    float platformTop=o.y+o.sy*0.5f;
+                    if(botOnPlatform(bot.x,bot.z,o.x,o.z,o.sx*0.5f,o.sz*0.5f)&&
+                            ((bot.grounded&&bot.y>=platformTop-0.05f)||
+                            (!bot.grounded&&bot.velocityY<=0&&previousY>=platformTop&&bot.y<=platformTop)))
+                        top=Math.max(top,platformTop);
+                }
+            }
+            if(currentGame==0||currentGame==2){
+                float[][] platforms=currentGame==0?OBBY_BLOCKS:ZOMBIE_BLOCKS;
+                for(int i=0;i<platforms.length;i++){
+                    float[] b=platforms[i];float platformTop=b[1]+b[4]*0.5f;
+                    if(botOnPlatform(bot.x,bot.z,b[0],b[2],b[3]*0.5f,b[5]*0.5f)&&
+                            ((bot.grounded&&bot.y>=platformTop-0.05f)||
+                            (!bot.grounded&&bot.velocityY<=0&&previousY>=platformTop&&bot.y<=platformTop)))
+                        top=Math.max(top,platformTop);
+                }
+            }
+            if(!bot.grounded&&bot.velocityY<=0&&top!=Float.NEGATIVE_INFINITY&&
+                    previousY>=top&&bot.y<=top){
+                bot.y=top;bot.velocityY=0;bot.grounded=true;
+            }else if(bot.grounded){
+                if(top!=Float.NEGATIVE_INFINITY&&bot.y<=top+0.05f){bot.y=top;bot.velocityY=0;}
+                else bot.grounded=false;
+            }
+        }
+        private boolean botTouchesStudioHazard(PlayerBot bot) {
+            for(int i=0;i<studioObjectCount;i++){
+                StudioObject o=studioObjects[i];if(o==null||o.type!=2)continue;
+                boolean vertical=bot.y<=o.y+o.sy*0.5f+0.03f&&bot.y+1.9f>o.y-o.sy*0.5f;
+                if(vertical&&Math.abs(bot.x-o.x)<o.sx*0.5f+0.25f&&Math.abs(bot.z-o.z)<o.sz*0.5f+0.25f)return true;
+            }
+            return false;
         }
         private void animatePlayerBotWeapon(PlayerBot bot) {
             bot.attackUntil=gameClock+450;
@@ -812,6 +919,16 @@ public final class main extends MIDlet {
                     z.x+=dx/d*step; z.z+=dz/d*step;
                     z.model.setTranslation(z.x,0,z.z);
                 }
+                if(z.alive&&gameClock>=z.attackAt){
+                    for(int b=0;b<playerBotCount;b++){
+                        PlayerBot bot=playerBots[b];
+                        if(bot==null||!bot.alive||gameClock<bot.invulnerableUntil)continue;
+                        float bx=bot.x-z.x,bz=bot.z-z.z;
+                        if(bx*bx+bz*bz<0.9f*0.9f){
+                            z.attackAt=gameClock+900;killPlayerBot(bot);break;
+                        }
+                    }
+                }
             }
         }
 
@@ -879,6 +996,16 @@ public final class main extends MIDlet {
                     if (gameClock >= invulnerableUntil && !dead) {
                         beginDeath();
                         return;
+                    }
+                }
+                if(currentGame==2&&gameClock>=z.attackAt){
+                    for(int b=0;b<playerBotCount;b++){
+                        PlayerBot bot=playerBots[b];
+                        if(bot==null||!bot.alive||gameClock<bot.invulnerableUntil)continue;
+                        float bx=bot.x-z.x,bz=bot.z-z.z;
+                        if(bx*bx+bz*bz<0.9f*0.9f){
+                            z.attackAt=gameClock+900;killPlayerBot(bot);break;
+                        }
                     }
                 }
             }
@@ -1034,7 +1161,7 @@ public final class main extends MIDlet {
                 if(dx*dx+dz*dz<=radiusSquared)killPlayerBot(bot);
             }
             float playerX = px - bx, playerZ = pz - bz;
-            if (!dead && gameClock >= invulnerableUntil &&
+            if (!bomb.botOwned && !dead && gameClock >= invulnerableUntil &&
                     playerX * playerX + playerZ * playerZ <= radiusSquared) beginDeath();
             updateHordeStatus();
         }
@@ -1296,7 +1423,7 @@ public final class main extends MIDlet {
                 updateProtectionFlash();
             }
             if (currentGame == 2 || currentGame == 10) updateZombies(dt);
-            if (currentGame == 2 || currentGame == 5) updateWorldObjects(dt);
+            if (currentGame == 2 || currentGame == 5 || currentGame == 14) updateWorldObjects(dt);
             updatePlayerBots(dt);
             if (dead) return;
             animTime += dt;
