@@ -103,6 +103,7 @@ public final class main extends MIDlet {
         private long botDialogueUntil,nextBotDialogueAt;
         private int talkingBot=-1;
         private WorldObject[] worldObjects = new WorldObject[80];
+        private MeteorBurst[] meteorBursts = new MeteorBurst[4];
         private Group protectionAura;
         private Material protectionAuraMaterial;
         private String modelStatus = "Select a game";
@@ -185,11 +186,21 @@ public final class main extends MIDlet {
 
         private static final class WorldObject {
             PhysicsPiece body;
-            boolean bomb, botOwned, active = true;
+            boolean bomb, botOwned, meteor, active = true;
+            Group fireTrail;
             long explodeAt, removeAt;
             WorldObject(PhysicsPiece body, boolean bomb, long explodeAt, long removeAt) {
                 this.body = body; this.bomb = bomb;
                 this.explodeAt = explodeAt; this.removeAt = removeAt;
+            }
+        }
+
+        private static final class MeteorBurst {
+            Group model;
+            Mesh outer, inner;
+            long removeAt;
+            MeteorBurst(Group model,Mesh outer,Mesh inner,long removeAt) {
+                this.model=model;this.outer=outer;this.inner=inner;this.removeAt=removeAt;
             }
         }
 
@@ -331,8 +342,11 @@ public final class main extends MIDlet {
             world.setActiveCamera(camera);
 
             // Every mode uses a compact procedural scene; Lava Rise replaces the floor with lava.
-            if (game != 4) world.addChild(makeBox(0, -0.25f, 0,
-                    game == 11 ? 44 : 24, 0.5f, game == 11 ? 44 : 24, 0x54A64B));
+            // Obby, falling tiles, and their time trial course should float over the void.
+            if (game != 0 && game != 4 && game != 6 && game != 7)
+                world.addChild(makeBox(0, -0.25f, 0,
+                        game == 11 ? 44 : 24, 0.5f, game == 11 ? 44 : 24, 0x54A64B));
+            meteorBursts = new MeteorBurst[4];
             if (game == 0) {
                 // An 80-platform zigzag course ending on an enlarged green finish.
                 for (int i = 0; i < OBBY_BLOCKS.length; i++) {
@@ -637,7 +651,8 @@ public final class main extends MIDlet {
         }
         private void botResolveLanding(PlayerBot bot,float previousY) {
             float top=Float.NEGATIVE_INFINITY;
-            if(currentGame!=4&&Math.abs(bot.x)<11.5f&&Math.abs(bot.z)<11.5f)top=0.0f;
+            if(currentGame!=4&&currentGame!=0&&currentGame!=6&&currentGame!=7&&
+                    Math.abs(bot.x)<11.5f&&Math.abs(bot.z)<11.5f)top=0.0f;
             if(currentGame>=4){
                 for(int i=0;i<modeBlockCount;i++){
                     if(!modeBlockActive[i])continue;
@@ -813,8 +828,7 @@ public final class main extends MIDlet {
                     long seed=gameClock/850L+modeScore*17L;
                     float x=(float)((seed*37L)%190L)/10.0f-9.5f;
                     float z=(float)((seed*61L)%190L)/10.0f-9.5f;
-                    addWorldObject(makeBox(0,0,0,0.72f,0.72f,0.72f,0xA94732),
-                            x,8.5f,z,0,0,0,0.72f,0.72f,0.72f,0,false,0);
+                    spawnMeteor(x,z);
                 }
                 for(int i=0;i<worldObjects.length;i++) {
                     WorldObject o=worldObjects[i];
@@ -1160,6 +1174,7 @@ public final class main extends MIDlet {
         }
 
         private void updateWorldObjects(int dt) {
+            updateMeteorBursts();
             if (worldObjects == null) return;
             for (int i = 0; i < worldObjects.length; i++) {
                 WorldObject o = worldObjects[i];
@@ -1169,10 +1184,21 @@ public final class main extends MIDlet {
                     continue;
                 }
                 PhysicsPiece p = o.body;
+                if(o.meteor&&o.fireTrail!=null){
+                    float flicker=0.86f+(float)Math.sin(gameClock*0.028f+i*1.7f)*0.12f;
+                    o.fireTrail.setScale(flicker,1.0f+(1.0f-flicker),flicker);
+                }
                 p.vy -= 0.000018f * dt;
                 p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
                 p.rotation += p.spin * dt * 0.001f;
                 updatePieceExtents(p);
+                if(o.meteor&&p.vy<0.0f&&p.y-p.extentY<=0.0f){
+                    float impactX=p.x,impactZ=p.z;
+                    removeWorldObject(o);
+                    spawnMeteorBurst(impactX,0.45f,impactZ);
+                    damageAtMeteorImpact(impactX,impactZ);
+                    continue;
+                }
                 resolvePieceEnvironment(p);
             }
             for (int i = 0; i < worldObjects.length; i++) {
@@ -1198,7 +1224,7 @@ public final class main extends MIDlet {
             }
         }
 
-        private void addWorldObject(Node node, float x, float y, float z,
+        private WorldObject addWorldObject(Node node, float x, float y, float z,
                 float vx, float vy, float vz, float sx, float sy, float sz,
                 float orientation, boolean bomb, long fuse) {
             int slot = -1;
@@ -1221,6 +1247,69 @@ public final class main extends MIDlet {
             updatePieceExtents(body);
             worldObjects[slot] = new WorldObject(body, bomb,
                     bomb ? gameClock + fuse : 0, bomb ? 0 : gameClock + 45000);
+            return worldObjects[slot];
+        }
+
+        private void spawnMeteor(float x,float z) {
+            Group model=new Group();
+            model.addChild(makeBox(0,0,0,0.72f,0.72f,0.72f,0xA94732));
+            Group flame=new Group();
+            Mesh outer=makeAuraMesh(0xDFFF5018);
+            outer.setTranslation(0,-0.45f,0);outer.setScale(0.30f,0.48f,0.30f);
+            Mesh inner=makeAuraMesh(0xEFFFCC32);
+            inner.setTranslation(0,-0.73f,0);inner.setScale(0.19f,0.36f,0.19f);
+            flame.addChild(outer);flame.addChild(inner);model.addChild(flame);
+            WorldObject meteor=addWorldObject(model,x,8.5f,z,0,0,0,
+                    0.72f,0.72f,0.72f,0,false,0);
+            if(meteor!=null){meteor.meteor=true;meteor.fireTrail=flame;}
+        }
+
+        private void spawnMeteorBurst(float x,float y,float z) {
+            int slot=-1;
+            for(int i=0;i<meteorBursts.length;i++)
+                if(meteorBursts[i]==null||gameClock>=meteorBursts[i].removeAt){slot=i;break;}
+            if(slot<0){
+                slot=0;
+                for(int i=1;i<meteorBursts.length;i++)
+                    if(meteorBursts[i].removeAt<meteorBursts[slot].removeAt)slot=i;
+                try{world.removeChild(meteorBursts[slot].model);}catch(Throwable ignored){}
+            }
+            Group burst=new Group();
+            Mesh outer=makeAuraMesh(0xCFFF5418);
+            Mesh inner=makeAuraMesh(0xDFFFC72D);
+            inner.setScale(0.52f,0.52f,0.52f);
+            burst.addChild(outer);burst.addChild(inner);
+            burst.setTranslation(x,y,z);burst.setScale(0.08f,0.08f,0.08f);
+            world.addChild(burst);
+            meteorBursts[slot]=new MeteorBurst(burst,outer,inner,gameClock+360);
+        }
+
+        private void updateMeteorBursts() {
+            if(meteorBursts==null)return;
+            for(int i=0;i<meteorBursts.length;i++){
+                MeteorBurst burst=meteorBursts[i];if(burst==null)continue;
+                if(gameClock>=burst.removeAt){
+                    try{world.removeChild(burst.model);}catch(Throwable ignored){}
+                    meteorBursts[i]=null;continue;
+                }
+                float progress=1.0f-(burst.removeAt-gameClock)/360.0f;
+                float grow=0.08f+progress*0.62f;
+                burst.outer.setScale(grow,grow,grow);
+                burst.inner.setScale(grow*0.52f,grow*0.52f,grow*0.52f);
+            }
+        }
+
+        private void damageAtMeteorImpact(float x,float z) {
+            float radiusSquared=1.55f*1.55f;
+            float dx=px-x,dz=pz-z;
+            if(!dead&&gameClock>=invulnerableUntil&&dx*dx+dz*dz<=radiusSquared)
+                beginDeath();
+            for(int i=0;i<playerBotCount;i++){
+                PlayerBot bot=playerBots[i];
+                if(bot==null||!bot.alive||gameClock<bot.invulnerableUntil)continue;
+                dx=bot.x-x;dz=bot.z-z;
+                if(dx*dx+dz*dz<=radiusSquared)killPlayerBot(bot);
+            }
         }
 
         private void removeWorldObject(WorldObject o) {
@@ -1590,7 +1679,8 @@ public final class main extends MIDlet {
 
         private void resolveLanding(float previousY) {
             float top = Float.NEGATIVE_INFINITY;
-            if (currentGame != 4 && Math.abs(px) < 11.5f &&
+            if (currentGame != 4 && currentGame != 0 && currentGame != 6 &&
+                    currentGame != 7 && Math.abs(px) < 11.5f &&
                     Math.abs(pz) < 11.5f) top = 0.0f;
             if (currentGame >= 4) {
                 for (int i=0;i<modeBlockCount;i++) {
@@ -1761,7 +1851,8 @@ public final class main extends MIDlet {
                                 object.sx*0.5f,object.sy*0.5f,object.sz*0.5f);
                 }
             }
-            if (Math.abs(p.x) <= 12.0f + p.extentX && Math.abs(p.z) <= 12.0f + p.extentZ &&
+            if (currentGame != 0 && currentGame != 6 && currentGame != 7 &&
+                    Math.abs(p.x) <= 12.0f + p.extentX && Math.abs(p.z) <= 12.0f + p.extentZ &&
                     p.y - p.extentY < 0.0f) {
                 p.y = p.extentY;
                 if (p.vy < -0.0005f) p.vy = -p.vy * 0.28f;
