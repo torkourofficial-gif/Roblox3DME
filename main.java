@@ -1078,7 +1078,8 @@ public final class main extends MIDlet {
                 return "Right Softkey".equalsIgnoreCase(name) ||
                         "Right Soft Key".equalsIgnoreCase(name) ||
                         "Soft2".equalsIgnoreCase(name) || "Soft 2".equalsIgnoreCase(name) ||
-                        "Right Selection".equalsIgnoreCase(name);
+                        "Right Selection".equalsIgnoreCase(name) ||
+                        "Options".equalsIgnoreCase(name) || "Menu".equalsIgnoreCase(name);
             } catch (Throwable ignored) { return false; }
         }
 
@@ -1138,6 +1139,7 @@ public final class main extends MIDlet {
                     configMode = false;
                     menuMode = true;
                     loaded = false;
+                    selectedGame = currentGame;
                     clearInput();
                 }
             }
@@ -1183,7 +1185,7 @@ public final class main extends MIDlet {
                         Graphics.TOP | Graphics.HCENTER);
             }
             g.setColor(0xFFFFFF);
-            g.drawString(configMode ? "LEFT/RIGHT changes  FIRE selects" : "UP/DOWN select  FIRE confirms",
+            g.drawString(configMode ? "LEFT/RIGHT changes  FIRE selects" : "RIGHT SOFTKEY resumes",
                     width / 2, panelY + panelHeight - g.getFont().getHeight() - 6,
                     Graphics.TOP | Graphics.HCENTER);
         }
@@ -1219,7 +1221,11 @@ public final class main extends MIDlet {
             }
             if (keyCode == KEY_NUM0) {
                 menuMode = true;
+                paused = false;
+                configMode = false;
                 loaded = false;
+                selectedGame = currentGame;
+                clearInput();
                 repaint();
                 return;
             }
