@@ -4,7 +4,7 @@ El punto de entrada es `main.java`, dentro del paquete `meblox`. Es un MIDlet pa
 
 ## Menú
 
-Al iniciar, elige **Obby** o **Baseplate** con arriba/abajo y confirma con **5 / FIRE**. Obby incluye los bloques de salto; Baseplate deja solo el suelo verde. Pulsa **0** durante el juego para volver al menú. El fondo `bgtitle.png` se desplaza horizontalmente en bucle para dar movimiento panorámico.
+Al iniciar, elige **Obby** o **Baseplate** con arriba/abajo y confirma con **5 / FIRE**. Obby incluye los bloques de salto; Baseplate deja el suelo verde y un bloque rojo de prueba que elimina al jugador al tocarlo. Pulsa **0** durante el juego para volver al menú. El fondo `bgtitle.png` se dibuja directamente en el tamaño de pantalla y se desplaza en bucle como una panorámica.
 
 ## Controles en los juegos
 
@@ -15,9 +15,13 @@ Al iniciar, elige **Obby** o **Baseplate** con arriba/abajo y confirma con **5 /
 - *** / #:** acercar / alejar la cámara.
 - El avatar gira al caminar, hacia el movimiento; la cámara puede orbitar mientras permanece quieto.
 
+## Física y reaparición
+
+La gravedad actúa al saltar y al caer fuera de las plataformas; el jugador aterriza en el suelo y en las plataformas del Obby. Tocar el bloque rojo del Baseplate separa cabeza, torso, brazos y piernas. Las piezas salen despedidas, caen y rebotan levemente. Tras 2,6 segundos reaparece el personaje con un aura azul semitransparente que lo protege durante 4 segundos.
+
 ## Recursos
 
-Incluye `face.png`, `logoR.png`, `bgtitle.png` y `skyboxR.png` como recursos del proyecto en `/meblox/` o en la raíz del JAR. El menú ajusta `logoR.png` para que quepa en pantalla y desplaza `bgtitle.png` como una panorámica. En los juegos, `skyboxR.png` sigue la orientación de la cámara en sentido contrario y a la misma velocidad angular, desplazando también su recorte vertical cuando miras arriba o abajo.
+Incluye `face.png`, `logoR.png`, `bgtitle.png` y `skyboxR.png` como recursos del proyecto en `/meblox/` o en la raíz del JAR. El menú ajusta `logoR.png` para que quepa en pantalla. En los juegos, `skyboxR.png` sigue la orientación de la cámara en sentido contrario y a la misma velocidad angular, desplazando también su recorte vertical cuando miras arriba o abajo.
 
 El código adapta `face.png` a las dimensiones que requiere una textura JSR-184 y la curva sobre la cara del cilindro. Si falta una textura, el juego muestra el detalle del error.
 
