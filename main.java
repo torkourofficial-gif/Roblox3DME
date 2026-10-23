@@ -106,9 +106,9 @@ public final class main extends MIDlet {
         private String initError = "";
 
         private static final int OBBY_PLATFORM_COUNT = 81;
-        private static final float[][] OBBY_BLOCKS = ObbyLevel.blocks();
+        private static final float[][] OBBY_BLOCKS = new ObbyLevel().blocks();
 
-        private static final float[][] ZOMBIE_BLOCKS = ZombieHordeLevel.blocks();
+        private static final float[][] ZOMBIE_BLOCKS = new ZombieHordeLevel().blocks();
 
         private static final class PhysicsPiece {
             Node node;
@@ -306,7 +306,7 @@ public final class main extends MIDlet {
                 }
             } else if (game == 1) {
                 // Red touch-to-die test block in the baseplate lobby.
-                float[] hazard=BaseplateLevel.blocks()[0];
+                float[] hazard=new BaseplateLevel().blocks()[0];
                 world.addChild(makeBox(hazard[0],hazard[1],hazard[2],hazard[3],hazard[4],hazard[5],(int)hazard[6]));
             } else if (game == 2) {
                 // Multi-level zombie arena with cover, side ledges and jumpable steps.
@@ -475,7 +475,7 @@ public final class main extends MIDlet {
                     bot.y+=bot.velocityY*dt;bot.velocityY-=0.000018f*dt;
                     float top=botGroundTop(bot.x,bot.z);
                     if(bot.velocityY<0&&bot.y<=top){bot.y=top;bot.velocityY=0;bot.grounded=true;}}
-                if(bot.leftArm!=null&&distance>0.18f&&gameClock>=bot.attackUntil){
+                if(bot.leftArm!=null&&dest>0.18f&&gameClock>=bot.attackUntil){
                     float gait=(float)Math.sin(gameClock*0.016f)*24.0f;
                     bot.leftArm.setOrientation(gait,1,0,0);
                     bot.rightArm.setOrientation(-gait,1,0,0);
