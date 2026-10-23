@@ -79,6 +79,31 @@ public final class main extends MIDlet {
         private static final int OBBY_PLATFORM_COUNT = 81;
         private static final float[][] OBBY_BLOCKS = createObbyBlocks();
 
+        private static final float[][] ZOMBIE_BLOCKS = new float[][] {
+            // Low cover around the arena.
+            {-7.5f,0.75f,-2.0f, 2.8f,1.5f,0.8f, 0x74614A},
+            { 7.5f,0.75f,-2.0f, 2.8f,1.5f,0.8f, 0x74614A},
+            {-7.5f,0.75f, 3.0f, 2.8f,1.5f,0.8f, 0x66563F},
+            { 7.5f,0.75f, 3.0f, 2.8f,1.5f,0.8f, 0x66563F},
+            {-3.2f,0.55f,-1.8f, 1.2f,1.1f,1.2f, 0x8B6B45},
+            { 3.2f,0.55f, 1.8f, 1.2f,1.1f,1.2f, 0x8B6B45},
+            { 0.0f,0.45f, 5.8f, 3.2f,0.9f,0.8f, 0x6D5842},
+            // Jumpable stepped platforms make a raised route through the arena.
+            {-5.5f,0.30f,-5.0f, 3.0f,0.6f,3.0f, 0x6BAA55},
+            {-5.5f,0.80f,-7.8f, 2.6f,0.5f,2.6f, 0xD2A84B},
+            {-3.4f,1.30f,-9.3f, 2.4f,0.5f,2.4f, 0x6688C7},
+            {-0.7f,1.80f,-9.0f, 2.5f,0.5f,2.5f, 0xA26BC0},
+            { 2.3f,1.30f,-8.0f, 2.4f,0.5f,2.4f, 0xD2A84B},
+            { 5.1f,0.80f,-6.0f, 2.8f,0.5f,2.8f, 0x6BAA55},
+            { 5.7f,0.30f,-3.0f, 3.0f,0.6f,2.4f, 0x6688C7},
+            // Side ledges and a central raised island.
+            {-9.0f,0.35f, 0.0f, 1.8f,0.7f,4.0f, 0x6BAA55},
+            { 9.0f,0.35f, 0.0f, 1.8f,0.7f,4.0f, 0x6BAA55},
+            {-3.8f,0.40f, 7.3f, 2.6f,0.8f,2.6f, 0xD2A84B},
+            { 0.0f,0.85f, 8.0f, 3.4f,0.7f,2.8f, 0x6688C7},
+            { 3.8f,0.40f, 7.3f, 2.6f,0.8f,2.6f, 0xA26BC0}
+        };
+
         private static float[][] createObbyBlocks() {
             float[][] blocks = new float[OBBY_PLATFORM_COUNT][7];
             float[] routeX = new float[] {0, 1.5f, 3, 3, 1.5f, 0, -1.5f, -3, -3, -1.5f};
@@ -222,11 +247,8 @@ public final class main extends MIDlet {
             paused = false;
             configMode = false;
             loaded = false;
-            px = 0;
-            pz = 0;
+            resetPlayerSpawn();
             yaw = 0;
-            jumpY = 0;
-            playerVelocityY = 0;
             jumping = false;
             forward = back = left = right = false;
             playerVelocityY = 0;
@@ -271,6 +293,12 @@ public final class main extends MIDlet {
             } else if (game == 1) {
                 // Red touch-to-die test block in the baseplate lobby.
                 world.addChild(makeBox(3, 0.35f, -3, 1.2f, 0.7f, 1.2f, 0xE32636));
+            } else if (game == 2) {
+                // Multi-level zombie arena with cover, side ledges and jumpable steps.
+                for (int i = 0; i < ZOMBIE_BLOCKS.length; i++) {
+                    float[] b = ZOMBIE_BLOCKS[i];
+                    world.addChild(makeBox(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]));
+                }
             }
 
             avatar = new Group();
@@ -368,17 +396,35 @@ public final class main extends MIDlet {
         }
 
         private boolean isWorldBlocked(float x, float z, float bottom, float height) {
-            if (worldObjects == null) return false;
-            for (int i = 0; i < worldObjects.length; i++) {
-                WorldObject o = worldObjects[i];
-                if (o == null || !o.active || o.bomb) continue;
-                PhysicsPiece b = o.body;
-                boolean vertical = bottom < b.y + b.extentY &&
-                        bottom + height > b.y - b.extentY;
-                if (vertical && Math.abs(x - b.x) < b.extentX + 0.30f &&
-                        Math.abs(z - b.z) < b.extentZ + 0.30f) return true;
+            if (worldObjects != null) {
+                for (int i = 0; i < worldObjects.length; i++) {
+                    WorldObject o = worldObjects[i];
+                    if (o == null || !o.active || o.bomb) continue;
+                    PhysicsPiece b = o.body;
+                    if (overlapsBlock(x, z, bottom, height,
+                            b.x, b.y, b.z, b.extentX, b.extentY, b.extentZ, 0.30f))
+                        return true;
+                }
+            }
+            float[][] blocks = currentGame == 0 ? OBBY_BLOCKS :
+                    (currentGame == 2 ? ZOMBIE_BLOCKS : null);
+            if (blocks != null) {
+                for (int i = 0; i < blocks.length; i++) {
+                    float[] b = blocks[i];
+                    if (overlapsBlock(x, z, bottom, height,
+                            b[0], b[1], b[2], b[3]*0.5f, b[4]*0.5f, b[5]*0.5f, 0.30f))
+                        return true;
+                }
             }
             return false;
+        }
+
+        private boolean overlapsBlock(float x, float z, float bottom, float height,
+                float bx, float by, float bz, float halfX, float halfY, float halfZ,
+                float playerRadius) {
+            boolean vertical = bottom < by + halfY && bottom + height > by - halfY;
+            return vertical && Math.abs(x - bx) < halfX + playerRadius &&
+                    Math.abs(z - bz) < halfZ + playerRadius;
         }
 
         private void updateWorldObjects(int dt) {
@@ -755,10 +801,9 @@ public final class main extends MIDlet {
             if (left) { dx -= cos * step; dz -= sin * step; }
             if (right) { dx += cos * step; dz += sin * step; }
             float nextX = px + dx, nextZ = pz + dz;
-            if (currentGame == 2) {
-                if (isPlayerBlocked(nextX, pz)) nextX = px;
-                if (isPlayerBlocked(nextX, nextZ)) nextZ = pz;
-            }
+            // Resolve horizontal movement against every block face, one axis at a time.
+            if (isPlayerBlocked(nextX, pz)) nextX = px;
+            if (isPlayerBlocked(nextX, nextZ)) nextZ = pz;
             dx = nextX - px; dz = nextZ - pz;
             px = nextX; pz = nextZ;
             // Gravity applies continuously; landing checks cover the floor and obby platforms.
@@ -807,9 +852,10 @@ public final class main extends MIDlet {
         private void resolveLanding(float previousY) {
             float top = Float.NEGATIVE_INFINITY;
             if (Math.abs(px) < 11.5f && Math.abs(pz) < 11.5f) top = 0.0f;
-            if (currentGame == 0) {
-                for (int i = 0; i < OBBY_BLOCKS.length; i++) {
-                    float[] b = OBBY_BLOCKS[i];
+            if (currentGame == 0 || currentGame == 2) {
+                float[][] platforms = currentGame == 0 ? OBBY_BLOCKS : ZOMBIE_BLOCKS;
+                for (int i = 0; i < platforms.length; i++) {
+                    float[] b = platforms[i];
                     float platformTop = b[1] + b[4] * 0.5f;
                     if (onPlatform(b[0], b[2], b[3] * 0.5f, b[5] * 0.5f) &&
                             platformCanSupport(previousY, platformTop)) top = Math.max(top, platformTop);
@@ -925,6 +971,10 @@ public final class main extends MIDlet {
             } else if (lobbyMode) {
                 resolvePieceAgainstBox(p, 3, 0.35f, -3, 0.6f, 0.35f, 0.6f);
             } else if (currentGame == 2) {
+                for (int i = 0; i < ZOMBIE_BLOCKS.length; i++) {
+                    float[] b = ZOMBIE_BLOCKS[i];
+                    resolvePieceAgainstBox(p,b[0],b[1],b[2],b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
+                }
                 for (int i = 0; i < worldObjects.length; i++) {
                     WorldObject o = worldObjects[i];
                     if (o != null && o.active && !o.bomb && o.body != p) {
@@ -987,6 +1037,21 @@ public final class main extends MIDlet {
             a.spin*=0.94f; b.spin*=0.94f;
         }
 
+        private void resetPlayerSpawn() {
+            if (currentGame == 0 && OBBY_BLOCKS.length > 0) {
+                float[] first = OBBY_BLOCKS[0];
+                px = first[0];
+                pz = first[2];
+                jumpY = first[1] + first[4] * 0.5f;
+            } else {
+                px = 0;
+                pz = 0;
+                jumpY = 0;
+            }
+            playerVelocityY = 0;
+            grounded = true;
+        }
+
         private void respawnPlayer() {
             if (deathPieces != null) {
                 for (int i = 0; i < deathPieces.length; i++)
@@ -994,7 +1059,7 @@ public final class main extends MIDlet {
             }
             deathPieces = null;
             try {
-                px = 0; pz = 0; jumpY = 0; playerVelocityY = 0;
+                resetPlayerSpawn();
                 yaw = 0; grounded = true; jumping = false;
                 avatar = new Group();
                 activeModel = buildNoob();
