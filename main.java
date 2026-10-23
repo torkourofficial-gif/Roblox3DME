@@ -48,6 +48,15 @@ public final class main extends MIDlet {
         private boolean menuMode = true;
         private int selectedGame;
         private int inventorySelection;
+        private StudioObject[] studioObjects = new StudioObject[40];
+        private int studioObjectCount, studioSelected = -1, studioPalette, studioProperty;
+        private boolean studioTesting;
+        private static final String[] STUDIO_TYPE_NAMES =
+                {"Block", "Platform", "Hazard", "Pillar", "Spawn Pad"};
+        private static final String[] STUDIO_PROPERTY_NAMES =
+                {"X", "Y", "Z", "Size X", "Size Y", "Size Z", "Color"};
+        private static final int[] STUDIO_COLORS =
+                {0x8B6B45, 0x6BAA55, 0xE32636, 0x6688C7, 0x35B6C8, 0xD2A84B};
         private long swordAttackUntil, nextWaveAt;
         private int zombieWave;
         private Group swordVisual;
@@ -161,6 +170,17 @@ public final class main extends MIDlet {
             }
         }
 
+        private static final class StudioObject {
+            int type, color;
+            float x, y, z, sx, sy, sz;
+            Node node;
+            StudioObject(int type, float x, float y, float z,
+                    float sx, float sy, float sz, int color) {
+                this.type=type; this.x=x; this.y=y; this.z=z;
+                this.sx=sx; this.sy=sy; this.sz=sz; this.color=color;
+            }
+        }
+
         Game(main m) {
             midlet = m;
             setFullScreenMode(true);
@@ -239,6 +259,7 @@ public final class main extends MIDlet {
 
         private void startGame(int game) throws Exception {
             currentGame = game;
+            if (game == 3) studioTesting = false;
             if (!pauseCommandAdded) {
                 addCommand(pauseCommand);
                 pauseCommandAdded = true;
@@ -299,6 +320,9 @@ public final class main extends MIDlet {
                     float[] b = ZOMBIE_BLOCKS[i];
                     world.addChild(makeBox(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]));
                 }
+            } else if (game == 3) {
+                // Studio begins with a clear baseplate and restores any objects in the editor.
+                syncStudioNodes();
             }
 
             avatar = new Group();
@@ -311,7 +335,8 @@ public final class main extends MIDlet {
             animation = 0;
             animateNoob();
             updateCamera();
-            modelStatus = game == 0 ? "Obby" : (game == 1 ? "Baseplate" : "Zombie Horde");
+            modelStatus = game == 0 ? "Obby" :
+                    (game == 1 ? "Baseplate" : (game == 2 ? "Zombie Horde" : "Studio - Edit mode"));
             loaded = true;
             if (game == 2) spawnZombieWave();
         }
@@ -403,6 +428,15 @@ public final class main extends MIDlet {
                     PhysicsPiece b = o.body;
                     if (overlapsBlock(x, z, bottom, height,
                             b.x, b.y, b.z, b.extentX, b.extentY, b.extentZ, 0.30f))
+                        return true;
+                }
+            }
+            if (currentGame == 3 && studioTesting) {
+                for (int i=0; i<studioObjectCount; i++) {
+                    StudioObject object = studioObjects[i];
+                    if (object == null || object.type == 2) continue;
+                    if (overlapsBlock(x,z,bottom,height,object.x,object.y,object.z,
+                            object.sx*0.5f,object.sy*0.5f,object.sz*0.5f,0.30f))
                         return true;
                 }
             }
@@ -687,7 +721,7 @@ public final class main extends MIDlet {
             int buttonHeight = Math.max(28, getHeight() / 10);
             int gap = Math.max(8, buttonHeight / 4);
             int startY = getHeight() / 2 - buttonHeight - gap / 2;
-            String[] games = new String[] {"Obby", "Baseplate", "Horda zombi"};
+            String[] games = new String[] {"Obby", "Baseplate", "Horda zombi", "Studio"};
             Font font = g.getFont();
             for (int i = 0; i < games.length; i++) {
                 int y = startY + i * (buttonHeight + gap);
@@ -813,6 +847,10 @@ public final class main extends MIDlet {
                 playerVelocityY -= 0.000018f * dt;
             }
             resolveLanding(previousY);
+            if (isTouchingStudioHazard()) {
+                beginDeath();
+                return;
+            }
             if (!grounded && jumpY < -8.0f) {
                 beginDeath();
                 return;
@@ -852,6 +890,16 @@ public final class main extends MIDlet {
         private void resolveLanding(float previousY) {
             float top = Float.NEGATIVE_INFINITY;
             if (Math.abs(px) < 11.5f && Math.abs(pz) < 11.5f) top = 0.0f;
+            if (currentGame == 3 && studioTesting) {
+                for (int i=0; i<studioObjectCount; i++) {
+                    StudioObject object = studioObjects[i];
+                    if (object == null || object.type == 2) continue;
+                    float platformTop = object.y + object.sy * 0.5f;
+                    if (onPlatform(object.x,object.z,object.sx*0.5f,object.sz*0.5f) &&
+                            platformCanSupport(previousY,platformTop))
+                        top = Math.max(top,platformTop);
+                }
+            }
             if (currentGame == 0 || currentGame == 2) {
                 float[][] platforms = currentGame == 0 ? OBBY_BLOCKS : ZOMBIE_BLOCKS;
                 for (int i = 0; i < platforms.length; i++) {
@@ -982,6 +1030,13 @@ public final class main extends MIDlet {
                         resolvePieceAgainstBox(p,b.x,b.y,b.z,b.extentX,b.extentY,b.extentZ);
                     }
                 }
+            } else if (currentGame == 3) {
+                for (int i=0; i<studioObjectCount; i++) {
+                    StudioObject object = studioObjects[i];
+                    if (object != null)
+                        resolvePieceAgainstBox(p,object.x,object.y,object.z,
+                                object.sx*0.5f,object.sy*0.5f,object.sz*0.5f);
+                }
             }
             if (Math.abs(p.x) <= 12.0f + p.extentX && Math.abs(p.z) <= 12.0f + p.extentZ &&
                     p.y - p.extentY < 0.0f) {
@@ -1038,7 +1093,17 @@ public final class main extends MIDlet {
         }
 
         private void resetPlayerSpawn() {
-            if (currentGame == 0 && OBBY_BLOCKS.length > 0) {
+            if (currentGame == 3 && studioTesting) {
+                boolean foundSpawn = false;
+                for (int i=0; i<studioObjectCount; i++) {
+                    StudioObject object = studioObjects[i];
+                    if (object != null && object.type == 4) {
+                        px=object.x; pz=object.z; jumpY=object.y + object.sy*0.5f;
+                        foundSpawn=true; break;
+                    }
+                }
+                if (!foundSpawn) { px=0; pz=0; jumpY=0; }
+            } else if (currentGame == 0 && OBBY_BLOCKS.length > 0) {
                 float[] first = OBBY_BLOCKS[0];
                 px = first[0];
                 pz = first[2];
@@ -1181,6 +1246,7 @@ public final class main extends MIDlet {
             if (modelError.length() > 0) drawWrapped(g, modelError, 3, 38, getWidth() - 6);
             if (initError.length() > 0) drawWrapped(g, initError, 3, 72, getWidth() - 6);
             if (currentGame == 2) drawInventory(g);
+            if (currentGame == 3 && !paused) drawStudioHud(g);
             if (paused) drawPauseMenu(g);
         }
 
@@ -1645,13 +1711,221 @@ public final class main extends MIDlet {
                     Graphics.TOP | Graphics.HCENTER);
         }
 
+        private void handleStudioInput(int keyCode, int action) {
+            if (keyCode == KEY_NUM7 || keyCode == KEY_NUM9) {
+                if (studioObjectCount == 0) {
+                    studioPalette = (studioPalette +
+                            (keyCode == KEY_NUM9 ? 1 : STUDIO_TYPE_NAMES.length - 1)) %
+                            STUDIO_TYPE_NAMES.length;
+                    modelStatus = "Studio palette: " + STUDIO_TYPE_NAMES[studioPalette];
+                } else {
+                    if (studioSelected < 0) studioSelected =
+                            keyCode == KEY_NUM9 ? 0 : studioObjectCount - 1;
+                    else studioSelected = (studioSelected +
+                            (keyCode == KEY_NUM9 ? 1 : studioObjectCount - 1)) % studioObjectCount;
+                    modelStatus = "Studio object " + (studioSelected + 1);
+                }
+            } else if (keyCode == KEY_NUM5 || action == FIRE) {
+                addStudioObject();
+            } else if (keyCode == KEY_NUM2 || keyCode == KEY_NUM4 ||
+                    keyCode == KEY_NUM6 || keyCode == KEY_NUM8) {
+                moveStudioObject(keyCode);
+            } else if (keyCode == KEY_STAR) {
+                studioProperty = (studioProperty + 1) % STUDIO_PROPERTY_NAMES.length;
+            } else if (keyCode == KEY_NUM1) {
+                adjustStudioProperty(-1);
+            } else if (keyCode == KEY_POUND) {
+                adjustStudioProperty(1);
+            } else if (keyCode == KEY_NUM0) {
+                deleteStudioObject();
+            } else if (action == LEFT) camLeft = true;
+            else if (action == RIGHT) camRight = true;
+            else if (action == UP) camUp = true;
+            else if (action == DOWN) camDown = true;
+        }
+
+        private void addStudioObject() {
+            if (studioObjectCount >= studioObjects.length) {
+                modelStatus = "Studio full - delete an object first";
+                return;
+            }
+            int type = studioPalette;
+            float sx=2.0f, sy=2.0f, sz=2.0f;
+            int color = STUDIO_COLORS[type % STUDIO_COLORS.length];
+            if (type == 1) { sx=4.0f; sy=0.5f; sz=4.0f; }
+            else if (type == 2) { sx=2.0f; sy=0.5f; sz=2.0f; }
+            else if (type == 3) { sx=1.2f; sy=3.0f; sz=1.2f; }
+            else if (type == 4) { sx=2.0f; sy=0.25f; sz=2.0f; }
+            int column = studioObjectCount % 5;
+            int row = studioObjectCount / 5;
+            float x = (column - 2) * 2.6f;
+            float z = -2.0f - row * 2.6f;
+            float y = sy * 0.5f;
+            StudioObject object = new StudioObject(type,x,y,z,sx,sy,sz,color);
+            studioObjects[studioObjectCount] = object;
+            object.node = makeBox(x,y,z,sx,sy,sz,color);
+            world.addChild(object.node);
+            studioSelected = studioObjectCount++;
+            studioPalette = (studioPalette + 1) % STUDIO_TYPE_NAMES.length;
+            modelStatus = "Studio: added " + STUDIO_TYPE_NAMES[type];
+        }
+
+        private void moveStudioObject(int keyCode) {
+            StudioObject object = getSelectedStudioObject();
+            if (object == null) {
+                modelStatus = "Studio: add an object with 5";
+                return;
+            }
+            float step = 0.5f;
+            if (keyCode == KEY_NUM2) object.z -= step;
+            else if (keyCode == KEY_NUM8) object.z += step;
+            else if (keyCode == KEY_NUM4) object.x -= step;
+            else if (keyCode == KEY_NUM6) object.x += step;
+            rebuildStudioObject(object);
+        }
+
+        private StudioObject getSelectedStudioObject() {
+            return studioSelected >= 0 && studioSelected < studioObjectCount ?
+                    studioObjects[studioSelected] : null;
+        }
+
+        private void adjustStudioProperty(int direction) {
+            StudioObject object = getSelectedStudioObject();
+            if (object == null) {
+                studioPalette = (studioPalette + direction + STUDIO_TYPE_NAMES.length) %
+                        STUDIO_TYPE_NAMES.length;
+                modelStatus = "Studio palette: " + STUDIO_TYPE_NAMES[studioPalette];
+                return;
+            }
+            float step = 0.25f * direction;
+            switch (studioProperty) {
+                case 0: object.x += step; break;
+                case 1: object.y += step; break;
+                case 2: object.z += step; break;
+                case 3: object.sx = clampStudioSize(object.sx + step); break;
+                case 4: object.sy = clampStudioSize(object.sy + step); break;
+                case 5: object.sz = clampStudioSize(object.sz + step); break;
+                default:
+                    int colorIndex = 0;
+                    for (int i=0; i<STUDIO_COLORS.length; i++)
+                        if (STUDIO_COLORS[i] == object.color) colorIndex = i;
+                    colorIndex = (colorIndex + direction + STUDIO_COLORS.length) %
+                            STUDIO_COLORS.length;
+                    object.color = STUDIO_COLORS[colorIndex];
+                    break;
+            }
+            rebuildStudioObject(object);
+        }
+
+        private float clampStudioSize(float size) {
+            if (size < 0.25f) return 0.25f;
+            if (size > 16.0f) return 16.0f;
+            return size;
+        }
+
+        private void rebuildStudioObject(StudioObject object) {
+            if (object.node != null) {
+                try { world.removeChild(object.node); } catch (Throwable ignored) {}
+            }
+            object.node = makeBox(object.x,object.y,object.z,
+                    object.sx,object.sy,object.sz,object.color);
+            world.addChild(object.node);
+            modelStatus = "Studio object " + (studioSelected + 1) +
+                    ": " + STUDIO_PROPERTY_NAMES[studioProperty];
+        }
+
+        private void deleteStudioObject() {
+            if (studioSelected < 0 || studioSelected >= studioObjectCount) return;
+            StudioObject object = studioObjects[studioSelected];
+            try { world.removeChild(object.node); } catch (Throwable ignored) {}
+            for (int i=studioSelected; i<studioObjectCount-1; i++)
+                studioObjects[i] = studioObjects[i+1];
+            studioObjects[--studioObjectCount] = null;
+            if (studioObjectCount == 0) studioSelected = -1;
+            else if (studioSelected >= studioObjectCount) studioSelected = studioObjectCount - 1;
+            modelStatus = "Studio: object deleted";
+        }
+
+        private void syncStudioNodes() {
+            for (int i=0; i<studioObjectCount; i++) {
+                StudioObject object = studioObjects[i];
+                if (object == null) continue;
+                object.node = makeBox(object.x,object.y,object.z,
+                        object.sx,object.sy,object.sz,object.color);
+                world.addChild(object.node);
+            }
+        }
+
+        private void toggleStudioTest() {
+            studioTesting = !studioTesting;
+            clearInput();
+            if (studioTesting) {
+                resetPlayerSpawn();
+                if (avatar != null) avatar.setTranslation(px,jumpY,pz);
+                invulnerableUntil = gameClock + 1200;
+                modelStatus = "Studio - TESTING (3 returns to edit)";
+            } else {
+                modelStatus = "Studio - Edit mode";
+            }
+        }
+
+        private boolean isTouchingStudioHazard() {
+            if (!studioTesting) return false;
+            for (int i=0; i<studioObjectCount; i++) {
+                StudioObject object = studioObjects[i];
+                if (object == null || object.type != 2) continue;
+                boolean vertical = jumpY <= object.y + object.sy * 0.5f + 0.03f &&
+                        jumpY + 1.9f > object.y - object.sy * 0.5f;
+                if (vertical && Math.abs(px-object.x) < object.sx*0.5f + 0.25f &&
+                        Math.abs(pz-object.z) < object.sz*0.5f + 0.25f) return true;
+            }
+            return false;
+        }
+
+        private void drawStudioHud(Graphics g) {
+            int line = g.getFont().getHeight();
+            int panelHeight = line * 5 + 6;
+            int top = getHeight() - panelHeight;
+            g.setColor(0x102030);
+            g.fillRect(0, top, getWidth(), panelHeight);
+            g.setColor(0xFFFFFF);
+            StudioObject object = getSelectedStudioObject();
+            String first = studioTesting ? "STUDIO TEST - 3: EDIT" :
+                    "STUDIO - " + (object == null ? "No object" :
+                    STUDIO_TYPE_NAMES[object.type] + " " + (studioSelected + 1) +
+                    "/" + studioObjectCount);
+            String second = object == null ? "Palette: " + STUDIO_TYPE_NAMES[studioPalette] :
+                    STUDIO_PROPERTY_NAMES[studioProperty] + ": " +
+                    studioPropertyValue(object);
+            g.drawString(first, 3, top + 1, Graphics.TOP | Graphics.LEFT);
+            g.drawString(second, 3, top + line + 1, Graphics.TOP | Graphics.LEFT);
+            g.drawString("7/9 select  5 add  2/4/6/8 move", 3, top + line*2 + 1,
+                    Graphics.TOP | Graphics.LEFT);
+            g.drawString("* property  1/# edit  0 delete", 3, top + line*3 + 1,
+                    Graphics.TOP | Graphics.LEFT);
+            g.drawString("D-pad camera  3 test  Softkey pause", 3, top + line*4 + 1,
+                    Graphics.TOP | Graphics.LEFT);
+        }
+
+        private String studioPropertyValue(StudioObject object) {
+            switch (studioProperty) {
+                case 0: return "" + object.x;
+                case 1: return "" + object.y;
+                case 2: return "" + object.z;
+                case 3: return "" + object.sx;
+                case 4: return "" + object.sy;
+                case 5: return "" + object.sz;
+                default: return "0x" + Integer.toHexString(object.color);
+            }
+        }
+
         protected void keyPressed(int keyCode) {
             int k = getGameAction(keyCode);
             if (menuMode) {
                 if (k == UP || keyCode == KEY_NUM2)
-                    selectedGame = (selectedGame + 2) % 3;
+                    selectedGame = (selectedGame + 3) % 4;
                 else if (k == DOWN || keyCode == KEY_NUM8)
-                    selectedGame = (selectedGame + 1) % 3;
+                    selectedGame = (selectedGame + 1) % 4;
                 else if (keyCode == KEY_NUM5 || k == FIRE) {
                     try {
                         initError = "";
@@ -1666,9 +1940,10 @@ public final class main extends MIDlet {
                 return;
             }
             // On some devices key 3 is reported with GAME_B, which is also used
-            // by the right softkey. In Horde, keep numeric 3 reserved for item use.
-            boolean useItemKey = currentGame == 2 && keyCode == KEY_NUM3;
-            if (!useItemKey && isRightSoftkey(keyCode, k)) {
+            // by the right softkey. In Horde and Studio, keep numeric 3 reserved for its game action.
+            boolean reservedThree = (currentGame == 2 || currentGame == 3) &&
+                    keyCode == KEY_NUM3;
+            if (!reservedThree && isRightSoftkey(keyCode, k)) {
                 if (paused) { paused = false; configMode = false; }
                 else openPauseMenu();
                 repaint();
@@ -1676,6 +1951,21 @@ public final class main extends MIDlet {
             }
             if (paused) {
                 handlePauseInput(keyCode, k);
+                repaint();
+                return;
+            }
+            if (currentGame == 3 && keyCode == KEY_NUM3) {
+                toggleStudioTest();
+                repaint();
+                return;
+            }
+            if (currentGame == 3 && !studioTesting) {
+                handleStudioInput(keyCode, k);
+                repaint();
+                return;
+            }
+            if (currentGame == 3 && studioTesting && keyCode == KEY_NUM0) {
+                exitToGameMenu();
                 repaint();
                 return;
             }
