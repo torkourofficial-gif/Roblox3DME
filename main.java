@@ -145,7 +145,8 @@ public final class main extends MIDlet {
 
         private static final class PlayerBot {
             Group model, aura;
-            float x,y,z,spawnX,spawnZ,targetX,targetZ,velocityY;
+            float x,y,z,spawnX,spawnZ,targetX,targetZ,velocityY,yaw;
+            PhysicsPiece[] deathPieces;
             long nextThink,nextJump,nextAttack,respawnAt,invulnerableUntil,auraUntil;
             int skinColor, shirtColor, legColor;
             boolean alive=true,grounded=true;
@@ -452,18 +453,46 @@ public final class main extends MIDlet {
         }
         private void killPlayerBot(PlayerBot bot) {
             if(bot==null||!bot.alive||gameClock<bot.invulnerableUntil)return;
-            bot.alive=false;bot.respawnAt=gameClock+2600;
-            if(bot.model!=null)try{world.removeChild(bot.model);}catch(Throwable ignored){}
+            bot.alive=false;bot.grounded=false;bot.respawnAt=gameClock+2600;
+            if(bot.model!=null){
+                try{world.removeChild(bot.model);}catch(Throwable ignored){}
+                spawnBotDeathPieces(bot);
+            }
             bot.model=null;bot.aura=null;
+        }
+        private void spawnBotDeathPieces(PlayerBot bot) {
+            bot.deathPieces=new PhysicsPiece[6];
+            float c=(float)Math.cos(bot.yaw),sn=(float)Math.sin(bot.yaw);
+            addBotDeathPiece(bot,0,makeRoundedCylinderHead(bot.skinColor),0,2.19f,0,0.28f,0.25f,0.28f,c,sn);
+            addBotDeathPiece(bot,1,makeBox(0,0,0,0.78f,0.95f,0.40f,bot.shirtColor),0,1.45f,0,0.39f,0.475f,0.20f,c,sn);
+            addBotDeathPiece(bot,2,makeBox(0,0,0,0.30f,0.88f,0.40f,bot.skinColor),-0.54f,1.48f,0,0.15f,0.44f,0.20f,c,sn);
+            addBotDeathPiece(bot,3,makeBox(0,0,0,0.30f,0.88f,0.40f,bot.skinColor),0.54f,1.48f,0,0.15f,0.44f,0.20f,c,sn);
+            addBotDeathPiece(bot,4,makeBox(0,0,0,0.36f,0.78f,0.40f,bot.legColor),-0.20f,0.52f,0,0.18f,0.39f,0.20f,c,sn);
+            addBotDeathPiece(bot,5,makeBox(0,0,0,0.36f,0.78f,0.40f,bot.legColor),0.20f,0.52f,0,0.18f,0.39f,0.20f,c,sn);
+        }
+        private void addBotDeathPiece(PlayerBot bot,int index,Node node,float ox,float oy,float oz,
+                float halfX,float halfY,float halfZ,float c,float sn) {
+            addDeathPieceTo(bot.deathPieces,index,node,bot.x,bot.y,bot.z,
+                    ox,oy,oz,halfX,halfY,halfZ,c,sn);
+        }
+        private void clearBotDeathPieces(PlayerBot bot) {
+            if(bot==null||bot.deathPieces==null)return;
+            for(int i=0;i<bot.deathPieces.length;i++){
+                PhysicsPiece p=bot.deathPieces[i];
+                if(p!=null)try{world.removeChild(p.node);}catch(Throwable ignored){}
+            }
+            bot.deathPieces=null;
         }
         private void updatePlayerBots(int dt) {
             if(playerBots==null||world==null)return;
             for(int i=0;i<playerBotCount;i++){
                 PlayerBot bot=playerBots[i];if(bot==null)continue;
                 if(!bot.alive){
+                    updateBotDeathPieces(bot,dt);
                     if(gameClock>=bot.respawnAt){
+                        clearBotDeathPieces(bot);
                         bot.x=bot.spawnX;bot.z=bot.spawnZ;
-                        bot.y=botGroundTop(bot.x,bot.z);bot.velocityY=0;bot.grounded=true;
+                        bot.y=botGroundTop(bot.x,bot.z);bot.velocityY=0;bot.grounded=true;bot.yaw=0;
                         addPlayerBotModel(bot,true);
                     }
                     continue;
@@ -491,7 +520,8 @@ public final class main extends MIDlet {
                 if(armed&&d<4.2f&&gameClock>=bot.nextAttack&&gameClock>=bot.invulnerableUntil){
                     bot.nextAttack=gameClock+2300+nextRandom(1200);
                     if(d<2.3f){
-                        bot.model.setOrientation((float)(fastAtan2(-dx,-dz)*57.29578f),0,1,0);
+                        bot.yaw=fastAtan2(-dx,-dz);
+                        bot.model.setOrientation(bot.yaw*57.29578f,0,1,0);
                         animatePlayerBotWeapon(bot);
                         if(attackPlayer){
                             if(!dead&&gameClock>=invulnerableUntil)beginDeath();
@@ -533,7 +563,10 @@ public final class main extends MIDlet {
                     else if(bot.grounded&&gameClock>=bot.nextJump){
                         bot.velocityY=0.0075f;bot.grounded=false;bot.nextJump=gameClock+900;}
                     if(!isWorldBlocked(bot.x,nz,bot.y,1.9f))bot.z=nz;
-                    if(mx!=0||mz!=0)bot.model.setOrientation((float)(fastAtan2(-mx,-mz)*57.29578f),0,1,0);
+                    if(mx!=0||mz!=0){
+                        bot.yaw=fastAtan2(-mx,-mz);
+                        bot.model.setOrientation(bot.yaw*57.29578f,0,1,0);
+                    }
                 }
 
                 float previousY=bot.y;
@@ -1578,46 +1611,57 @@ public final class main extends MIDlet {
 
         private void addDeathPiece(int index, Node node, float ox, float oy, float oz,
                 float halfX, float halfY, float halfZ, float c, float sn) {
-            float x = px + ox * c + oz * sn;
-            float z = pz - ox * sn + oz * c;
-            node.setTranslation(x, jumpY + oy, z);
+            addDeathPieceTo(deathPieces,index,node,px,jumpY,pz,ox,oy,oz,
+                    halfX,halfY,halfZ,c,sn);
+        }
+
+        private void addDeathPieceTo(PhysicsPiece[] pieces,int index,Node node,
+                float centerX,float centerY,float centerZ,float ox,float oy,float oz,
+                float halfX,float halfY,float halfZ,float c,float sn) {
+            float x=centerX+ox*c+oz*sn;
+            float z=centerZ-ox*sn+oz*c;
+            node.setTranslation(x,centerY+oy,z);
             world.addChild(node);
-            float outward = (index - 2.5f) * 0.0012f;
-            float direction = index % 2 == 0 ? 1.0f : -1.0f;
-            float axisX = index % 3 == 0 ? 1.0f : 0.35f;
-            float axisY = index % 3 == 1 ? 1.0f : 0.45f;
-            float axisZ = index % 3 == 2 ? 1.0f : 0.60f;
-            float axisLength = (float)Math.sqrt(axisX * axisX + axisY * axisY + axisZ * axisZ);
-            axisX /= axisLength; axisY /= axisLength; axisZ /= axisLength;
-            deathPieces[index] = new PhysicsPiece(node, x, jumpY + oy, z,
-                    outward, 0.0035f + (index % 3) * 0.001f, direction * 0.001f,
-                    35 + index * 5, axisX, axisY, axisZ, halfX, halfY, halfZ);
+            float outward=(index-2.5f)*0.0012f;
+            float direction=index%2==0?1.0f:-1.0f;
+            float axisX=index%3==0?1.0f:0.35f;
+            float axisY=index%3==1?1.0f:0.45f;
+            float axisZ=index%3==2?1.0f:0.60f;
+            float axisLength=(float)Math.sqrt(axisX*axisX+axisY*axisY+axisZ*axisZ);
+            axisX/=axisLength;axisY/=axisLength;axisZ/=axisLength;
+            pieces[index]=new PhysicsPiece(node,x,centerY+oy,z,
+                    outward,0.0035f+(index%3)*0.001f,direction*0.001f,
+                    35+index*5,axisX,axisY,axisZ,halfX,halfY,halfZ);
         }
 
         private void updateDeathPieces(int dt) {
-            if (deathPieces == null) return;
-            for (int i = 0; i < deathPieces.length; i++) {
-                PhysicsPiece p = deathPieces[i];
-                if (p == null) continue;
-                p.vy -= 0.000018f * dt;
-                p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-                p.rotation += p.spin * dt * 0.001f;
+            updatePhysicsPieces(deathPieces,dt);
+        }
+
+        private void updateBotDeathPieces(PlayerBot bot,int dt) {
+            if(bot!=null)updatePhysicsPieces(bot.deathPieces,dt);
+        }
+
+        private void updatePhysicsPieces(PhysicsPiece[] pieces,int dt) {
+            if(pieces==null)return;
+            for(int i=0;i<pieces.length;i++){
+                PhysicsPiece p=pieces[i];if(p==null)continue;
+                p.vy-=0.000018f*dt;
+                p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;
+                p.rotation+=p.spin*dt*0.001f;
                 updatePieceExtents(p);
                 resolvePieceEnvironment(p);
             }
-            for (int i = 0; i < deathPieces.length; i++) {
-                PhysicsPiece a = deathPieces[i];
-                if (a == null) continue;
-                for (int j = i + 1; j < deathPieces.length; j++) {
-                    PhysicsPiece b = deathPieces[j];
-                    if (b != null) resolvePiecePair(a, b);
+            for(int i=0;i<pieces.length;i++){
+                PhysicsPiece a=pieces[i];if(a==null)continue;
+                for(int j=i+1;j<pieces.length;j++){
+                    PhysicsPiece b=pieces[j];if(b!=null)resolvePiecePair(a,b);
                 }
             }
-            for (int i = 0; i < deathPieces.length; i++) {
-                PhysicsPiece p = deathPieces[i];
-                if (p == null) continue;
-                p.node.setTranslation(p.x, p.y, p.z);
-                p.node.setOrientation(p.rotation, p.spinX, p.spinY, p.spinZ);
+            for(int i=0;i<pieces.length;i++){
+                PhysicsPiece p=pieces[i];if(p==null)continue;
+                p.node.setTranslation(p.x,p.y,p.z);
+                p.node.setOrientation(p.rotation,p.spinX,p.spinY,p.spinZ);
             }
         }
 
