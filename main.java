@@ -3,6 +3,8 @@ package meblox;
 import javax.microedition.midlet.*;
 import javax.microedition.lcdui.*;
 import javax.microedition.m3g.*;
+import javax.microedition.media.Manager;
+import javax.microedition.media.Player;
 
 /**
  * Roblox3DME: minimal JSR-184 playground/controller.
@@ -25,6 +27,9 @@ public final class main extends MIDlet {
     private static final class Game extends Canvas implements Runnable {
         private final main midlet;
         private Thread thread;
+        private Player musicPlayer;
+        private java.io.InputStream musicInput;
+        private int musicTrack=-1;
         private boolean running;
         private Graphics3D g3d = Graphics3D.getInstance();
         private World world;
@@ -252,7 +257,11 @@ public final class main extends MIDlet {
             thread = new Thread(this);
             thread.start();
         }
-        synchronized void stop() { running = false; thread = null; }
+        synchronized void stop() {
+            running = false;
+            thread = null;
+            stopMusic();
+        }
 
         public void run() {
             try { init3D(); } catch (Throwable t) {
@@ -290,6 +299,47 @@ public final class main extends MIDlet {
             }
             menuMode = true;
             loaded = false;
+            playMusic(3);
+        }
+
+        private synchronized void playMusic(int track) {
+            if(track<1||track>3)return;
+            if(musicTrack==track&&musicPlayer!=null)return;
+            stopMusic();
+            java.io.InputStream in=null;
+            try {
+                String resource="/R"+track+".mid";
+                in=getClass().getResourceAsStream(resource);
+                if(in==null)in=midlet.getClass().getResourceAsStream(resource);
+                if(in==null)throw new java.io.IOException("Missing "+resource);
+                Player next=Manager.createPlayer(in,"audio/midi");
+                next.realize();
+                next.setLoopCount(-1);
+                next.prefetch();
+                next.start();
+                musicInput=in;
+                musicPlayer=next;
+                musicTrack=track;
+            } catch(Throwable t) {
+                if(in!=null)try{in.close();}catch(Throwable ignored){}
+                musicPlayer=null;
+                musicInput=null;
+                musicTrack=-1;
+                modelError="Music R"+track+": "+t.toString();
+            }
+        }
+
+        private synchronized void stopMusic() {
+            Player old=musicPlayer;
+            musicPlayer=null;
+            if(old!=null) {
+                try{old.stop();}catch(Throwable ignored){}
+                try{old.close();}catch(Throwable ignored){}
+            }
+            java.io.InputStream in=musicInput;
+            musicInput=null;
+            if(in!=null)try{in.close();}catch(Throwable ignored){}
+            musicTrack=-1;
         }
 
         private Image loadImageResource(String primary, String secondary) {
@@ -423,6 +473,9 @@ public final class main extends MIDlet {
             if (game == 11) spawnSeekBots();
             if (game == 14) spawnDefenseWave();
             spawnPlayerBots();
+            int nextTrack=1+nextRandom(3);
+            if(nextTrack==musicTrack)nextTrack=nextTrack%3+1;
+            playMusic(nextTrack);
         }
 
         private int addModeBlock(float x, float y, float z, float sx, float sy,
@@ -898,16 +951,16 @@ public final class main extends MIDlet {
             spawnSimpleBot(2,0,9);
         }
 
-        private void spawnHideZombie(int slot,float x,float z) {
+        private void spawnHideBot(int slot,float x,float z) {
             if(slot<0||slot>=zombies.length)return;
             try {
-                Group model=buildNoob(true);
+                Group model=buildNoob(false);
                 model.setTranslation(x,0,z);
                 model.setRenderingEnable(true);
                 world.addChild(model);
                 zombies[slot]=new Zombie(model,x,z);
             } catch(Throwable t) {
-                initError="Hide zombie: "+t.toString();
+                initError="Hide bot: "+t.toString();
             }
         }
 
@@ -920,7 +973,7 @@ public final class main extends MIDlet {
                 order[i]=order[j];order[j]=swap;
             }
             for(int i=0;i<count;i++)
-                spawnHideZombie(i,HIDE_SPAWN_X[order[i]],HIDE_SPAWN_Z[order[i]]);
+                spawnHideBot(i,HIDE_SPAWN_X[order[i]],HIDE_SPAWN_Z[order[i]]);
             for(int i=0;i<count;i++) if(zombies[i]!=null) {
                 zombies[i].hidden=true;
                 zombies[i].fleeing=false;
@@ -2806,6 +2859,7 @@ public final class main extends MIDlet {
             paused = false;
             configMode = false;
             menuMode = true;
+            playMusic(3);
             loaded = false;
             selectedGame = currentGame;
             clearInput();
