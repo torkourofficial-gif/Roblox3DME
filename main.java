@@ -1185,8 +1185,11 @@ public final class main extends MIDlet {
                         Graphics.TOP | Graphics.HCENTER);
             }
             g.setColor(0xFFFFFF);
-            g.drawString(configMode ? "LEFT/RIGHT changes  FIRE selects" : "RIGHT SOFTKEY resumes",
-                    width / 2, panelY + panelHeight - g.getFont().getHeight() - 6,
+            int footerY = panelY + panelHeight - 2 * g.getFont().getHeight() - 8;
+            g.drawString(configMode ? "LEFT/RIGHT: change" : "UP/DOWN: select  FIRE: confirm",
+                    width / 2, footerY, Graphics.TOP | Graphics.HCENTER);
+            g.drawString(configMode ? "FIRE: select  RIGHT: back" : "RIGHT SOFTKEY: resume",
+                    width / 2, footerY + g.getFont().getHeight(),
                     Graphics.TOP | Graphics.HCENTER);
         }
 
