@@ -10,7 +10,7 @@ El punto de entrada es `main.java`, dentro del paquete `meblox`. Es un MIDlet pa
 - **5 / FIRE:** saltar.
 - *** / #:** acercar / alejar la cámara.
 
-El avatar gira para mantener la cara orientada hacia la cámara. El cuerpo, la cabeza cúbica de bordes rectos y las animaciones se construyen en Java; no se cargan los modelos `.m3g` separados.
+El avatar gira con la orientación horizontal de la cámara y mantiene la cara hacia delante, en sentido opuesto a ella. El cuerpo, la cabeza cilíndrica con bordes redondeados y las animaciones se construyen en Java; no se cargan los modelos `.m3g` separados.
 
 ## Recursos
 
