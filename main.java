@@ -99,7 +99,6 @@ public final class main extends MIDlet {
             animation = 0;
             animateNoob();
             modelStatus = "Code model loaded";
-            modelError = "";
             loaded = true;
         }
 
