@@ -4,16 +4,19 @@ El punto de entrada es `main.java`, dentro del paquete `meblox`. Es un MIDlet pa
 
 ## Menú
 
-Al iniciar, elige **Obby** o **Baseplate** con arriba/abajo y confirma con **5 / FIRE**. Obby incluye los bloques de salto; Baseplate deja el suelo verde y un bloque rojo de prueba que elimina al jugador al tocarlo. Pulsa **0** durante el juego para volver al menú. El fondo `bgtitle.png` se dibuja directamente en el tamaño de pantalla y se desplaza en bucle como una panorámica.
+Al iniciar, elige **Obby** o **Baseplate** con arriba/abajo y confirma con **5 / FIRE**. Obby tiene una ruta de diez plataformas en zigzag y una plataforma verde de meta; Baseplate deja el suelo verde y un bloque rojo de prueba que elimina al jugador al tocarlo. Pulsa **0** durante el juego para volver al menú. El fondo `bgtitle.png` se dibuja directamente en el tamaño de pantalla y se desplaza en bucle como una panorámica.
 
 ## Controles en los juegos
 
+- **Softkey derecho:** abre la pausa.
 - **D-pad:** orbita la cámara y permite mirar arriba/abajo.
 - **2 / 8:** avanzar y retroceder en relación con la cámara.
 - **4 / 6:** desplazamiento lateral.
 - **5 / FIRE:** saltar.
 - *** / #:** acercar / alejar la cámara.
 - El avatar gira al caminar, hacia el movimiento; la cámara puede orbitar mientras permanece quieto.
+
+El menú de pausa permite reanudar, configurar sensibilidad e inversión de cámara, reiniciar la partida o volver al menú de juegos.
 
 ## Física y reaparición
 
