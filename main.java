@@ -42,6 +42,20 @@ public final class main extends MIDlet {
         private int currentGame;
         private boolean paused, configMode;
         private int pauseSelection, configSelection;
+        private boolean menuSettings, controlMapMode, awaitingControlKey;
+        private int controlSelection;
+        private String settingsMessage = "";
+        private static final int CONTROL_FORWARD=0, CONTROL_BACK=1, CONTROL_LEFT=2,
+                CONTROL_RIGHT=3, CONTROL_JUMP=4, CONTROL_USE=5, CONTROL_PREVIOUS=6,
+                CONTROL_NEXT=7;
+        private static final String[] CONTROL_NAMES = {
+            "Move forward", "Move back", "Move left", "Move right",
+            "Jump", "Use item / build", "Previous item", "Next item"
+        };
+        private int[] mappedControls = {
+            KEY_NUM2, KEY_NUM8, KEY_NUM4, KEY_NUM6, KEY_NUM5,
+            KEY_NUM3, KEY_NUM7, KEY_NUM9
+        };
         private float jumpY = 0;
         private long lastTime;
         private int animTime;
@@ -300,6 +314,9 @@ public final class main extends MIDlet {
             menuMode = false;
             paused = false;
             configMode = false;
+            menuSettings = false;
+            controlMapMode = false;
+            awaitingControlKey = false;
             loaded = false;
             resetPlayerSpawn();
             yaw = 0;
@@ -574,7 +591,7 @@ public final class main extends MIDlet {
                     float z=baseZ+(row-1)*1.5f;
                     float sy=0.48f+row*0.16f;
                     int color=BOT_SHIRT_COLORS[baseIndex%BOT_SHIRT_COLORS.length];
-                    addModeBlock(x,sy*0.5f,z,0.70f,sy,0.70f,color);
+                    addModeBlock(x,sy*0.5f+0.035f,z,0.70f,sy,0.70f,color);
                     modeStatus("Tycoon bot "+(baseIndex+1)+" upgraded to "+level);
                 }
                 bot.tycoonAt=gameClock+4500+nextRandom(2200);
@@ -881,6 +898,19 @@ public final class main extends MIDlet {
             spawnSimpleBot(2,0,9);
         }
 
+        private void spawnHideZombie(int slot,float x,float z) {
+            if(slot<0||slot>=zombies.length)return;
+            try {
+                Group model=buildNoob(true);
+                model.setTranslation(x,0,z);
+                model.setRenderingEnable(true);
+                world.addChild(model);
+                zombies[slot]=new Zombie(model,x,z);
+            } catch(Throwable t) {
+                initError="Hide zombie: "+t.toString();
+            }
+        }
+
         private void spawnSeekBots() {
             zombies=new Zombie[6];
             int count=3+nextRandom(3);
@@ -890,7 +920,7 @@ public final class main extends MIDlet {
                 order[i]=order[j];order[j]=swap;
             }
             for(int i=0;i<count;i++)
-                spawnSimpleBot(i,HIDE_SPAWN_X[order[i]],HIDE_SPAWN_Z[order[i]]);
+                spawnHideZombie(i,HIDE_SPAWN_X[order[i]],HIDE_SPAWN_Z[order[i]]);
             for(int i=0;i<count;i++) if(zombies[i]!=null) {
                 zombies[i].hidden=true;
                 zombies[i].fleeing=false;
@@ -1167,7 +1197,7 @@ public final class main extends MIDlet {
             float x=TYCOON_PLAYER_X+(column-1)*1.5f;
             float z=TYCOON_PLAYER_Z+(row-1)*1.5f;
             float sy=0.48f+row*0.16f;
-            addModeBlock(x,sy*0.5f,z,0.70f,sy,0.70f,STUDIO_COLORS[level%STUDIO_COLORS.length]);
+            addModeBlock(x,sy*0.5f+0.035f,z,0.70f,sy,0.70f,STUDIO_COLORS[level%STUDIO_COLORS.length]);
             modeStatus("Your base upgraded "+level+"/9 - cash "+modeCash);
             if(tycoonLevel>=9)modeStatus("Your base is fully upgraded!");
         }
@@ -1678,6 +1708,10 @@ public final class main extends MIDlet {
 
         private void drawMenu(Graphics g) {
             prepareMenuImages();
+            if (menuSettings) {
+                drawSettingsPanel(g, false);
+                return;
+            }
             g.setColor(0x101820);
             g.fillRect(0, 0, getWidth(), getHeight());
             drawMenuPanorama(g);
@@ -1719,6 +1753,9 @@ public final class main extends MIDlet {
             g.drawString("PAGE " + (page + 1) + "/" + pageCount +
                     "  UP/DOWN SELECT  7/9 PAGE",
                     getWidth() / 2, getHeight() - font.getHeight() - 8,
+                    Graphics.TOP | Graphics.HCENTER);
+            g.drawString("* SETTINGS  5 START",
+                    getWidth() / 2, getHeight() - font.getHeight() * 2 - 10,
                     Graphics.TOP | Graphics.HCENTER);
             if (modelError.length() > 0)
                 g.drawString(modelError, 4, 4, Graphics.TOP | Graphics.LEFT);
@@ -1876,9 +1913,10 @@ public final class main extends MIDlet {
 
         private void resolveLanding(float previousY) {
             float top = Float.NEGATIVE_INFINITY;
+            float floorLimit = currentGame == 11 ? 21.5f : 11.5f;
             if (currentGame != 4 && currentGame != 0 && currentGame != 6 &&
-                    currentGame != 7 && Math.abs(px) < 11.5f &&
-                    Math.abs(pz) < 11.5f) top = 0.0f;
+                    currentGame != 7 && Math.abs(px) < floorLimit &&
+                    Math.abs(pz) < floorLimit) top = 0.0f;
             if (currentGame >= 4) {
                 for (int i=0;i<modeBlockCount;i++) {
                     if (!modeBlockActive[i]) continue;
@@ -2780,6 +2818,127 @@ public final class main extends MIDlet {
             clearInput();
         }
 
+        private void drawSettingsPanel(Graphics g, boolean pausedPanel) {
+            int width=getWidth(),height=getHeight();
+            if(pauseOverlayPixels==null||pauseOverlayWidth!=width||pauseOverlayHeight!=height) {
+                pauseOverlayWidth=width;pauseOverlayHeight=height;
+                pauseOverlayPixels=new int[width*height];
+                for(int i=0;i<pauseOverlayPixels.length;i++)pauseOverlayPixels[i]=0x9908121E;
+            }
+            g.drawRGB(pauseOverlayPixels,0,width,0,0,width,height,true);
+            int rowHeight=Math.max(18,g.getFont().getHeight()+5);
+            int optionCount=controlMapMode?Math.min(8,Math.max(1,(height-88)/rowHeight)):4;
+            int panelWidth=Math.min(270,Math.max(1,width-12));
+            int panelHeight=Math.min(height-8,48+optionCount*rowHeight+34);
+            int panelX=(width-panelWidth)/2,panelY=(height-panelHeight)/2;
+            g.setColor(0x1A2D40);
+            g.fillRoundRect(panelX,panelY,panelWidth,panelHeight,14,14);
+            g.setColor(0xFFFFFF);
+            g.drawString(controlMapMode?"MAP BUTTONS":"SETTINGS",width/2,panelY+8,
+                    Graphics.TOP|Graphics.HCENTER);
+            if(controlMapMode) {
+                int first=Math.max(0,Math.min(controlSelection-(optionCount/2),
+                        CONTROL_NAMES.length-optionCount));
+                for(int row=0;row<optionCount;row++) {
+                    int index=first+row,y=panelY+31+row*rowHeight;
+                    g.setColor(index==controlSelection?0xF5C542:0x263B50);
+                    g.fillRoundRect(panelX+7,y,panelWidth-14,rowHeight-2,7,7);
+                    g.setColor(index==controlSelection?0x17202A:0xFFFFFF);
+                    g.drawString(CONTROL_NAMES[index]+": "+controlKeyName(mappedControls[index]),
+                            width/2,y+1,Graphics.TOP|Graphics.HCENTER);
+                }
+            } else {
+                String speed=sensitivityLevel==0?"Low":(sensitivityLevel==1?"Normal":"High");
+                String[] options={"Camera sensitivity: "+speed,
+                    "Invert camera: "+(invertCamera?"On":"Off"),
+                    "Map buttons", "Back"};
+                for(int row=0;row<options.length;row++) {
+                    int y=panelY+31+row*rowHeight;
+                    g.setColor(row==configSelection?0xF5C542:0x263B50);
+                    g.fillRoundRect(panelX+7,y,panelWidth-14,rowHeight-2,7,7);
+                    g.setColor(row==configSelection?0x17202A:0xFFFFFF);
+                    g.drawString(options[row],width/2,y+1,Graphics.TOP|Graphics.HCENTER);
+                }
+            }
+            g.setColor(0xFFFFFF);
+            String help=controlMapMode?(awaitingControlKey?"Press 1-9 to assign":"UP/DOWN select  FIRE map"):
+                    "UP/DOWN select  LEFT/RIGHT change";
+            g.drawString(help,width/2,panelY+panelHeight-g.getFont().getHeight()*2-6,
+                    Graphics.TOP|Graphics.HCENTER);
+            g.drawString(settingsMessage.length()>0?settingsMessage:
+                    (controlMapMode?"* BACK":"FIRE select  * BACK"),
+                    width/2,panelY+panelHeight-g.getFont().getHeight()-4,
+                    Graphics.TOP|Graphics.HCENTER);
+        }
+
+        private String controlKeyName(int keyCode) {
+            for(int i=1;i<=9;i++)if(keyCode==KEY_NUM0+i)return ""+i;
+            return "?";
+        }
+
+        private void handleSettingsInput(int keyCode,int action) {
+            boolean up=action==UP||keyCode==KEY_NUM2;
+            boolean down=action==DOWN||keyCode==KEY_NUM8;
+            boolean leftKey=action==LEFT||keyCode==KEY_NUM4;
+            boolean rightKey=action==RIGHT||keyCode==KEY_NUM6;
+            boolean fire=action==FIRE||keyCode==KEY_NUM5;
+            if(controlMapMode) {
+                if(awaitingControlKey) {
+                    int keyIndex=-1;
+                    for(int i=1;i<=9;i++)if(keyCode==KEY_NUM0+i)keyIndex=i;
+                    if(keyIndex<0) {
+                        settingsMessage="Choose a number from 1 to 9";
+                        return;
+                    }
+                    int assigned=KEY_NUM0+keyIndex;
+                    for(int i=0;i<mappedControls.length;i++) {
+                        if(i!=controlSelection&&mappedControls[i]==assigned) {
+                            settingsMessage="That button is already assigned";
+                            return;
+                        }
+                    }
+                    mappedControls[controlSelection]=assigned;
+                    awaitingControlKey=false;
+                    settingsMessage="Assigned "+keyIndex;
+                    return;
+                }
+                if(keyCode==KEY_STAR||keyCode==KEY_POUND||keyCode==KEY_NUM0) {
+                    controlMapMode=false;
+                    settingsMessage="";
+                    return;
+                }
+                if(up)controlSelection=(controlSelection+CONTROL_NAMES.length-1)%CONTROL_NAMES.length;
+                else if(down)controlSelection=(controlSelection+1)%CONTROL_NAMES.length;
+                else if(fire) {
+                    awaitingControlKey=true;
+                    settingsMessage="Press a number from 1 to 9";
+                }
+                return;
+            }
+            if(keyCode==KEY_STAR||keyCode==KEY_POUND) {
+                if(menuSettings)menuSettings=false;
+                else configMode=false;
+                settingsMessage="";
+                return;
+            }
+            if(up)configSelection=(configSelection+3)%4;
+            else if(down)configSelection=(configSelection+1)%4;
+            else if((leftKey||rightKey)&&configSelection<2) {
+                changeCameraSetting(rightKey?1:-1);
+            } else if(fire) {
+                if(configSelection<2)changeCameraSetting(1);
+                else if(configSelection==2) {
+                    controlMapMode=true;
+                    controlSelection=0;
+                    awaitingControlKey=false;
+                    settingsMessage="";
+                } else {
+                    if(menuSettings)menuSettings=false;
+                    else configMode=false;
+                }
+            }
+        }
+
         private void changeCameraSetting(int direction) {
             if (configSelection == 0) {
                 sensitivityLevel = (sensitivityLevel + direction + 3) % 3;
@@ -2794,18 +2953,9 @@ public final class main extends MIDlet {
         private void handlePauseInput(int keyCode, int action) {
             boolean up = action == UP || keyCode == KEY_NUM2;
             boolean down = action == DOWN || keyCode == KEY_NUM8;
-            boolean leftKey = action == LEFT || keyCode == KEY_NUM4;
-            boolean rightKey = action == RIGHT || keyCode == KEY_NUM6;
             boolean fire = action == FIRE || keyCode == KEY_NUM5;
             if (configMode) {
-                if (up) configSelection = (configSelection + 2) % 3;
-                else if (down) configSelection = (configSelection + 1) % 3;
-                else if ((leftKey || rightKey) && configSelection < 2)
-                    changeCameraSetting(rightKey ? 1 : -1);
-                else if (fire) {
-                    if (configSelection == 2) configMode = false;
-                    else changeCameraSetting(1);
-                }
+                handleSettingsInput(keyCode,action);
                 return;
             }
             if (up) pauseSelection = (pauseSelection + 3) % 4;
@@ -2816,6 +2966,9 @@ public final class main extends MIDlet {
                 } else if (pauseSelection == 1) {
                     configMode = true;
                     configSelection = 0;
+                    controlMapMode = false;
+                    awaitingControlKey = false;
+                    settingsMessage = "";
                 } else if (pauseSelection == 2) {
                     try { startGame(currentGame); }
                     catch (Throwable t) { initError = "Restart: " + t.toString(); }
@@ -2826,6 +2979,10 @@ public final class main extends MIDlet {
         }
 
         private void drawPauseMenu(Graphics g) {
+            if(configMode) {
+                drawSettingsPanel(g,true);
+                return;
+            }
             int width = getWidth(), height = getHeight();
             if (pauseOverlayPixels == null || pauseOverlayWidth != width || pauseOverlayHeight != height) {
                 pauseOverlayWidth = width; pauseOverlayHeight = height;
@@ -2834,29 +2991,19 @@ public final class main extends MIDlet {
             }
             int panelWidth = Math.min(260, Math.max(1, width - 16));
             int rowHeight = Math.max(22, g.getFont().getHeight() + 8);
-            int optionCount = configMode ? 3 : 4;
+            int optionCount = 4;
             int panelHeight = Math.min(height - 8, 50 + optionCount * rowHeight + 32);
             int panelX = (width - panelWidth) / 2, panelY = (height - panelHeight) / 2;
             g.drawRGB(pauseOverlayPixels, 0, width, 0, 0, width, height, true);
             g.setColor(0x1A2D40);
             g.fillRoundRect(panelX, panelY, panelWidth, panelHeight, 14, 14);
             g.setColor(0xFFFFFF);
-            g.drawString(configMode ? "CONFIGURATION" : "PAUSED", width / 2,
+            g.drawString("PAUSED", width / 2,
                     panelY + 10, Graphics.TOP | Graphics.HCENTER);
             String[] options;
             int selected;
-            if (configMode) {
-                String speed = sensitivityLevel == 0 ? "Low" : (sensitivityLevel == 1 ? "Normal" : "High");
-                options = new String[] {
-                    "Camera speed: " + speed,
-                    "Invert camera: " + (invertCamera ? "On" : "Off"),
-                    "Back"
-                };
-                selected = configSelection;
-            } else {
-                options = new String[] {"Resume", "Configure", "Restart", "Exit to game menu"};
-                selected = pauseSelection;
-            }
+            options = new String[] {"Resume", "Configure", "Restart", "Exit to game menu"};
+            selected = pauseSelection;
             int firstY = panelY + 38;
             int buttonX = panelX + 8, buttonWidth = panelWidth - 16;
             for (int i = 0; i < options.length; i++) {
@@ -2870,9 +3017,9 @@ public final class main extends MIDlet {
             }
             g.setColor(0xFFFFFF);
             int footerY = panelY + panelHeight - 2 * g.getFont().getHeight() - 8;
-            g.drawString(configMode ? "LEFT/RIGHT: change" : "UP/DOWN: select  FIRE: confirm",
+            g.drawString("UP/DOWN: select  FIRE: confirm",
                     width / 2, footerY, Graphics.TOP | Graphics.HCENTER);
-            g.drawString(configMode ? "FIRE: select  RIGHT: back" : "RIGHT SOFTKEY: resume",
+            g.drawString("RIGHT SOFTKEY: resume",
                     width / 2, footerY + g.getFont().getHeight(),
                     Graphics.TOP | Graphics.HCENTER);
         }
@@ -3088,6 +3235,20 @@ public final class main extends MIDlet {
         protected void keyPressed(int keyCode) {
             int k = getGameAction(keyCode);
             if (menuMode) {
+                if(menuSettings) {
+                    handleSettingsInput(keyCode,k);
+                    repaint();
+                    return;
+                }
+                if(keyCode==KEY_STAR) {
+                    menuSettings=true;
+                    configSelection=0;
+                    controlMapMode=false;
+                    awaitingControlKey=false;
+                    settingsMessage="";
+                    repaint();
+                    return;
+                }
                 int pageSize = getHeight() < 220 ? 4 : 5;
                 int pageCount = (GAME_NAMES.length + pageSize - 1) / pageSize;
                 int page = selectedGame / pageSize;
@@ -3116,12 +3277,17 @@ public final class main extends MIDlet {
                 return;
             }
             // On some devices key 3 is reported with GAME_B, which is also used
-            // by the right softkey. In Horde and Studio, keep numeric 3 reserved for its game action.
-            boolean reservedThree = (currentGame == 2 || currentGame == 3 ||
-                    currentGame == 10 || currentGame == 13 || currentGame == 14) &&
-                    keyCode == KEY_NUM3;
+            // by the right softkey. Reserve the mapped action key so softkey detection stays reliable.
+            boolean reservedThree = (currentGame == 3 && keyCode == KEY_NUM3) ||
+                    ((currentGame == 2 || currentGame == 10 ||
+                    currentGame == 13 || currentGame == 14) &&
+                    keyCode == mappedControls[CONTROL_USE]);
             if (!reservedThree && isRightSoftkey(keyCode, k)) {
-                if (paused) { paused = false; configMode = false; }
+                if (paused && configMode) {
+                    configMode = false;
+                    controlMapMode = false;
+                    awaitingControlKey = false;
+                } else if (paused) paused = false;
                 else openPauseMenu();
                 repaint();
                 return;
@@ -3152,29 +3318,29 @@ public final class main extends MIDlet {
                 return;
             }
             if ((currentGame == 2 || currentGame == 10 || currentGame == 14) &&
-                    (keyCode == KEY_NUM7 || keyCode == KEY_NUM9)) {
+                    (keyCode == mappedControls[CONTROL_PREVIOUS] || keyCode == mappedControls[CONTROL_NEXT])) {
                 int n=currentGame==2?3:2;
-                inventorySelection=(inventorySelection+(keyCode==KEY_NUM9?1:n-1))%n;
+                inventorySelection=(inventorySelection+(keyCode==mappedControls[CONTROL_NEXT]?1:n-1))%n;
                 repaint(); return;
             }
             if ((currentGame == 2 || currentGame == 10 || currentGame == 14) &&
-                    keyCode == KEY_NUM3) {
+                    keyCode == mappedControls[CONTROL_USE]) {
                 useInventoryItem(); repaint(); return;
             }
-            if (currentGame == 13 && keyCode == KEY_NUM3) {
+            if (currentGame == 13 && keyCode == mappedControls[CONTROL_USE]) {
                 useTycoonAction();
                 repaint();
                 return;
             }
-            if (keyCode == KEY_NUM2) forward = true;
-            else if (keyCode == KEY_NUM8) back = true;
-            else if (keyCode == KEY_NUM4) left = true;
-            else if (keyCode == KEY_NUM6) right = true;
+            if (keyCode == mappedControls[CONTROL_FORWARD]) forward = true;
+            else if (keyCode == mappedControls[CONTROL_BACK]) back = true;
+            else if (keyCode == mappedControls[CONTROL_LEFT]) left = true;
+            else if (keyCode == mappedControls[CONTROL_RIGHT]) right = true;
             else if (k == LEFT) camLeft = true;
             else if (k == RIGHT) camRight = true;
             else if (k == UP) camUp = true;
             else if (k == DOWN) camDown = true;
-            else if ((keyCode == KEY_NUM5 || k == FIRE) && !jumping) {
+            else if ((keyCode == mappedControls[CONTROL_JUMP] || k == FIRE) && !jumping) {
                 if (grounded) {
                     grounded = false;
                     playerVelocityY = 0.0075f;
@@ -3191,10 +3357,10 @@ public final class main extends MIDlet {
         }
         protected void keyReleased(int keyCode) {
             int k = getGameAction(keyCode);
-            if (keyCode == KEY_NUM2) forward = false;
-            else if (keyCode == KEY_NUM8) back = false;
-            else if (keyCode == KEY_NUM4) left = false;
-            else if (keyCode == KEY_NUM6) right = false;
+            if (keyCode == mappedControls[CONTROL_FORWARD]) forward = false;
+            else if (keyCode == mappedControls[CONTROL_BACK]) back = false;
+            else if (keyCode == mappedControls[CONTROL_LEFT]) left = false;
+            else if (keyCode == mappedControls[CONTROL_RIGHT]) right = false;
             else if (k == LEFT) camLeft = false;
             else if (k == RIGHT) camRight = false;
             else if (k == UP) camUp = false;
