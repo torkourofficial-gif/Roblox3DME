@@ -634,7 +634,7 @@ public final class main extends MIDlet {
             return top;
         }
         private Group makeBotAura() {
-            Group aura=new Group();aura.addChild(makeAuraMesh(0x503399FF));
+            Group aura=new Group();aura.addChild(makeAuraMesh(0x5047D764));
             aura.setTranslation(0,1.35f,0);return aura;
         }
         private Mesh makeAuraMesh(int color) {
