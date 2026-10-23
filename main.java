@@ -307,7 +307,7 @@ public final class main extends MIDlet {
                 tokenActive[i]=false;
                 tokenNodes[i]=null;
             }
-            tokenCount=0; modeCollected=0; modeScore=0; modeLives=3;
+            tokenCount=0; modeCollected=0; modeGoal=0; modeScore=0; modeLives=3;
             modeCash=10; tycoonLevel=0; simonTarget=0; simonRound=0;
             defenseLeaked=0; lavaHeight=-1.0f; lavaNode=null;
             modeStartAt=0; modeEventAt=0; modeScoreAt=0;
@@ -1522,6 +1522,8 @@ public final class main extends MIDlet {
                 px=0; pz=0; jumpY=0.70f;
             } else if (currentGame == 13) {
                 px=0; pz=0; jumpY=0.36f;
+            } else if (currentGame == 14) {
+                px=0; pz=0; jumpY=0.50f;
             } else {
                 px = 0;
                 pz = 0;
