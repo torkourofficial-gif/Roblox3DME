@@ -6,8 +6,8 @@ import javax.microedition.m3g.*;
 
 /**
  * Roblox3DME: minimal JSR-184 playground/controller.
- * Put noobidle.m3g, noobrun.m3g, noobjump.m3g and face.png
- * in the /meblox/ resource folder in the JAR. Intended for MIDP 2.0 + JSR-184 devices.
+ * The character is generated in Java; put face.png in /meblox/ (or the JAR root).
+ * Intended for MIDP 2.0 + JSR-184 devices.
  */
 public final class main extends MIDlet {
     private Game game;
@@ -28,9 +28,7 @@ public final class main extends MIDlet {
         private World world;
         private Camera camera;
         private Group avatar;
-        private Object3D idleObject, runObject, jumpObject;
         private Group activeModel;
-        private Group idleModel, runModel, jumpModel;
         private Mesh leftArm, rightArm, leftLeg, rightLeg;
         private int animation = 0; // 0 idle, 1 run, 2 jump
         private float px = 0, pz = 0, yaw = 0;
@@ -41,7 +39,7 @@ public final class main extends MIDlet {
         private int animTime;
         private boolean forward, back, left, right, camLeft, camRight, camUp, camDown, jumping;
         private boolean loaded;
-        private String modelStatus = "Models: not loaded";
+        private String modelStatus = "Code model: not loaded";
         private String modelError = "";
         private String initError = "";
 
@@ -93,200 +91,16 @@ public final class main extends MIDlet {
             world.addChild(makeBox(-3, 0.75f, -8, 2, 3, 2, 0x4779D1));
             world.addChild(makeBox(0, 1.5f, -11, 3, 4, 3, 0xB56AC8));
 
-            // Load the three exported JSR-184 models from the JAR resources.
-            idleObject = loadModel("/meblox/noobidle.m3g", "/noobidle.m3g");
-            String idleError = modelError;
-            modelError = "";
-            runObject  = loadModel("/meblox/noobrun.m3g",  "/noobrun.m3g");
-            String runError = modelError;
-            modelError = "";
-            jumpObject = loadModel("/meblox/noobjump.m3g", "/noobjump.m3g");
-            String jumpError = modelError;
-            modelError = "";
-
-            idleModel = asGroup(idleObject);
-            runModel = asGroup(runObject);
-            jumpModel = asGroup(jumpObject);
-            if (idleModel == null || runModel == null || jumpModel == null) {
-                if (idleModel == null) modelError += "idle: " + idleError + " ";
-                if (runModel == null) modelError += "run: " + runError + " ";
-                if (jumpModel == null) modelError += "jump: " + jumpError;
-                throw new Exception("Cannot load required M3G model(s). " + modelError);
-            }
-
+            // Build one classic blocky noob directly from Java geometry.
             avatar = new Group();
-            activeModel = idleModel;
+            activeModel = buildNoob();
             avatar.addChild(activeModel);
             world.addChild(avatar);
             animation = 0;
-            modelStatus = "M3G loaded";
+            animateNoob();
+            modelStatus = "Code model loaded";
+            modelError = "";
             loaded = true;
-        }
-
-        private Object3D loadModel(String preferredPath, String fallbackPath) {
-            String fileName = fallbackPath;
-            if (fileName.startsWith("/")) fileName = fileName.substring(1);
-            String[] paths = new String[] {
-                preferredPath,
-                fallbackPath,
-                "/" + fileName,
-                fileName
-            };
-            String lastError = "";
-            for (int p = 0; p < paths.length; p++) {
-                String path = paths[p];
-                java.io.InputStream in = null;
-                try {
-                    in = getClass().getResourceAsStream(path);
-                    if (in == null) in = midlet.getClass().getResourceAsStream(path);
-                    if (in == null) {
-                        lastError = path + ": not found by class resource lookup";
-                        continue;
-                    }
-
-                    // Keep a byte copy for diagnostics/fallback, but prefer Loader.load(String):
-                    // this lets JSR-184 resolve external references relative to the M3G resource.
-                    java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
-                    byte[] chunk = new byte[1024];
-                    int count;
-                    while ((count = in.read(chunk)) != -1) buffer.write(chunk, 0, count);
-                    in.close();
-                    in = null;
-                    byte[] data = buffer.toByteArray();
-                    if (data.length == 0) {
-                        lastError = path + ": resource is empty";
-                        continue;
-                    }
-
-                    String loaderPath;
-                    if (path.startsWith("/")) {
-                        loaderPath = path;
-                    } else {
-                        // Class.getResourceAsStream("name") is package-relative.
-                        loaderPath = "/meblox/" + path;
-                    }
-
-                    Object3D[] objects = null;
-                    try {
-                        objects = Loader.load(loaderPath);
-                    } catch (Throwable namedLoadError) {
-                        lastError = loaderPath + " Loader.load(String): " + namedLoadError.toString();
-                    }
-
-                    // Byte-array fallback supports self-contained M3G files without external
-                    // relative references. Keep the named-load error if both modes fail.
-                    if (objects == null || objects.length == 0) {
-                        try {
-                            objects = Loader.load(data, 0);
-                        } catch (Throwable byteLoadError) {
-                            lastError = path + " Loader.load(byte[]): " + byteLoadError.toString();
-                            continue;
-                        }
-                    }
-
-                    if (objects == null || objects.length == 0) {
-                        lastError = path + ": Loader returned no objects";
-                        continue;
-                    }
-
-                    // Root order is unspecified. Prefer a model Group over a World.
-                    for (int i = 0; i < objects.length; i++) {
-                        if (objects[i] instanceof Group && !(objects[i] instanceof World))
-                            return objects[i];
-                    }
-
-                    // A World is a scene container, and M3G forbids adding it under the avatar.
-                    // Extract its model Group when present; otherwise wrap its non-camera children.
-                    for (int i = 0; i < objects.length; i++) {
-                        if (objects[i] instanceof World) {
-                            World sourceWorld = (World)objects[i];
-                            for (int childIndex = 0; childIndex < sourceWorld.getChildCount(); childIndex++) {
-                                Node child = sourceWorld.getChild(childIndex);
-                                if (child instanceof Group && !(child instanceof World)) {
-                                    sourceWorld.removeChild(child);
-                                    return child;
-                                }
-                            }
-
-                            Group extracted = new Group();
-                            while (sourceWorld.getChildCount() > 0) {
-                                Node child = sourceWorld.getChild(0);
-                                if (child instanceof Camera) {
-                                    sourceWorld.removeChild(child);
-                                } else {
-                                    sourceWorld.removeChild(child);
-                                    extracted.addChild(child);
-                                }
-                            }
-                            if (extracted.getChildCount() > 0) return extracted;
-                        }
-                    }
-
-                    for (int i = 0; i < objects.length; i++) {
-                        if (objects[i] instanceof Node &&
-                                !(objects[i] instanceof Camera) &&
-                                !(objects[i] instanceof World))
-                            return objects[i];
-                    }
-                    lastError = path + ": no usable model Node among " + objects.length + " roots";
-                } catch (Throwable t) {
-                    lastError = path + ": " + t.toString();
-                } finally {
-                    if (in != null) {
-                        try { in.close(); } catch (Throwable ignored) {}
-                    }
-                }
-            }
-            modelError = lastError;
-            return null;
-        }
-
-        private Group asGroup(Object3D o) {
-            if (o instanceof Group) return (Group)o;
-            if (o instanceof Node) {
-                Group wrapper = new Group();
-                wrapper.addChild((Node)o);
-                return wrapper;
-            }
-            return null;
-        }
-
-        private void playAnimation(Object3D obj, int index) {
-            if (obj == null) return;
-            activateTracks(obj);
-        }
-
-        // Exporters may attach animation tracks to child nodes instead of the root.
-        private void activateTracks(Object3D obj) {
-            try {
-                int n = obj.getAnimationTrackCount();
-                for (int i = 0; i < n; i++) {
-                    AnimationController c = obj.getAnimationTrack(i).getController();
-                    if (c != null) {
-                        c.setActiveInterval(0, 0x7fffffff);
-                        c.setSpeed(1.0f, animTime);
-                        c.setPosition(0.0f, animTime);
-                    }
-                }
-                if (obj instanceof Group) {
-                    Group group = (Group)obj;
-                    for (int i = 0; i < group.getChildCount(); i++)
-                        activateTracks(group.getChild(i));
-                }
-            } catch (Throwable t) {}
-        }
-
-        private void switchAnimation(int next) {
-            if (next == animation) return;
-            Group replacement = next == 1 ? runModel : (next == 2 ? jumpModel : idleModel);
-            if (replacement == null || avatar == null) { animation = next; return; }
-            try {
-                if (activeModel != null) avatar.removeChild(activeModel);
-                activeModel = replacement;
-                avatar.addChild(activeModel);
-                playAnimation(replacement, next);
-            } catch (Throwable t) {}
-            animation = next;
         }
 
         // Small atan2 approximation for older CLDC profiles lacking Math.atan2.
@@ -347,7 +161,8 @@ public final class main extends MIDlet {
             if (jumping) wantedAnimation = 2;
             else if (forward || back || left || right) wantedAnimation = 1;
             else wantedAnimation = 0;
-            switchAnimation(wantedAnimation);
+            animation = wantedAnimation;
+            animateNoob();
             if (world != null) {
                 try { world.animate(animTime); } catch (Throwable t) {}
             }
@@ -388,7 +203,7 @@ public final class main extends MIDlet {
             } else {
                 g.setColor(0xFFFFFF);
                 g.drawString("Roblox3DME - model load failed", 4, 4, Graphics.TOP|Graphics.LEFT);
-                g.drawString("Check .m3g resources", 4, 22, Graphics.TOP|Graphics.LEFT);
+                g.drawString("Check Java model and face.png", 4, 22, Graphics.TOP|Graphics.LEFT);
             }
             g.setColor(0xFFFFFF);
             g.drawString("ROBLOX 3DME", 3, 2, Graphics.TOP|Graphics.LEFT);
@@ -425,13 +240,13 @@ public final class main extends MIDlet {
             Group model = new Group();
 
             // Classic blocky noob proportions, in local coordinates.
-            model.addChild(makeBox(0, 1.45f, 0, 0.78f, 0.95f, 0.42f, 0x1769AA)); // classic blue torso
-            model.addChild(makeBox(0, 2.18f, 0, 0.68f, 0.62f, 0.62f, 0xF5C542)); // classic yellow head
-            model.addChild(makeTexturedFace()); // front face decal
-            leftArm = (Mesh)makeBox(-0.52f, 1.48f, 0, 0.24f, 0.88f, 0.28f, 0xF5C542);
-            rightArm = (Mesh)makeBox(0.52f, 1.48f, 0, 0.24f, 0.88f, 0.28f, 0xF5C542);
-            leftLeg = (Mesh)makeBox(-0.21f, 0.52f, 0, 0.30f, 0.78f, 0.34f, 0x2E9E45);
-            rightLeg = (Mesh)makeBox(0.21f, 0.52f, 0, 0.30f, 0.78f, 0.34f, 0x2E9E45);
+            model.addChild(makeBox(0, 1.45f, 0, 0.78f, 0.95f, 0.40f, 0x1769AA)); // classic blue torso
+            model.addChild(makeBox(0, 2.16f, 0, 0.68f, 0.38f, 0.40f, 0xF5C542)); // wide, flat classic Roblox head
+            model.addChild(makeTexturedFace()); // face.png decal on the front (-Z)
+            leftArm = (Mesh)makeBox(-0.54f, 1.48f, 0, 0.30f, 0.88f, 0.40f, 0xF5C542);
+            rightArm = (Mesh)makeBox(0.54f, 1.48f, 0, 0.30f, 0.88f, 0.40f, 0xF5C542);
+            leftLeg = (Mesh)makeBox(-0.20f, 0.52f, 0, 0.36f, 0.78f, 0.40f, 0x2E9E45);
+            rightLeg = (Mesh)makeBox(0.20f, 0.52f, 0, 0.36f, 0.78f, 0.40f, 0x2E9E45);
             model.addChild(leftArm);
             model.addChild(rightArm);
             model.addChild(leftLeg);
@@ -448,7 +263,7 @@ public final class main extends MIDlet {
                     try { img = javax.microedition.lcdui.Image.createImage(in); }
                     finally { try { in.close(); } catch (Throwable ignored) {} }
                 }
-                if (img == null) return makeBox(0, 2.18f, -0.316f, 0.48f, 0.40f, 0.012f, 0xFFFFFF);
+                if (img == null) return makeBox(0, 2.16f, -0.202f, 0.50f, 0.30f, 0.008f, 0xFFFFFF);
 
                 Image2D image2D = new Image2D(Image2D.RGBA, img);
                 Texture2D texture = new Texture2D(image2D);
@@ -463,7 +278,7 @@ public final class main extends MIDlet {
                 ap.setMaterial(mat);
 
                 // Quad on the front (-Z) side of the head, with full-image UVs.
-                short[] p = new short[] {-270,-210,0, 270,-210,0, -270,210,0, 270,210,0};
+                short[] p = new short[] {-250,-170,0, 250,-170,0, -250,170,0, 250,170,0};
                 VertexArray pos = new VertexArray(4, 3, 2);
                 pos.set(0, 4, p);
                 short[] uv = new short[] {0,1000, 1000,1000, 0,0, 1000,0};
@@ -474,10 +289,10 @@ public final class main extends MIDlet {
                 vb.setTexCoords(0, texCoords, 0.001f, null);
                 TriangleStripArray indices = new TriangleStripArray(0, new int[] {4});
                 Mesh face = new Mesh(vb, new IndexBuffer[] {indices}, new Appearance[] {ap});
-                face.setTranslation(0, 2.18f, -0.317f);
+                face.setTranslation(0, 2.16f, -0.202f);
                 return face;
             } catch (Throwable t) {
-                return makeBox(0, 2.18f, -0.316f, 0.48f, 0.40f, 0.012f, 0xFFFFFF);
+                return makeBox(0, 2.16f, -0.202f, 0.50f, 0.30f, 0.008f, 0xFFFFFF);
             }
         }
 
@@ -547,7 +362,8 @@ public final class main extends MIDlet {
             else if ((keyCode == KEY_NUM5 || k == FIRE) && !jumping) {
                 jumping = true;
                 jumpVelocity = 0.008f;
-                switchAnimation(2);
+                animation = 2;
+                animateNoob();
             }
             else if (keyCode == KEY_STAR || keyCode == KEY_POUND) {
                 camDistance += keyCode == KEY_STAR ? -0.5f : 0.5f;
