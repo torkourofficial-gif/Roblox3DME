@@ -34,7 +34,7 @@ public final class main extends MIDlet {
         private float px = 0, pz = 0, yaw = 0;
         private float camYaw = 0, camPitch = 0.22f;
         private float camDistance = 5.0f;
-        private float jumpY = 0, jumpVelocity = 0;
+        private float jumpY = 0;
         private long lastTime;
         private int animTime;
         private boolean forward, back, left, right, camLeft, camRight, camUp, camDown, jumping;
@@ -42,14 +42,32 @@ public final class main extends MIDlet {
         private boolean menuMode = true;
         private int selectedGame;
         private Image logoSource, titleBackgroundSource, skySource;
-        private Image scaledLogo, scaledTitleBackground;
+        private Image scaledLogo;
+        private int[] menuPanPixels;
+        private float menuPanScale;
+        private float menuPanWidth;
         private Image2D skyBackgroundImage;
         private Background sceneBackground;
         private int cachedMenuWidth = -1, cachedMenuHeight = -1;
         private long menuPanTime;
+        private float playerVelocityY;
+        private boolean grounded = true, dead, lobbyMode;
+        private long gameClock, respawnAt, invulnerableUntil;
+        private PhysicsPiece[] deathPieces;
+        private Group protectionAura;
         private String modelStatus = "Select a game";
         private String modelError = "";
         private String initError = "";
+
+        private static final class PhysicsPiece {
+            Node node;
+            float x, y, z, vx, vy, vz, rotation, spin;
+            PhysicsPiece(Node n, float px, float py, float pz,
+                    float velX, float velY, float velZ, float spinRate) {
+                node = n; x = px; y = py; z = pz;
+                vx = velX; vy = velY; vz = velZ; spin = spinRate;
+            }
+        }
 
         Game(main m) { midlet = m; setFullScreenMode(true); }
         synchronized void start() {
@@ -124,6 +142,13 @@ public final class main extends MIDlet {
             jumpVelocity = 0;
             jumping = false;
             forward = back = left = right = false;
+            playerVelocityY = 0;
+            grounded = true;
+            dead = false;
+            lobbyMode = game == 1;
+            gameClock = 0;
+            invulnerableUntil = 0;
+            deathPieces = null;
 
             world = new World();
             sceneBackground = new Background();
@@ -150,12 +175,16 @@ public final class main extends MIDlet {
                 world.addChild(makeBox(3, 0.5f, -8, 2, 2, 2, 0xE3C44D));
                 world.addChild(makeBox(-3, 0.75f, -8, 2, 3, 2, 0x4779D1));
                 world.addChild(makeBox(0, 1.5f, -11, 3, 4, 3, 0xB56AC8));
+            } else {
+                // Red touch-to-die test block in the baseplate lobby.
+                world.addChild(makeBox(3, 0.35f, -3, 1.2f, 0.7f, 1.2f, 0xE32636));
             }
 
             avatar = new Group();
             activeModel = buildNoob();
             avatar.addChild(activeModel);
             world.addChild(avatar);
+            protectionAura = null;
             animation = 0;
             animateNoob();
             updateCamera();
@@ -197,8 +226,13 @@ public final class main extends MIDlet {
                     (width == cachedMenuWidth && height == cachedMenuHeight)) return;
             cachedMenuWidth = width;
             cachedMenuHeight = height;
-            scaledTitleBackground = scalePanorama(titleBackgroundSource, width, height);
             scaledLogo = scaleToFit(logoSource, width - 24, Math.max(1, height / 4));
+            menuPanPixels = new int[width * height];
+            if (titleBackgroundSource != null) {
+                menuPanScale = Math.max((float)width / titleBackgroundSource.getWidth(),
+                        (float)height / titleBackgroundSource.getHeight());
+                menuPanWidth = titleBackgroundSource.getWidth() * menuPanScale;
+            }
         }
 
         private Image scaleToFit(Image source, int maxWidth, int maxHeight) {
@@ -247,17 +281,7 @@ public final class main extends MIDlet {
             prepareMenuImages();
             g.setColor(0x101820);
             g.fillRect(0, 0, getWidth(), getHeight());
-            if (scaledTitleBackground != null) {
-                int imageWidth = scaledTitleBackground.getWidth();
-                int imageHeight = scaledTitleBackground.getHeight();
-                int offset = imageWidth > 0 ? (int)((menuPanTime / 60L) % imageWidth) : 0;
-                int x = -offset;
-                int y = (getHeight() - imageHeight) / 2;
-                while (x < getWidth()) {
-                    g.drawImage(scaledTitleBackground, x, y, Graphics.TOP | Graphics.LEFT);
-                    x += imageWidth;
-                }
-            }
+            drawMenuPanorama(g);
 
             if (scaledLogo != null) {
                 int logoX = (getWidth() - scaledLogo.getWidth()) / 2;
@@ -293,6 +317,32 @@ public final class main extends MIDlet {
                 g.drawString(initError, 4, font.getHeight() + 6, Graphics.TOP | Graphics.LEFT);
         }
 
+        private void drawMenuPanorama(Graphics g) {
+            if (titleBackgroundSource == null || menuPanPixels == null || menuPanScale <= 0.0f) return;
+            int width = getWidth();
+            int height = getHeight();
+            int sourceWidth = titleBackgroundSource.getWidth();
+            int sourceHeight = titleBackgroundSource.getHeight();
+            int[] sourceRow = new int[sourceWidth];
+            float scaledHeight = sourceHeight * menuPanScale;
+            float verticalCrop = (scaledHeight - height) * 0.5f;
+            float offset = (float)((menuPanTime / 60L) % Math.max(1, (int)menuPanWidth));
+            for (int y = 0; y < height; y++) {
+                int sourceY = (int)((verticalCrop + y) / menuPanScale);
+                if (sourceY < 0) sourceY = 0;
+                if (sourceY >= sourceHeight) sourceY = sourceHeight - 1;
+                titleBackgroundSource.getRGB(sourceRow, 0, sourceWidth, 0, sourceY, sourceWidth, 1);
+                int row = y * width;
+                for (int x = 0; x < width; x++) {
+                    float panoramaX = (offset + x) % menuPanWidth;
+                    int sourceX = (int)(panoramaX / menuPanScale);
+                    if (sourceX >= sourceWidth) sourceX = sourceWidth - 1;
+                    menuPanPixels[row + x] = sourceRow[sourceX];
+                }
+            }
+            g.drawRGB(menuPanPixels, 0, width, 0, 0, width, height, true);
+        }
+
         // Small atan2 approximation for older CLDC profiles lacking Math.atan2.
         private float fastAtan2(float y, float x) {
             if (x == 0.0f) {
@@ -317,6 +367,16 @@ public final class main extends MIDlet {
                 menuPanTime += dt;
                 return;
             }
+            gameClock += dt;
+            if (dead) {
+                updateDeathPieces(dt);
+                if (gameClock >= respawnAt) respawnPlayer();
+                return;
+            }
+            if (protectionAura != null && gameClock >= invulnerableUntil) {
+                try { avatar.removeChild(protectionAura); } catch (Throwable ignored) {}
+                protectionAura = null;
+            }
             animTime += dt;
             float step = dt * 0.004f;
             float cameraTurn = dt * 0.0025f;
@@ -336,17 +396,25 @@ public final class main extends MIDlet {
             if (left) { dx -= cos * step; dz -= sin * step; }
             if (right) { dx += cos * step; dz += sin * step; }
             px += dx; pz += dz;
+            // Gravity applies continuously; landing checks cover the floor and obby platforms.
+            float previousY = jumpY;
+            if (!grounded) {
+                jumpY += playerVelocityY * dt;
+                playerVelocityY -= 0.000018f * dt;
+            }
+            resolveLanding(previousY);
+            if (!grounded && jumpY < -8.0f) {
+                beginDeath();
+                return;
+            }
+            if (lobbyMode && gameClock >= invulnerableUntil && jumpY < 1.1f &&
+                    Math.abs(px - 3.0f) < 0.95f && Math.abs(pz + 3.0f) < 0.95f) {
+                beginDeath();
+                return;
+            }
             // Turn only while moving, toward the world-space travel direction.
             if (dx != 0.0f || dz != 0.0f) yaw = fastAtan2(-dx, -dz);
-            if (jumping) {
-                jumpY += jumpVelocity * dt;
-                jumpVelocity -= 0.00003f * dt;
-                if (jumpY <= 0) {
-                    jumpY = 0;
-                    jumpVelocity = 0;
-                    jumping = false;
-                }
-            }
+            jumping = !grounded;
             if (avatar != null) {
                 avatar.setTranslation(px, jumpY, pz);
                 avatar.setOrientation((float)(yaw * 57.29578f), 0, 1, 0);
@@ -361,6 +429,135 @@ public final class main extends MIDlet {
             if (world != null) {
                 try { world.animate(animTime); } catch (Throwable t) {}
             }
+        }
+
+        private void resolveLanding(float previousY) {
+            float top = Float.NEGATIVE_INFINITY;
+            if (Math.abs(px) < 11.5f && Math.abs(pz) < 11.5f) top = 0.0f;
+            if (!lobbyMode) {
+                if (onPlatform(0, -5, 1, 1)) top = Math.max(top, 0.75f);
+                if (onPlatform(3, -8, 1, 1)) top = Math.max(top, 1.5f);
+                if (onPlatform(-3, -8, 1, 1)) top = Math.max(top, 2.25f);
+                if (onPlatform(0, -11, 1.5f, 1.5f)) top = Math.max(top, 3.5f);
+            }
+            if (!grounded && playerVelocityY <= 0.0f && previousY >= top && jumpY <= top) {
+                jumpY = top;
+                playerVelocityY = 0.0f;
+                grounded = true;
+            }
+            if (grounded && jumpY <= top) {
+                jumpY = top;
+                playerVelocityY = 0.0f;
+            }
+        }
+
+        private boolean onPlatform(float x, float z, float halfX, float halfZ) {
+            return Math.abs(px - x) <= halfX + 0.22f && Math.abs(pz - z) <= halfZ + 0.22f;
+        }
+
+        private void beginDeath() {
+            if (dead || gameClock < invulnerableUntil) return;
+            dead = true;
+            grounded = false;
+            jumping = false;
+            respawnAt = gameClock + 2600;
+            if (avatar != null) world.removeChild(avatar);
+            deathPieces = new PhysicsPiece[6];
+            float c = (float)Math.cos(yaw), sn = (float)Math.sin(yaw);
+            addDeathPiece(0, makeRoundedCylinderHead(), 0, 2.19f, 0, 0xF5C542, c, sn);
+            addDeathPiece(1, makeBox(0,0,0,0.78f,0.95f,0.40f,0x1769AA), 0,1.45f,0,0x1769AA,c,sn);
+            addDeathPiece(2, makeBox(0,0,0,0.30f,0.88f,0.40f,0xF5C542), -0.54f,1.48f,0,0xF5C542,c,sn);
+            addDeathPiece(3, makeBox(0,0,0,0.30f,0.88f,0.40f,0xF5C542), 0.54f,1.48f,0,0xF5C542,c,sn);
+            addDeathPiece(4, makeBox(0,0,0,0.36f,0.78f,0.40f,0x2E9E45), -0.20f,0.52f,0,0x2E9E45,c,sn);
+            addDeathPiece(5, makeBox(0,0,0,0.36f,0.78f,0.40f,0x2E9E45), 0.20f,0.52f,0,0x2E9E45,c,sn);
+        }
+
+        private void addDeathPiece(int index, Node node, float ox, float oy, float oz,
+                int color, float c, float sn) {
+            float x = px + ox * c + oz * sn;
+            float z = pz - ox * sn + oz * c;
+            node.setTranslation(x, jumpY + oy, z);
+            world.addChild(node);
+            float outward = (index - 2.5f) * 0.0012f;
+            deathPieces[index] = new PhysicsPiece(node, x, jumpY + oy, z,
+                    outward, 0.0035f + (index % 3) * 0.001f, (index % 2 == 0 ? 1 : -1) * 0.001f,
+                    (index % 2 == 0 ? 1 : -1) * (35 + index * 5));
+        }
+
+        private void updateDeathPieces(int dt) {
+            if (deathPieces == null) return;
+            for (int i = 0; i < deathPieces.length; i++) {
+                PhysicsPiece p = deathPieces[i];
+                if (p == null) continue;
+                p.vy -= 0.000018f * dt;
+                p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+                if (p.y < 0.0f) {
+                    p.y = 0.0f;
+                    if (p.vy < -0.0005f) p.vy = -p.vy * 0.28f;
+                    else p.vy = 0.0f;
+                    p.vx *= 0.86f; p.vz *= 0.86f;
+                }
+                p.rotation += p.spin * dt * 0.001f;
+                p.node.setTranslation(p.x, p.y, p.z);
+                p.node.setOrientation(p.rotation, 0, 1, 0);
+            }
+        }
+
+        private void respawnPlayer() {
+            if (deathPieces != null) {
+                for (int i = 0; i < deathPieces.length; i++)
+                    if (deathPieces[i] != null) world.removeChild(deathPieces[i].node);
+            }
+            deathPieces = null;
+            px = 0; pz = 0; jumpY = 0; playerVelocityY = 0;
+            yaw = 0; grounded = true; dead = false; jumping = false;
+            avatar = new Group();
+            activeModel = buildNoob();
+            avatar.addChild(activeModel);
+            protectionAura = makeProtectionAura();
+            avatar.addChild(protectionAura);
+            world.addChild(avatar);
+            invulnerableUntil = gameClock + 4000;
+            updateCamera();
+        }
+
+        private Group makeProtectionAura() {
+            final int rings = 8, segments = 16;
+            int[] stripLengths = new int[rings];
+            for (int i = 0; i < rings; i++) stripLengths[i] = (segments + 1) * 2;
+            short[] shell = new short[rings * (segments + 1) * 2 * 3];
+            int out = 0;
+            for (int r = 0; r < rings; r++) {
+                double a0 = -1.57079632679 + 3.14159265359 * r / rings;
+                double a1 = -1.57079632679 + 3.14159265359 * (r + 1) / rings;
+                for (int s = 0; s <= segments; s++) {
+                    double lon = 6.28318530718 * s / segments;
+                    shell[out++] = (short)(Math.cos(a0) * Math.sin(lon) * 680);
+                    shell[out++] = (short)(Math.sin(a0) * 1350 + 1350);
+                    shell[out++] = (short)(Math.cos(a0) * Math.cos(lon) * 680);
+                    shell[out++] = (short)(Math.cos(a1) * Math.sin(lon) * 680);
+                    shell[out++] = (short)(Math.sin(a1) * 1350 + 1350);
+                    shell[out++] = (short)(Math.cos(a1) * Math.cos(lon) * 680);
+                }
+            }
+            VertexArray va = new VertexArray(rings * (segments + 1) * 2, 3, 2);
+            va.set(0, rings * (segments + 1) * 2, shell);
+            VertexBuffer vb = new VertexBuffer(); vb.setPositions(va, 0.001f, null);
+            TriangleStripArray tris = new TriangleStripArray(0, stripLengths);
+            Appearance ap = new Appearance();
+            Material mat = new Material();
+            mat.setColor(Material.AMBIENT, 0x703399FF);
+            mat.setColor(Material.DIFFUSE, 0x703399FF);
+            mat.setColor(Material.EMISSIVE, 0x703399FF);
+            ap.setMaterial(mat);
+            CompositingMode cm = new CompositingMode();
+            cm.setBlending(CompositingMode.ALPHA);
+            ap.setCompositingMode(cm);
+            PolygonMode pm = new PolygonMode(); pm.setCulling(PolygonMode.CULL_NONE);
+            ap.setPolygonMode(pm);
+            Mesh shellMesh = new Mesh(vb, new IndexBuffer[] {tris}, new Appearance[] {ap});
+            Group aura = new Group(); aura.addChild(shellMesh);
+            return aura;
         }
 
         private void updateCamera() {
@@ -736,8 +933,11 @@ public final class main extends MIDlet {
             else if (k == UP) camUp = true;
             else if (k == DOWN) camDown = true;
             else if ((keyCode == KEY_NUM5 || k == FIRE) && !jumping) {
-                jumping = true;
-                jumpVelocity = 0.008f;
+                if (grounded) {
+                    grounded = false;
+                    playerVelocityY = 0.0075f;
+                    jumping = true;
+                }
                 animation = 2;
                 animateNoob();
             }
