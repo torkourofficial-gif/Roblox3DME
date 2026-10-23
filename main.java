@@ -399,6 +399,7 @@ public final class main extends MIDlet {
                 menuPanTime += dt;
                 return;
             }
+            if (paused) return;
             gameClock += dt;
             if (dead) {
                 updateDeathPieces(dt);
@@ -1070,6 +1071,123 @@ public final class main extends MIDlet {
             return mesh;
         }
 
+        private boolean isRightSoftkey(int keyCode, int action) {
+            if (keyCode == -7 || action == GAME_B) return true;
+            try {
+                String name = getKeyName(keyCode);
+                return "Right Softkey".equalsIgnoreCase(name) ||
+                        "Right Soft Key".equalsIgnoreCase(name) ||
+                        "Soft2".equalsIgnoreCase(name) || "Soft 2".equalsIgnoreCase(name) ||
+                        "Right Selection".equalsIgnoreCase(name);
+            } catch (Throwable ignored) { return false; }
+        }
+
+        private void clearInput() {
+            forward = back = left = right = false;
+            camLeft = camRight = camUp = camDown = false;
+        }
+
+        private void openPauseMenu() {
+            paused = true;
+            configMode = false;
+            pauseSelection = 0;
+            clearInput();
+        }
+
+        private void changeCameraSetting(int direction) {
+            if (configSelection == 0) {
+                sensitivityLevel = (sensitivityLevel + direction + 3) % 3;
+                if (sensitivityLevel == 0) cameraSensitivity = 0.0015f;
+                else if (sensitivityLevel == 1) cameraSensitivity = 0.0025f;
+                else cameraSensitivity = 0.0040f;
+            } else if (configSelection == 1) {
+                invertCamera = !invertCamera;
+            }
+        }
+
+        private void handlePauseInput(int keyCode, int action) {
+            boolean up = action == UP || keyCode == KEY_NUM2;
+            boolean down = action == DOWN || keyCode == KEY_NUM8;
+            boolean leftKey = action == LEFT || keyCode == KEY_NUM4;
+            boolean rightKey = action == RIGHT || keyCode == KEY_NUM6;
+            boolean fire = action == FIRE || keyCode == KEY_NUM5;
+            if (configMode) {
+                if (up) configSelection = (configSelection + 2) % 3;
+                else if (down) configSelection = (configSelection + 1) % 3;
+                else if ((leftKey || rightKey) && configSelection < 2)
+                    changeCameraSetting(rightKey ? 1 : -1);
+                else if (fire) {
+                    if (configSelection == 2) configMode = false;
+                    else changeCameraSetting(1);
+                }
+                return;
+            }
+            if (up) pauseSelection = (pauseSelection + 3) % 4;
+            else if (down) pauseSelection = (pauseSelection + 1) % 4;
+            else if (fire) {
+                if (pauseSelection == 0) {
+                    paused = false;
+                } else if (pauseSelection == 1) {
+                    configMode = true;
+                    configSelection = 0;
+                } else if (pauseSelection == 2) {
+                    try { startGame(currentGame); }
+                    catch (Throwable t) { initError = "Restart: " + t.toString(); }
+                } else {
+                    paused = false;
+                    configMode = false;
+                    menuMode = true;
+                    loaded = false;
+                    clearInput();
+                }
+            }
+        }
+
+        private void drawPauseMenu(Graphics g) {
+            int width = getWidth(), height = getHeight();
+            int panelWidth = Math.min(260, Math.max(1, width - 16));
+            int rowHeight = Math.max(22, g.getFont().getHeight() + 8);
+            int optionCount = configMode ? 3 : 4;
+            int panelHeight = Math.min(height - 8, 50 + optionCount * rowHeight + 32);
+            int panelX = (width - panelWidth) / 2, panelY = (height - panelHeight) / 2;
+            g.setColor(0x08121E);
+            g.fillRect(0, 0, width, height);
+            g.setColor(0x1A2D40);
+            g.fillRoundRect(panelX, panelY, panelWidth, panelHeight, 14, 14);
+            g.setColor(0xFFFFFF);
+            g.drawString(configMode ? "CONFIGURATION" : "PAUSED", width / 2,
+                    panelY + 10, Graphics.TOP | Graphics.HCENTER);
+            String[] options;
+            int selected;
+            if (configMode) {
+                String speed = sensitivityLevel == 0 ? "Low" : (sensitivityLevel == 1 ? "Normal" : "High");
+                options = new String[] {
+                    "Camera speed: " + speed,
+                    "Invert camera: " + (invertCamera ? "On" : "Off"),
+                    "Back"
+                };
+                selected = configSelection;
+            } else {
+                options = new String[] {"Resume", "Configure", "Restart", "Exit to game menu"};
+                selected = pauseSelection;
+            }
+            int firstY = panelY + 38;
+            int buttonX = panelX + 8, buttonWidth = panelWidth - 16;
+            for (int i = 0; i < options.length; i++) {
+                int y = firstY + i * rowHeight;
+                if (y + rowHeight > panelY + panelHeight - 16) break;
+                g.setColor(i == selected ? 0xF5C542 : 0x263B50);
+                g.fillRoundRect(buttonX, y, buttonWidth, rowHeight - 2, 8, 8);
+                g.setColor(i == selected ? 0x17202A : 0xFFFFFF);
+                g.drawString(options[i], width / 2, y + 2,
+                        Graphics.TOP | Graphics.HCENTER);
+            }
+            g.setColor(0xFFFFFF);
+            g.drawString(configMode ? "LEFT/RIGHT changes  FIRE selects" : "UP/DOWN select  FIRE confirms",
+                    width / 2, panelY + panelHeight - g.getFont().getHeight() - 6,
+                    Graphics.TOP | Graphics.HCENTER);
+        }
+
         protected void keyPressed(int keyCode) {
             int k = getGameAction(keyCode);
             if (menuMode) {
@@ -1085,6 +1203,17 @@ public final class main extends MIDlet {
                         initError = "Game: " + t.toString();
                     }
                 }
+                repaint();
+                return;
+            }
+            if (isRightSoftkey(keyCode, k)) {
+                if (paused) { paused = false; configMode = false; }
+                else openPauseMenu();
+                repaint();
+                return;
+            }
+            if (paused) {
+                handlePauseInput(keyCode, k);
                 repaint();
                 return;
             }
