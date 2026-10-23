@@ -81,6 +81,7 @@ public final class main extends MIDlet {
         private int zombieWave;
         private Group swordVisual;
         private Image logoSource, titleBackgroundSource, skySource;
+        private Texture2D cachedPlayerFaceTexture, cachedZombieFaceTexture;
         private Image scaledLogo;
         private int[] menuPanPixels;
         private float menuPanScale;
@@ -402,7 +403,7 @@ public final class main extends MIDlet {
         private void addPlayerBotModel(PlayerBot bot,boolean protectedSpawn) {
             try{
                 Mesh l=leftArm,r=rightArm,ll=leftLeg,rl=rightLeg;Group sword=swordVisual;
-                bot.model=buildNoob(false);
+                bot.model=buildBotNoob();
                 bot.leftArm=leftArm;bot.rightArm=rightArm;bot.leftLeg=leftLeg;bot.rightLeg=rightLeg;
                 bot.swordArm=rightArm;bot.sword=swordVisual;
                 leftArm=l;rightArm=r;leftLeg=ll;rightLeg=rl;swordVisual=sword;
@@ -410,7 +411,28 @@ public final class main extends MIDlet {
                 bot.model.setTranslation(bot.x,bot.y,bot.z);world.addChild(bot.model);bot.alive=true;
                 if(protectedSpawn){bot.aura=makeBotAura();bot.model.addChild(bot.aura);
                     bot.invulnerableUntil=gameClock+4000;bot.auraUntil=bot.invulnerableUntil;}
-            }catch(Throwable t){initError="Player bot: "+t.toString();}
+            }catch(Throwable t){
+                bot.model=null;bot.aura=null;bot.alive=false;bot.respawnAt=gameClock+10000;
+                initError="Player bot: "+t.toString();
+            }
+        }
+        private Group buildBotNoob() {
+            Group model=new Group();
+            model.addChild(makeBox(0,1.45f,0,0.78f,0.95f,0.40f,0x1769AA));
+            model.addChild(makeRoundedCylinderHead(0xF5C542));
+            Mesh la=(Mesh)makeBox(-0.54f,1.48f,0,0.30f,0.88f,0.40f,0xF5C542);
+            Mesh ra=(Mesh)makeBox(0.54f,1.48f,0,0.30f,0.88f,0.40f,0xF5C542);
+            Mesh ll=(Mesh)makeBox(-0.20f,0.52f,0,0.36f,0.78f,0.40f,0x2E9E45);
+            Mesh rl=(Mesh)makeBox(0.20f,0.52f,0,0.36f,0.78f,0.40f,0x2E9E45);
+            model.addChild(la);model.addChild(ra);model.addChild(ll);model.addChild(rl);
+            leftArm=la;rightArm=ra;leftLeg=ll;rightLeg=rl;
+            Group weapon=new Group();
+            weapon.addChild(makeBox(0,0.39f,0,0.12f,0.66f,0.06f,0xDCE9F2));
+            weapon.addChild(makeBox(0,0.03f,0,0.32f,0.07f,0.10f,0xB68A42));
+            weapon.addChild(makeBox(0,-0.10f,0,0.10f,0.22f,0.10f,0x654321));
+            weapon.setTranslation(0.56f,1.02f,-0.08f);
+            weapon.setRenderingEnable(false);model.addChild(weapon);swordVisual=weapon;
+            return model;
         }
         private void killPlayerBot(PlayerBot bot) {
             if(bot==null||!bot.alive||gameClock<bot.invulnerableUntil)return;
@@ -424,6 +446,7 @@ public final class main extends MIDlet {
                 PlayerBot bot=playerBots[i];if(bot==null)continue;
                 if(!bot.alive){if(gameClock>=bot.respawnAt){bot.x=bot.spawnX;bot.z=bot.spawnZ;
                     bot.y=botGroundTop(bot.x,bot.z);bot.velocityY=0;bot.grounded=true;addPlayerBotModel(bot,true);}continue;}
+                if(bot.model==null){bot.alive=false;bot.respawnAt=gameClock+10000;continue;}
                 if(bot.attackUntil>0&&gameClock>=bot.attackUntil){
                     if(bot.swordArm!=null)bot.swordArm.setOrientation(0,1,0,0);
                     if(bot.sword!=null)bot.sword.setRenderingEnable(false);
@@ -504,11 +527,11 @@ public final class main extends MIDlet {
             return top;
         }
         private Group makeBotAura() {
-            Group aura=new Group();aura.addChild(makeAuraMesh(0x5A43FF72));
+            Group aura=new Group();aura.addChild(makeAuraMesh(0x503399FF));
             aura.setTranslation(0,1.35f,0);return aura;
         }
         private Mesh makeAuraMesh(int color) {
-            final int rings=10,segments=20;int[] strips=new int[rings];
+            final int rings=8,segments=16;int[] strips=new int[rings];
             for(int i=0;i<rings;i++)strips[i]=(segments+1)*2;
             short[] shell=new short[rings*(segments+1)*2*3];int out=0;
             for(int r=0;r<rings;r++){
@@ -1821,20 +1844,24 @@ public final class main extends MIDlet {
 
         private Node makeTexturedFace(String resourceName, int fallbackColor) {
             try {
-                javax.microedition.lcdui.Image img =
-                        loadImageResource("/" + resourceName, "/meblox/" + resourceName);
-                if (img == null) {
-                    modelError = resourceName + " not found in /meblox/ or JAR root";
-                    return makeCurvedTexturedFace(makeSolidAppearance(fallbackColor));
+                Texture2D texture;
+                boolean zombie = "faceZomb.png".equals(resourceName);
+                texture = zombie ? cachedZombieFaceTexture : cachedPlayerFaceTexture;
+                if (texture == null) {
+                    Image img = loadImageResource("/" + resourceName, "/meblox/" + resourceName);
+                    if (img == null) {
+                        modelError = resourceName + " not found in /meblox/ or JAR root";
+                        return makeCurvedTexturedFace(makeSolidAppearance(fallbackColor));
+                    }
+                    Image textureImage = makePowerOfTwoImage(img);
+                    Image2D image2D = new Image2D(Image2D.RGBA, textureImage);
+                    texture = new Texture2D(image2D);
+                    texture.setFiltering(Texture2D.FILTER_NEAREST, Texture2D.FILTER_NEAREST);
+                    texture.setWrapping(Texture2D.WRAP_CLAMP, Texture2D.WRAP_CLAMP);
+                    texture.setBlending(Texture2D.FUNC_MODULATE);
+                    if (zombie) cachedZombieFaceTexture = texture;
+                    else cachedPlayerFaceTexture = texture;
                 }
-
-                // Preserve the PNG alpha channel while resizing to JSR-184 power-of-two dimensions.
-                Image textureImage = makePowerOfTwoImage(img);
-                Image2D image2D = new Image2D(Image2D.RGBA, textureImage);
-                Texture2D texture = new Texture2D(image2D);
-                texture.setFiltering(Texture2D.FILTER_NEAREST, Texture2D.FILTER_NEAREST);
-                texture.setWrapping(Texture2D.WRAP_CLAMP, Texture2D.WRAP_CLAMP);
-                texture.setBlending(Texture2D.FUNC_MODULATE);
 
                 Appearance ap = new Appearance();
                 ap.setTexture(0, texture);
@@ -1843,15 +1870,11 @@ public final class main extends MIDlet {
                 mat.setColor(Material.DIFFUSE, 0xFFFFFFFF);
                 mat.setColor(Material.EMISSIVE, 0xFFFFFFFF);
                 ap.setMaterial(mat);
-
-                // Draw the transparent PNG pixels with source alpha and discard fully transparent texels.
-                // Disabling depth writes prevents invisible texels from occluding other geometry.
                 CompositingMode compositing = new CompositingMode();
                 compositing.setBlending(CompositingMode.ALPHA);
                 compositing.setAlphaThreshold(0.01f);
                 compositing.setDepthWriteEnable(false);
                 ap.setCompositingMode(compositing);
-
                 PolygonMode polygonMode = new PolygonMode();
                 polygonMode.setCulling(PolygonMode.CULL_NONE);
                 ap.setPolygonMode(polygonMode);
