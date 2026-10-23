@@ -55,17 +55,20 @@ public final class main extends MIDlet {
         private long gameClock, respawnAt, invulnerableUntil;
         private PhysicsPiece[] deathPieces;
         private Group protectionAura;
+        private Material protectionAuraMaterial;
         private String modelStatus = "Select a game";
         private String modelError = "";
         private String initError = "";
 
         private static final class PhysicsPiece {
             Node node;
-            float x, y, z, vx, vy, vz, rotation, spin;
+            float x, y, z, vx, vy, vz, rotation, spin, spinX, spinY, spinZ;
             PhysicsPiece(Node n, float px, float py, float pz,
-                    float velX, float velY, float velZ, float spinRate) {
+                    float velX, float velY, float velZ, float spinRate,
+                    float axisX, float axisY, float axisZ) {
                 node = n; x = px; y = py; z = pz;
                 vx = velX; vy = velY; vz = velZ; spin = spinRate;
+                spinX = axisX; spinY = axisY; spinZ = axisZ;
             }
         }
 
@@ -376,6 +379,9 @@ public final class main extends MIDlet {
             if (protectionAura != null && gameClock >= invulnerableUntil) {
                 try { avatar.removeChild(protectionAura); } catch (Throwable ignored) {}
                 protectionAura = null;
+                protectionAuraMaterial = null;
+            } else if (protectionAura != null) {
+                updateProtectionFlash();
             }
             animTime += dt;
             float step = dt * 0.004f;
@@ -488,9 +494,13 @@ public final class main extends MIDlet {
             node.setTranslation(x, jumpY + oy, z);
             world.addChild(node);
             float outward = (index - 2.5f) * 0.0012f;
+            float direction = index % 2 == 0 ? 1.0f : -1.0f;
+            float axisX = index % 3 == 0 ? 1.0f : 0.35f;
+            float axisY = index % 3 == 1 ? 1.0f : 0.45f;
+            float axisZ = index % 3 == 2 ? 1.0f : 0.60f;
             deathPieces[index] = new PhysicsPiece(node, x, jumpY + oy, z,
-                    outward, 0.0035f + (index % 3) * 0.001f, (index % 2 == 0 ? 1 : -1) * 0.001f,
-                    (index % 2 == 0 ? 1 : -1) * (35 + index * 5));
+                    outward, 0.0035f + (index % 3) * 0.001f, direction * 0.001f,
+                    35 + index * 5, axisX, axisY, axisZ);
         }
 
         private void updateDeathPieces(int dt) {
@@ -508,7 +518,7 @@ public final class main extends MIDlet {
                 }
                 p.rotation += p.spin * dt * 0.001f;
                 p.node.setTranslation(p.x, p.y, p.z);
-                p.node.setOrientation(p.rotation, 0, 1, 0);
+                p.node.setOrientation(p.rotation, p.spinX, p.spinY, p.spinZ);
             }
         }
 
@@ -538,7 +548,7 @@ public final class main extends MIDlet {
         }
 
         private Group makeProtectionAura() {
-            final int rings = 8, segments = 16;
+            final int rings = 10, segments = 20;
             int[] stripLengths = new int[rings];
             for (int i = 0; i < rings; i++) stripLengths[i] = (segments + 1) * 2;
             short[] shell = new short[rings * (segments + 1) * 2 * 3];
@@ -548,12 +558,12 @@ public final class main extends MIDlet {
                 double a1 = -1.57079632679 + 3.14159265359 * (r + 1) / rings;
                 for (int s = 0; s <= segments; s++) {
                     double lon = 6.28318530718 * s / segments;
-                    shell[out++] = (short)(Math.cos(a0) * Math.sin(lon) * 680);
-                    shell[out++] = (short)(Math.sin(a0) * 1350 + 1350);
-                    shell[out++] = (short)(Math.cos(a0) * Math.cos(lon) * 680);
-                    shell[out++] = (short)(Math.cos(a1) * Math.sin(lon) * 680);
-                    shell[out++] = (short)(Math.sin(a1) * 1350 + 1350);
-                    shell[out++] = (short)(Math.cos(a1) * Math.cos(lon) * 680);
+                    shell[out++] = (short)(Math.cos(a0) * Math.sin(lon) * 1350);
+                    shell[out++] = (short)(Math.sin(a0) * 1350);
+                    shell[out++] = (short)(Math.cos(a0) * Math.cos(lon) * 1350);
+                    shell[out++] = (short)(Math.cos(a1) * Math.sin(lon) * 1350);
+                    shell[out++] = (short)(Math.sin(a1) * 1350);
+                    shell[out++] = (short)(Math.cos(a1) * Math.cos(lon) * 1350);
                 }
             }
             VertexArray va = new VertexArray(rings * (segments + 1) * 2, 3, 2);
@@ -562,9 +572,10 @@ public final class main extends MIDlet {
             TriangleStripArray tris = new TriangleStripArray(0, stripLengths);
             Appearance ap = new Appearance();
             Material mat = new Material();
-            mat.setColor(Material.AMBIENT, 0x703399FF);
-            mat.setColor(Material.DIFFUSE, 0x703399FF);
-            mat.setColor(Material.EMISSIVE, 0x703399FF);
+            mat.setColor(Material.AMBIENT, 0x503399FF);
+            mat.setColor(Material.DIFFUSE, 0x503399FF);
+            mat.setColor(Material.EMISSIVE, 0x503399FF);
+            protectionAuraMaterial = mat;
             ap.setMaterial(mat);
             CompositingMode cm = new CompositingMode();
             cm.setBlending(CompositingMode.ALPHA);
@@ -572,8 +583,20 @@ public final class main extends MIDlet {
             PolygonMode pm = new PolygonMode(); pm.setCulling(PolygonMode.CULL_NONE);
             ap.setPolygonMode(pm);
             Mesh shellMesh = new Mesh(vb, new IndexBuffer[] {tris}, new Appearance[] {ap});
-            Group aura = new Group(); aura.addChild(shellMesh);
+            Group aura = new Group();
+            aura.addChild(shellMesh);
+            aura.setTranslation(0, 1.35f, 0);
             return aura;
+        }
+
+        private void updateProtectionFlash() {
+            if (protectionAuraMaterial == null) return;
+            float pulse = (float)Math.sin(gameClock * 0.018f);
+            int alpha = 55 + (int)((pulse + 1.0f) * 75.0f);
+            int color = (alpha << 24) | 0x003399FF;
+            protectionAuraMaterial.setColor(Material.AMBIENT, color);
+            protectionAuraMaterial.setColor(Material.DIFFUSE, color);
+            protectionAuraMaterial.setColor(Material.EMISSIVE, color);
         }
 
         private void updateCamera() {
