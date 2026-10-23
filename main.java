@@ -6,7 +6,7 @@ import javax.microedition.m3g.*;
 
 /**
  * Roblox3DME: minimal JSR-184 playground/controller.
- * The character is generated in Java; put face.png in /meblox/ (or the JAR root).
+ * The character is generated in Java; put faceNEW.png and faceZomb.png in /meblox/ (or the JAR root).
  * Intended for MIDP 2.0 + JSR-184 devices.
  */
 public final class main extends MIDlet {
@@ -1108,7 +1108,7 @@ public final class main extends MIDlet {
             } else {
                 g.setColor(0xFFFFFF);
                 g.drawString("Roblox3DME - model load failed", 4, 4, Graphics.TOP|Graphics.LEFT);
-                g.drawString("Check Java model and face.png", 4, 22, Graphics.TOP|Graphics.LEFT);
+                g.drawString("Check Java model and faceNEW.png / faceZomb.png", 4, 22, Graphics.TOP|Graphics.LEFT);
             }
             g.setColor(0xFFFFFF);
             g.drawString("ROBLOX 3DME", 3, 2, Graphics.TOP|Graphics.LEFT);
@@ -1167,7 +1167,7 @@ public final class main extends MIDlet {
             // Zombie copies use the noob body proportions and face with a green/brown palette.
             model.addChild(makeBox(0, 1.45f, 0, 0.78f, 0.95f, 0.40f, clothing));
             model.addChild(makeRoundedCylinderHead(skin));
-            model.addChild(makeTexturedFace(skin));
+            model.addChild(makeTexturedFace(zombie ? "faceZomb.png" : "faceNEW.png", skin));
             Mesh modelLeftArm = (Mesh)makeBox(-0.54f, 1.48f, 0, 0.30f, 0.88f, 0.40f, skin);
             Mesh modelRightArm = (Mesh)makeBox(0.54f, 1.48f, 0, 0.30f, 0.88f, 0.40f, skin);
             Mesh modelLeftLeg = (Mesh)makeBox(-0.20f, 0.52f, 0, 0.36f, 0.78f, 0.40f, legs);
@@ -1186,31 +1186,23 @@ public final class main extends MIDlet {
             return model;
         }
 
-        private Node makeTexturedFace() {
-            return makeTexturedFace(0xF5C542);
-        }
-
-        private Node makeTexturedFace(int fallbackColor) {
+        private Node makeTexturedFace(String resourceName, int fallbackColor) {
             try {
-                javax.microedition.lcdui.Image img = null;
-                java.io.InputStream in = getClass().getResourceAsStream("/meblox/face.png");
-                if (in == null) in = getClass().getResourceAsStream("/face.png");
-                if (in != null) {
-                    try { img = javax.microedition.lcdui.Image.createImage(in); }
-                    finally { try { in.close(); } catch (Throwable ignored) {} }
-                }
+                javax.microedition.lcdui.Image img =
+                        loadImageResource("/" + resourceName, "/meblox/" + resourceName);
                 if (img == null) {
-                    modelError = "face.png not found in /meblox/ or JAR root";
+                    modelError = resourceName + " not found in /meblox/ or JAR root";
                     return makeCurvedTexturedFace(makeSolidAppearance(fallbackColor));
                 }
 
-                // JSR-184 textures require power-of-two dimensions; face.png is 126x128.
+                // Preserve the PNG alpha channel while resizing to JSR-184 power-of-two dimensions.
                 Image textureImage = makePowerOfTwoImage(img);
                 Image2D image2D = new Image2D(Image2D.RGBA, textureImage);
                 Texture2D texture = new Texture2D(image2D);
                 texture.setFiltering(Texture2D.FILTER_NEAREST, Texture2D.FILTER_NEAREST);
                 texture.setWrapping(Texture2D.WRAP_CLAMP, Texture2D.WRAP_CLAMP);
                 texture.setBlending(Texture2D.FUNC_MODULATE);
+
                 Appearance ap = new Appearance();
                 ap.setTexture(0, texture);
                 Material mat = new Material();
@@ -1218,13 +1210,21 @@ public final class main extends MIDlet {
                 mat.setColor(Material.DIFFUSE, 0xFFFFFFFF);
                 mat.setColor(Material.EMISSIVE, 0xFFFFFFFF);
                 ap.setMaterial(mat);
+
+                // Draw the transparent PNG pixels with source alpha and discard fully transparent texels.
+                // Disabling depth writes prevents invisible texels from occluding other geometry.
+                CompositingMode compositing = new CompositingMode();
+                compositing.setBlending(CompositingMode.ALPHA);
+                compositing.setAlphaThreshold(0.01f);
+                compositing.setDepthWriteEnable(false);
+                ap.setCompositingMode(compositing);
+
                 PolygonMode polygonMode = new PolygonMode();
                 polygonMode.setCulling(PolygonMode.CULL_NONE);
                 ap.setPolygonMode(polygonMode);
-
                 return makeCurvedTexturedFace(ap);
             } catch (Throwable t) {
-                modelError = "face.png texture: " + t.toString();
+                modelError = resourceName + " texture: " + t.toString();
                 return makeCurvedTexturedFace(makeSolidAppearance(fallbackColor));
             }
         }
