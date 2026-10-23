@@ -26,14 +26,14 @@ La gravedad actúa al saltar y al caer fuera de las plataformas; el jugador ater
 
 ## Recursos
 
-Incluye `face.png`, `logoR.png`, `bgtitle.png` y `skyboxR.png` como recursos del proyecto en `/meblox/` o en la raíz del JAR. El menú muestra `bgtitle.png` como panorama y reescala `logoR.png` conservando toda la imagen para que quepa completa en pantalla. En los juegos, `skyboxR.png` sigue la orientación de la cámara en sentido contrario y a la misma velocidad angular, desplazando también su recorte vertical cuando miras arriba o abajo.
+Incluye `faceNEW.png` (cara del jugador), `faceZomb.png` (cara de los zombis), `logoR.png`, `bgtitle.png` y `skyboxR.png` como recursos del proyecto en `/meblox/` o en la raíz del JAR. Las dos caras usan RGBA para conservar la transparencia del PNG. El menú muestra `bgtitle.png` como panorama y reescala `logoR.png` conservando toda la imagen para que quepa completa en pantalla. En los juegos, `skyboxR.png` sigue la orientación de la cámara en sentido contrario y a la misma velocidad angular, desplazando también su recorte vertical cuando miras arriba o abajo.
 
-El código adapta `face.png` a las dimensiones que requiere una textura JSR-184 y la curva sobre la cara del cilindro. Si falta una textura, el juego muestra el detalle del error.
+El código adapta ambas caras a las dimensiones que requiere una textura JSR-184, conserva el canal alpha y aplica transparencia con descarte de píxeles transparentes para evitar que oculten la geometría. La textura se curva sobre la cara del cilindro. Si falta una textura, el juego muestra el detalle del error.
 
 Los archivos `noobidle.m3g`, `noobrun.m3g` y `noobjump.m3g` no son necesarios: el personaje y los escenarios se construyen desde Java.
 
 ## Compilación
 
-Compila `main.java` con un SDK MIDP 2.0 que incluya JSR-184, copia los cuatro PNG al directorio de recursos del proyecto y vuelve a instalar el JAR generado.
+Compila `main.java` con un SDK MIDP 2.0 que incluya JSR-184, copia los cinco PNG al directorio de recursos del proyecto y vuelve a instalar el JAR generado.
 
 **Estado:** los cambios se guardaron en GitHub, pero no se han compilado ni probado en un emulador o teléfono.
