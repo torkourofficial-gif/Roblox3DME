@@ -293,22 +293,22 @@ public final class main extends MIDlet {
 
         private Mesh makeCurvedTexturedFace(Appearance ap) {
             final int segments = 8;
-            final float radius = 0.286f; // 0.006 units outside the cylinder's 0.28 radius
+            final float radius = 0.291f; // 0.011 units outside the cylinder's 0.28 radius
             short[] positions = new short[(segments + 1) * 2 * 3];
             short[] texCoords = new short[(segments + 1) * 2 * 2];
             int p = 0;
             int uv = 0;
             for (int i = 0; i <= segments; i++) {
-                double angle = -0.60 + 1.20 * i / segments;
+                double angle = -0.68 + 1.36 * i / segments;
                 float x = (float)(radius * Math.sin(angle));
                 float z = (float)(-radius * Math.cos(angle));
                 int u = 1000 * i / segments;
-                // The curved strip follows the cylinder; bottom/top vertices keep the face off the surface.
+                // The enlarged curved strip follows the cylinder with a small radial gap.
                 positions[p++] = (short)(x * 1000.0f);
-                positions[p++] = 2030;
+                positions[p++] = 2010;
                 positions[p++] = (short)(z * 1000.0f);
                 positions[p++] = (short)(x * 1000.0f);
-                positions[p++] = 2350;
+                positions[p++] = 2370;
                 positions[p++] = (short)(z * 1000.0f);
                 texCoords[uv++] = (short)u;
                 texCoords[uv++] = 1000;
