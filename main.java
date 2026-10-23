@@ -136,7 +136,7 @@ public final class main extends MIDlet {
             Group model;
             float x, z;
             long attackAt;
-            boolean alive = true, hidden;
+            boolean alive = true, hidden, fleeing;
             Zombie(Group model, float x, float z) {
                 this.model = model; this.x = x; this.z = z;
             }
@@ -164,6 +164,10 @@ public final class main extends MIDlet {
             "Alguien vio mi pala?",
             "No voy a caer otra vez!"
         };
+        private static final float[] HIDE_FLEE_COS={1.0f,0.707107f,0.707107f,0.0f,0.0f,-0.707107f,-0.707107f,-1.0f};
+        private static final float[] HIDE_FLEE_SIN={0.0f,0.707107f,-0.707107f,1.0f,-1.0f,0.707107f,-0.707107f,0.0f};
+        private static final float[] HIDE_SPAWN_X={-15.65f,15.65f,-15.65f,15.65f,-1.25f};
+        private static final float[] HIDE_SPAWN_Z={-13.15f,-13.15f,14.35f,14.35f,-17.15f};
         private static final float[] SIMON_PAD_X={-4.0f,4.0f,-4.0f,4.0f};
         private static final float[] SIMON_PAD_Z={-4.0f,-4.0f,4.0f,4.0f};
         private static final int[] BOT_SKIN_COLORS =
@@ -443,6 +447,7 @@ public final class main extends MIDlet {
             return limit<=0?0:((randomState>>>8)&0x7fffffff)%limit;
         }
         private void spawnPlayerBots() {
+            if(currentGame==11){playerBotCount=0;return;}
             playerBotCount=3+nextRandom(3);
             botDialogue="";
             talkingBot=-1;
@@ -818,15 +823,23 @@ public final class main extends MIDlet {
 
         private void spawnSeekBots() {
             zombies=new Zombie[6];
-            spawnSimpleBot(0,-14,-12.2f);
-            spawnSimpleBot(1,14,-12.2f);
-            spawnSimpleBot(2,-14,13.8f);
-            spawnSimpleBot(3,14,13.8f);
-            spawnSimpleBot(4,-1.5f,-16.2f);
-            for(int i=0;i<5;i++) if(zombies[i]!=null) {
-                zombies[i].hidden=true; zombies[i].model.setRenderingEnable(false);
+            int count=3+nextRandom(3);
+            int[] order={0,1,2,3,4};
+            for(int i=order.length-1;i>0;i--){
+                int j=nextRandom(i+1),swap=order[i];
+                order[i]=order[j];order[j]=swap;
             }
-            modeGoal=5;
+            for(int i=0;i<count;i++)
+                spawnSimpleBot(i,HIDE_SPAWN_X[order[i]],HIDE_SPAWN_Z[order[i]]);
+            for(int i=0;i<count;i++) if(zombies[i]!=null) {
+                zombies[i].hidden=true;
+                zombies[i].fleeing=false;
+                zombies[i].model.setRenderingEnable(false);
+            }
+            modeGoal=count;
+            modeStartAt=gameClock;
+            modeEventAt=gameClock+20000;
+            modeStatus("HIDE THE BOTS - 20s");
         }
 
         private void spawnDefenseWave() {
@@ -881,7 +894,7 @@ public final class main extends MIDlet {
             } else if (currentGame==9) {
                 updateKingHill(dt);
             } else if (currentGame==11) {
-                updateSeekGame();
+                updateSeekGame(dt);
             } else if (currentGame==12) {
                 updateSimonGame();
             } else if (currentGame==13) {
@@ -953,22 +966,89 @@ public final class main extends MIDlet {
             if(modeScore>=20) modeStatus("Hill captured!");
         }
 
-        private void updateSeekGame() {
+        private void updateSeekGame(int dt) {
+            if(modeEventAt>0&&gameClock<modeEventAt)return;
+            if(modeEventAt>0){
+                for(int i=0;i<zombies.length;i++){
+                    Zombie bot=zombies[i];
+                    if(bot==null||!bot.alive)continue;
+                    bot.hidden=false;
+                    bot.model.setRenderingEnable(true);
+                }
+                modeEventAt=0;
+                modeStatus("Find the bots! Turn the camera to spot them.");
+            }
             for(int i=0;i<zombies.length;i++) {
-                Zombie z=zombies[i]; if(z==null||!z.alive) continue;
+                Zombie z=zombies[i];
+                if(z==null||!z.alive)continue;
                 float dx=px-z.x,dz=pz-z.z;
                 float distanceSquared=dx*dx+dz*dz;
-                if(z.hidden && distanceSquared<3.4f*3.4f) {
-                    z.hidden=false; z.model.setRenderingEnable(true);
-                    modeStatus("Encontraste un escondite");
+                if(!z.fleeing&&gameClock>=z.attackAt){
+                    z.attackAt=gameClock+180;
+                    if(isBotVisibleInCamera(z)){
+                        z.fleeing=true;
+                        modeStatus("Spotted! Chase the bot!");
+                    }
                 }
-                if(distanceSquared<1.1f*1.1f) {
+                if(z.fleeing){
+                    float awayX=z.x-px,awayZ=z.z-pz;
+                    float length=(float)Math.sqrt(awayX*awayX+awayZ*awayZ);
+                    if(length<0.01f){awayX=nextRandom(2)==0?1.0f:-1.0f;awayZ=0;length=1;}
+                    awayX/=length;awayZ/=length;
+                    float step=dt*0.0032f;
+                    float moveX=0,moveZ=0,bestDot=-2.0f;
+                    for(int d=0;d<HIDE_FLEE_COS.length;d++){
+                        float c=HIDE_FLEE_COS[d],sn=HIDE_FLEE_SIN[d];
+                        float dirX=awayX*c-awayZ*sn,dirZ=awayX*sn+awayZ*c;
+                        float nx=z.x+dirX*step,nz=z.z+dirZ*step;
+                        if(Math.abs(nx)>20.0f||Math.abs(nz)>20.0f||
+                                isWorldBlocked(nx,z.z,0.0f,1.9f)||
+                                isWorldBlocked(z.x,nz,0.0f,1.9f))continue;
+                        float dot=dirX*awayX+dirZ*awayZ;
+                        if(dot>bestDot){bestDot=dot;moveX=dirX;moveZ=dirZ;}
+                    }
+                    if(bestDot>-1.0f){
+                        z.x+=moveX*step;z.z+=moveZ*step;
+                        z.model.setTranslation(z.x,0,z.z);
+                        z.model.setOrientation(fastAtan2(-moveX,-moveZ)*57.29578f,0,1,0);
+                    }
+                    dx=px-z.x;dz=pz-z.z;distanceSquared=dx*dx+dz*dz;
+                }
+                if(distanceSquared<1.15f*1.15f){
                     z.alive=false;
-                    try {world.removeChild(z.model);}catch(Throwable ignored){}
+                    try{world.removeChild(z.model);}catch(Throwable ignored){}
                     modeStatus("Found "+(modeGoal-countZombies())+"/"+modeGoal);
                 }
             }
-            if(modeGoal-countZombies()>=modeGoal) modeStatus("Everyone found!");
+            if(modeGoal-countZombies()>=modeGoal)modeStatus("Everyone found!");
+        }
+
+        private boolean isBotVisibleInCamera(Zombie bot){
+            float cp=(float)Math.cos(camPitch),sp=(float)Math.sin(camPitch);
+            float cameraX=px-(float)Math.sin(camYaw)*cp*camDistance;
+            float cameraY=1.2f+jumpY+sp*camDistance;
+            float cameraZ=pz+(float)Math.cos(camYaw)*cp*camDistance;
+            float dx=bot.x-cameraX,dz=bot.z-cameraZ;
+            float forwardX=(float)Math.sin(camYaw),forwardZ=-(float)Math.cos(camYaw);
+            float rightX=(float)Math.cos(camYaw),rightZ=(float)Math.sin(camYaw);
+            float forward=dx*forwardX+dz*forwardZ;
+            if(forward<=0.2f)return false;
+            float aspect=(float)getWidth()/(float)Math.max(1,getHeight());
+            float halfWidth=(float)Math.tan(1.134464f*0.5f)*aspect;
+            float lateral=Math.abs(dx*rightX+dz*rightZ);
+            if(lateral>forward*halfWidth)return false;
+            float distance=(float)Math.sqrt(dx*dx+dz*dz);
+            if(distance>28.0f)return false;
+            int steps=(int)(distance*2.0f);
+            if(steps<2)steps=2;
+            if(steps>48)steps=48;
+            for(int i=2;i<steps-1;i++){
+                float t=(float)i/(float)steps;
+                float x=cameraX+dx*t,z=cameraZ+dz*t;
+                float y=cameraY+(1.1f-cameraY)*t;
+                if(isWorldBlocked(x,z,y-0.35f,0.7f))return false;
+            }
+            return true;
         }
 
         private void updateSimonGame() {
@@ -2126,6 +2206,15 @@ public final class main extends MIDlet {
                 g.drawString("Roblox3DME - model load failed", 4, 4, Graphics.TOP|Graphics.LEFT);
                 g.drawString("Check Java model and faceNEW.png / faceZomb.png", 4, 22, Graphics.TOP|Graphics.LEFT);
             }
+            if(currentGame==11&&modeEventAt>gameClock&&modeEventAt>0){
+                g.setColor(0x000000);
+                g.fillRect(0,0,getWidth(),getHeight());
+                g.setColor(0xFFFFFF);
+                g.drawString("HIDE THE BOTS",getWidth()/2,getHeight()/2-g.getFont().getHeight(),
+                        Graphics.TOP|Graphics.HCENTER);
+                g.drawString(""+((modeEventAt-gameClock+999)/1000),
+                        getWidth()/2,getHeight()/2,Graphics.TOP|Graphics.HCENTER);
+            }
             g.setColor(0xFFFFFF);
             g.drawString("ROBLOX 3DME", 3, 2, Graphics.TOP|Graphics.LEFT);
             g.drawString(modelStatus, 3, 20, Graphics.TOP|Graphics.LEFT);
@@ -2233,7 +2322,9 @@ public final class main extends MIDlet {
             else if(currentGame==8) label="COINS "+modeCollected+"/"+modeGoal;
             else if(currentGame==9) label="HILL "+modeScore+"/20s";
             else if(currentGame==10) label="3 ATTACK  "+modeScore+" KOs";
-            else if(currentGame==11) label="FOUND "+(modeGoal-countZombies())+"/"+modeGoal;
+            else if(currentGame==11) label=modeEventAt>gameClock?
+                    "HIDEOUTS "+((modeEventAt-gameClock+999)/1000)+"s":
+                    "FOUND "+(modeGoal-countZombies())+"/"+modeGoal;
             else if(currentGame==12) {
                 String[] colors=new String[] {"RED","BLUE","GREEN","YELLOW"};
                 label=simonRound>12?"SIMON SAYS COMPLETE":(simonRound==0?"GET READY":
