@@ -10,7 +10,7 @@ import java.io.*;
 /**
  * Roblox3DME: minimal JSR-184 playground/controller.
  * The character is generated in Java; put faceNEW.png and faceZomb.png in /meblox/ (or the JAR root).
- * Intended for MIDP 2.0 + JSR-184 devices.
+ * Intended for MIDP 2.0 + JSR-184 (M3G) + JSR-82 (Bluetooth) devices.
  */
 public final class main extends MIDlet {
     private Game game;
