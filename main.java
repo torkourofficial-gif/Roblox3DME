@@ -1600,7 +1600,10 @@ public final class main extends MIDlet {
                 repaint();
                 return;
             }
-            if (isRightSoftkey(keyCode, k)) {
+            // On some devices key 3 is reported with GAME_B, which is also used
+            // by the right softkey. In Horde, keep numeric 3 reserved for item use.
+            boolean useItemKey = currentGame == 2 && keyCode == KEY_NUM3;
+            if (!useItemKey && isRightSoftkey(keyCode, k)) {
                 if (paused) { paused = false; configMode = false; }
                 else openPauseMenu();
                 repaint();
