@@ -45,11 +45,11 @@ public final class HideSeekLevel extends GameLevel {
         p=put(b,p,x-2.9f,y,z,0.45f,2.9f,6.2f,color);
         p=put(b,p,x+2.9f,y,z,0.45f,2.9f,6.2f,color);
         float entryZ=z+(northDoor?-2.9f:2.9f);
-        p=put(b,p,x-2.05f,y,entryZ,1.7f,2.9f,0.45f,color);
-        p=put(b,p,x+2.05f,y,entryZ,1.7f,2.9f,0.45f,color);
+        p=put(b,p,x-2.15f,y,entryZ,1.5f,2.9f,0.45f,color);
+        p=put(b,p,x+2.15f,y,entryZ,1.5f,2.9f,0.45f,color);
         p=put(b,p,x,3.0f,z,6.2f,0.2f,6.2f,0x8B6B45);
         // Interior divider hides a hider from the doorway without sealing the room.
-        p=put(b,p,x,1.25f,z+0.65f,2.8f,2.5f,0.35f,0x66563F);
+        p=put(b,p,x,1.25f,z+0.65f,2.2f,2.5f,0.35f,0x66563F);
         p=put(b,p,x+(northDoor?1.7f:-1.7f),0.7f,z-0.7f,1.1f,1.4f,1.1f,0x795438);
         return p;
     }
