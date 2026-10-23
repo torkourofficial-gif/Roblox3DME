@@ -518,16 +518,23 @@ public final class main extends MIDlet {
                     if (deathPieces[i] != null) world.removeChild(deathPieces[i].node);
             }
             deathPieces = null;
-            px = 0; pz = 0; jumpY = 0; playerVelocityY = 0;
-            yaw = 0; grounded = true; dead = false; jumping = false;
-            avatar = new Group();
-            activeModel = buildNoob();
-            avatar.addChild(activeModel);
-            protectionAura = makeProtectionAura();
-            avatar.addChild(protectionAura);
-            world.addChild(avatar);
-            invulnerableUntil = gameClock + 4000;
-            updateCamera();
+            try {
+                px = 0; pz = 0; jumpY = 0; playerVelocityY = 0;
+                yaw = 0; grounded = true; jumping = false;
+                avatar = new Group();
+                activeModel = buildNoob();
+                avatar.addChild(activeModel);
+                protectionAura = makeProtectionAura();
+                avatar.addChild(protectionAura);
+                world.addChild(avatar);
+                dead = false;
+                invulnerableUntil = gameClock + 4000;
+                updateCamera();
+            } catch (Throwable t) {
+                dead = true;
+                respawnAt = gameClock + 1000;
+                initError = "Respawn: " + t.toString();
+            }
         }
 
         private Group makeProtectionAura() {
