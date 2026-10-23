@@ -4,7 +4,7 @@ El punto de entrada es `main.java`, dentro del paquete `meblox`. Es un MIDlet pa
 
 ## Menú
 
-Al iniciar, elige **Obby** o **Baseplate** con arriba/abajo y confirma con **5 / FIRE**. Obby incluye los bloques de salto; Baseplate deja solo el suelo verde. Pulsa **0** durante el juego para volver al menú.
+Al iniciar, elige **Obby** o **Baseplate** con arriba/abajo y confirma con **5 / FIRE**. Obby incluye los bloques de salto; Baseplate deja solo el suelo verde. Pulsa **0** durante el juego para volver al menú. El fondo `bgtitle.png` se desplaza horizontalmente en bucle para dar movimiento panorámico.
 
 ## Controles en los juegos
 
@@ -17,7 +17,7 @@ Al iniciar, elige **Obby** o **Baseplate** con arriba/abajo y confirma con **5 /
 
 ## Recursos
 
-Incluye `face.png`, `logoR.png`, `bgtitle.png` y `skyboxR.png` como recursos del proyecto en `/meblox/` o en la raíz del JAR. El menú ajusta `logoR.png` para que quepa en pantalla y recorta `bgtitle.png` como fondo panorámico. Los dos juegos usan `skyboxR.png` como imagen de fondo del mundo.
+Incluye `face.png`, `logoR.png`, `bgtitle.png` y `skyboxR.png` como recursos del proyecto en `/meblox/` o en la raíz del JAR. El menú ajusta `logoR.png` para que quepa en pantalla y desplaza `bgtitle.png` como una panorámica. En los juegos, `skyboxR.png` sigue la orientación de la cámara en sentido contrario y a la misma velocidad angular, desplazando también su recorte vertical cuando miras arriba o abajo.
 
 El código adapta `face.png` a las dimensiones que requiere una textura JSR-184 y la curva sobre la cara del cilindro. Si falta una textura, el juego muestra el detalle del error.
 
