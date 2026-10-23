@@ -498,6 +498,8 @@ public final class main extends MIDlet {
             float axisX = index % 3 == 0 ? 1.0f : 0.35f;
             float axisY = index % 3 == 1 ? 1.0f : 0.45f;
             float axisZ = index % 3 == 2 ? 1.0f : 0.60f;
+            float axisLength = (float)Math.sqrt(axisX * axisX + axisY * axisY + axisZ * axisZ);
+            axisX /= axisLength; axisY /= axisLength; axisZ /= axisLength;
             deathPieces[index] = new PhysicsPiece(node, x, jumpY + oy, z,
                     outward, 0.0035f + (index % 3) * 0.001f, direction * 0.001f,
                     35 + index * 5, axisX, axisY, axisZ);
