@@ -17,11 +17,11 @@ Al iniciar, elige **Obby** o **Baseplate** con arriba/abajo y confirma con **5 /
 
 ## Física y reaparición
 
-La gravedad actúa al saltar y al caer fuera de las plataformas; el jugador aterriza en el suelo y en las plataformas del Obby. Tocar el bloque rojo del Baseplate separa cabeza, torso, brazos y piernas. Las piezas salen despedidas, giran en varios ejes, caen y rebotan levemente. Tras 2,6 segundos reaparece el personaje dentro de un aura azul semitransparente esférica; el aura pulsa con destellos y lo protege durante 4 segundos.
+La gravedad actúa al saltar y al caer fuera de las plataformas; el jugador aterriza en el suelo y en las plataformas del Obby. Tocar el bloque rojo del Baseplate separa cabeza, torso, brazos y piernas. Las piezas salen despedidas, giran en varios ejes, caen y rebotan levemente; la cámara sigue al torso mientras esa pieza exista. Tras 2,6 segundos reaparece el personaje dentro de un aura azul semitransparente esférica; el aura pulsa con destellos y lo protege durante 4 segundos.
 
 ## Recursos
 
-Incluye `face.png`, `logoR.png`, `bgtitle.png` y `skyboxR.png` como recursos del proyecto en `/meblox/` o en la raíz del JAR. El menú ajusta `logoR.png` para que quepa en pantalla. En los juegos, `skyboxR.png` sigue la orientación de la cámara en sentido contrario y a la misma velocidad angular, desplazando también su recorte vertical cuando miras arriba o abajo.
+Incluye `face.png`, `logoR.png`, `bgtitle.png` y `skyboxR.png` como recursos del proyecto en `/meblox/` o en la raíz del JAR. El menú muestra `bgtitle.png` como panorama y reescala `logoR.png` conservando toda la imagen para que quepa completa en pantalla. En los juegos, `skyboxR.png` sigue la orientación de la cámara en sentido contrario y a la misma velocidad angular, desplazando también su recorte vertical cuando miras arriba o abajo.
 
 El código adapta `face.png` a las dimensiones que requiere una textura JSR-184 y la curva sobre la cara del cilindro. Si falta una textura, el juego muestra el detalle del error.
 
