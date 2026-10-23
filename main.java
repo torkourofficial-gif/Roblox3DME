@@ -20,7 +20,7 @@ public final class main extends MIDlet {
     protected void destroyApp(boolean unconditional) { if (game != null) game.stop(); }
     void quit() { destroyApp(true); notifyDestroyed(); }
 
-    private static final class Game extends Canvas implements Runnable {
+    private static final class Game extends Canvas implements Runnable, CommandListener {
         private final main midlet;
         private Thread thread;
         private boolean running;
@@ -55,6 +55,10 @@ public final class main extends MIDlet {
         private Image2D skyBackgroundImage;
         private Background sceneBackground;
         private int cachedMenuWidth = -1, cachedMenuHeight = -1;
+        private int[] pauseOverlayPixels;
+        private int pauseOverlayWidth = -1, pauseOverlayHeight = -1;
+        private Command pauseCommand;
+        private boolean pauseCommandAdded;
         private long menuPanTime;
         private float playerVelocityY;
         private boolean grounded = true, dead, lobbyMode;
@@ -94,7 +98,20 @@ public final class main extends MIDlet {
             }
         }
 
-        Game(main m) { midlet = m; setFullScreenMode(true); }
+        Game(main m) {
+            midlet = m;
+            setFullScreenMode(true);
+            pauseCommand = new Command("Pause", Command.SCREEN, 1);
+            setCommandListener(this);
+        }
+
+        public void commandAction(Command command, Displayable displayable) {
+            if (command == pauseCommand && !menuMode) {
+                if (paused) { paused = false; configMode = false; }
+                else openPauseMenu();
+                repaint();
+            }
+        }
         synchronized void start() {
             if (running) return;
             running = true;
@@ -159,6 +176,10 @@ public final class main extends MIDlet {
 
         private void startGame(int game) throws Exception {
             currentGame = game;
+            if (!pauseCommandAdded) {
+                addCommand(pauseCommand);
+                pauseCommandAdded = true;
+            }
             menuMode = false;
             paused = false;
             configMode = false;
@@ -212,7 +233,9 @@ public final class main extends MIDlet {
             activeModel = buildNoob();
             avatar.addChild(activeModel);
             world.addChild(avatar);
-            protectionAura = null;
+            protectionAura = makeProtectionAura();
+            avatar.addChild(protectionAura);
+            invulnerableUntil = gameClock + 4000;
             animation = 0;
             animateNoob();
             updateCamera();
@@ -1078,6 +1101,7 @@ public final class main extends MIDlet {
                 return "Right Softkey".equalsIgnoreCase(name) ||
                         "Right Soft Key".equalsIgnoreCase(name) ||
                         "Soft2".equalsIgnoreCase(name) || "Soft 2".equalsIgnoreCase(name) ||
+                        "Softkey2".equalsIgnoreCase(name) || "Softkey 2".equalsIgnoreCase(name) ||
                         "Right Selection".equalsIgnoreCase(name) ||
                         "Options".equalsIgnoreCase(name) || "Menu".equalsIgnoreCase(name);
             } catch (Throwable ignored) { return false; }
@@ -1086,6 +1110,19 @@ public final class main extends MIDlet {
         private void clearInput() {
             forward = back = left = right = false;
             camLeft = camRight = camUp = camDown = false;
+        }
+
+        private void exitToGameMenu() {
+            paused = false;
+            configMode = false;
+            menuMode = true;
+            loaded = false;
+            selectedGame = currentGame;
+            clearInput();
+            if (pauseCommandAdded) {
+                removeCommand(pauseCommand);
+                pauseCommandAdded = false;
+            }
         }
 
         private void openPauseMenu() {
@@ -1135,25 +1172,24 @@ public final class main extends MIDlet {
                     try { startGame(currentGame); }
                     catch (Throwable t) { initError = "Restart: " + t.toString(); }
                 } else {
-                    paused = false;
-                    configMode = false;
-                    menuMode = true;
-                    loaded = false;
-                    selectedGame = currentGame;
-                    clearInput();
+                    exitToGameMenu();
                 }
             }
         }
 
         private void drawPauseMenu(Graphics g) {
             int width = getWidth(), height = getHeight();
+            if (pauseOverlayPixels == null || pauseOverlayWidth != width || pauseOverlayHeight != height) {
+                pauseOverlayWidth = width; pauseOverlayHeight = height;
+                pauseOverlayPixels = new int[width * height];
+                for (int i = 0; i < pauseOverlayPixels.length; i++) pauseOverlayPixels[i] = 0x9908121E;
+            }
             int panelWidth = Math.min(260, Math.max(1, width - 16));
             int rowHeight = Math.max(22, g.getFont().getHeight() + 8);
             int optionCount = configMode ? 3 : 4;
             int panelHeight = Math.min(height - 8, 50 + optionCount * rowHeight + 32);
             int panelX = (width - panelWidth) / 2, panelY = (height - panelHeight) / 2;
-            g.setColor(0x08121E);
-            g.fillRect(0, 0, width, height);
+            g.drawRGB(pauseOverlayPixels, 0, width, 0, 0, width, height, true);
             g.setColor(0x1A2D40);
             g.fillRoundRect(panelX, panelY, panelWidth, panelHeight, 14, 14);
             g.setColor(0xFFFFFF);
@@ -1223,12 +1259,7 @@ public final class main extends MIDlet {
                 return;
             }
             if (keyCode == KEY_NUM0) {
-                menuMode = true;
-                paused = false;
-                configMode = false;
-                loaded = false;
-                selectedGame = currentGame;
-                clearInput();
+                exitToGameMenu();
                 repaint();
                 return;
             }
