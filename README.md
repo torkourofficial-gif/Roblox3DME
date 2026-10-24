@@ -4,7 +4,7 @@ El punto de entrada es `main.java`, dentro del paquete `meblox`. Es un MIDlet pa
 
 ## Menú
 
-El menú contiene **15 juegos**, repartidos en páginas de cinco opciones (cuatro en pantallas pequeñas). Usa arriba/abajo para elegir, **7/9** para cambiar de página y **5 / FIRE** para entrar. El menú reproduce siempre `R3.mid`; cada nueva partida elige la música al azar entre `R1.mid`, `R2.mid` y `R3.mid`, recorriendo las tres antes de repetir una. Incluye Obby, Baseplate, Horda zombi y Studio, además de Lava ascendente, Lluvia de meteoritos, Plataformas que caen, Carrera contrarreloj, Caza de monedas, Rey de la colina, Arena de espadas, Escondite, Simon dice, Mini tycoon y Defensa de base. El fondo `bgtitle.png` se desplaza como una panorámica detrás del logo. Pulsa **0** durante un juego para volver al menú.
+El menú contiene **15 juegos**, repartidos en páginas de cinco opciones (cuatro en pantallas pequeñas). Usa arriba/abajo para elegir, **7/9** para cambiar de página y **5 / FIRE** para entrar. La opción **Exit game**, al final de la lista, cierra la aplicación. El menú reproduce siempre `R3.mid`; cada nueva partida elige la música al azar entre `R1.mid`, `R2.mid` y `R3.mid`, recorriendo las tres antes de repetir una. Incluye Obby, Baseplate, Horda zombi y Studio, además de Lava ascendente, Lluvia de meteoritos, Plataformas que caen, Carrera contrarreloj, Caza de monedas, Rey de la colina, Arena de espadas, Escondite, Simon dice, Mini tycoon y Defensa de base. El fondo `bgtitle.png` se desplaza como una panorámica detrás del logo. Pulsa **0** durante un juego para volver al menú.
 
 ## Controles en los juegos
 

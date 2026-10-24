@@ -105,6 +105,7 @@ public final class main extends MIDlet {
         private boolean loaded;
         private boolean menuMode = true;
         private int selectedGame;
+        private int menuCursor;
         private int inventorySelection;
         private StudioObject[] studioObjects = new StudioObject[40];
         private int studioObjectCount, studioSelected = -1, studioPalette, studioProperty;
@@ -1978,10 +1979,11 @@ public final class main extends MIDlet {
             int pageSize = getHeight() < 220 ? 4 : 5;
             int buttonHeight = Math.max(14, Math.min(24, getHeight() / 11));
             int gap = Math.max(2, buttonHeight / 6);
-            int page = selectedGame / pageSize;
-            int pageCount = (GAME_NAMES.length + pageSize - 1) / pageSize;
+            int menuItemCount=GAME_NAMES.length+1;
+            int page = menuCursor / pageSize;
+            int pageCount = (menuItemCount + pageSize - 1) / pageSize;
             int first = page * pageSize;
-            int count = Math.min(pageSize, GAME_NAMES.length - first);
+            int count = Math.min(pageSize, menuItemCount - first);
             int listHeight = count * buttonHeight + (count - 1) * gap;
             int startY = Math.max(getHeight() / 3,
                     getHeight() / 2 - listHeight / 2 + 8);
@@ -1989,11 +1991,14 @@ public final class main extends MIDlet {
             for (int i = 0; i < count; i++) {
                 int gameIndex = first + i;
                 int y = startY + i * (buttonHeight + gap);
-                g.setColor(gameIndex == selectedGame ? 0xF5C542 : 0x203040);
+                boolean selected=gameIndex==menuCursor;
+                g.setColor(selected ? 0xF5C542 : 0x203040);
                 g.fillRoundRect((getWidth() - buttonWidth) / 2, y,
                         buttonWidth, buttonHeight, 10, 10);
-                g.setColor(gameIndex == selectedGame ? 0x17202A : 0xFFFFFF);
-                g.drawString(GAME_NAMES[gameIndex], getWidth() / 2,
+                g.setColor(selected ? 0x17202A : 0xFFFFFF);
+                String label=gameIndex< GAME_NAMES.length
+                        ? GAME_NAMES[gameIndex] : "Exit game";
+                g.drawString(label, getWidth() / 2,
                         y + (buttonHeight - font.getHeight()) / 2,
                         Graphics.TOP | Graphics.HCENTER);
             }
@@ -3180,6 +3185,7 @@ public final class main extends MIDlet {
             playMusic(3);
             loaded = false;
             selectedGame = currentGame;
+            menuCursor = selectedGame;
             clearInput();
         }
 
@@ -3847,20 +3853,26 @@ public final class main extends MIDlet {
                     return;
                 }
                 int pageSize = getHeight() < 220 ? 4 : 5;
-                int pageCount = (GAME_NAMES.length + pageSize - 1) / pageSize;
-                int page = selectedGame / pageSize;
-                int row = selectedGame % pageSize;
+                int menuItemCount=GAME_NAMES.length+1;
+                int pageCount = (menuItemCount + pageSize - 1) / pageSize;
+                int page = menuCursor / pageSize;
+                int row = menuCursor % pageSize;
                 if (keyCode == KEY_NUM7) {
                     page = (page + pageCount - 1) % pageCount;
-                    selectedGame = Math.min(page * pageSize + row, GAME_NAMES.length - 1);
+                    menuCursor = Math.min(page * pageSize + row, menuItemCount - 1);
                 } else if (keyCode == KEY_NUM9) {
                     page = (page + 1) % pageCount;
-                    selectedGame = Math.min(page * pageSize + row, GAME_NAMES.length - 1);
+                    menuCursor = Math.min(page * pageSize + row, menuItemCount - 1);
                 } else if (k == UP || keyCode == KEY_NUM2)
-                    selectedGame = (selectedGame + GAME_NAMES.length - 1) % GAME_NAMES.length;
+                    menuCursor = (menuCursor + menuItemCount - 1) % menuItemCount;
                 else if (k == DOWN || keyCode == KEY_NUM8)
-                    selectedGame = (selectedGame + 1) % GAME_NAMES.length;
+                    menuCursor = (menuCursor + 1) % menuItemCount;
                 else if (keyCode == KEY_NUM5 || k == FIRE) {
+                    if(menuCursor>=GAME_NAMES.length) {
+                        midlet.quit();
+                        return;
+                    }
+                    selectedGame=menuCursor;
                     try {
                         initError = "";
                         startGame(selectedGame);
