@@ -59,6 +59,16 @@ public final class main extends MIDlet {
         private int botCountSetting;
         private static final int BOT_COUNT_RANDOM=0, BOT_COUNT_OFF=6;
         private static final String SETTINGS_STORE="Roblox3DMESettings";
+        private int avatarSkinColor=0xF5C542, avatarShirtColor=0x1769AA,
+                avatarLegColor=0x2E9E45;
+        private boolean avatarEditorMode;
+        private int avatarColorSelection;
+        private World avatarPreviewWorld;
+        private Camera avatarPreviewCamera;
+        private Group avatarPreviewModel;
+        private int[] lanAvatarSkins = {-1,-1,-1,-1,-1};
+        private int[] lanAvatarShirts = {-1,-1,-1,-1,-1};
+        private int[] lanAvatarLegs = {-1,-1,-1,-1,-1};
         private int currentGame;
         private boolean paused, configMode;
         private int pauseSelection, configSelection;
@@ -289,16 +299,26 @@ public final class main extends MIDlet {
                 byte[] data=store.getRecord(1);
                 input=new DataInputStream(new ByteArrayInputStream(data));
                 int version=input.readInt();
-                if(version!=1)return;
+                if(version<1||version>2)return;
                 int loadedSensitivity=input.readInt();
                 boolean loadedInvert=input.readBoolean();
                 float loadedDistance=input.readFloat();
                 int loadedBots=input.readInt();
+                int loadedSkin=avatarSkinColor, loadedShirt=avatarShirtColor,
+                        loadedLegs=avatarLegColor;
+                if(version>=2) {
+                    loadedSkin=input.readInt();
+                    loadedShirt=input.readInt();
+                    loadedLegs=input.readInt();
+                }
                 int controlCount=input.readInt();
                 if(loadedSensitivity<0||loadedSensitivity>2||
                         loadedDistance<2.0f||loadedDistance>9.0f||
                         loadedBots<BOT_COUNT_RANDOM||loadedBots>BOT_COUNT_OFF||
-                        controlCount!=mappedControls.length)return;
+                        controlCount!=mappedControls.length||
+                        !isAvatarColor(BOT_SKIN_COLORS,loadedSkin)||
+                        !isAvatarColor(BOT_SHIRT_COLORS,loadedShirt)||
+                        !isAvatarColor(BOT_LEG_COLORS,loadedLegs))return;
                 int[] loadedControls=new int[controlCount];
                 for(int i=0;i<controlCount;i++)loadedControls[i]=input.readInt();
                 for(int i=0;i<loadedControls.length;i++) {
@@ -311,6 +331,9 @@ public final class main extends MIDlet {
                 invertCamera=loadedInvert;
                 camDistance=loadedDistance;
                 botCountSetting=loadedBots;
+                avatarSkinColor=loadedSkin;
+                avatarShirtColor=loadedShirt;
+                avatarLegColor=loadedLegs;
                 for(int i=0;i<mappedControls.length;i++)mappedControls[i]=loadedControls[i];
             } catch(Throwable ignored) {
                 // Keep safe defaults when RMS is unavailable or the record is corrupt.
@@ -320,6 +343,11 @@ public final class main extends MIDlet {
             }
         }
 
+        private boolean isAvatarColor(int[] palette,int color) {
+            for(int i=0;i<palette.length;i++)if(palette[i]==color)return true;
+            return false;
+        }
+
         private boolean saveSettings() {
             RecordStore store=null;
             ByteArrayOutputStream bytes=null;
@@ -327,11 +355,14 @@ public final class main extends MIDlet {
             try {
                 bytes=new ByteArrayOutputStream();
                 output=new DataOutputStream(bytes);
-                output.writeInt(1);
+                output.writeInt(2);
                 output.writeInt(sensitivityLevel);
                 output.writeBoolean(invertCamera);
                 output.writeFloat(camDistance);
                 output.writeInt(botCountSetting);
+                output.writeInt(avatarSkinColor);
+                output.writeInt(avatarShirtColor);
+                output.writeInt(avatarLegColor);
                 output.writeInt(mappedControls.length);
                 for(int i=0;i<mappedControls.length;i++)output.writeInt(mappedControls[i]);
                 output.flush();
@@ -499,6 +530,7 @@ public final class main extends MIDlet {
             paused = false;
             configMode = false;
             menuSettings = false;
+            avatarEditorMode = false;
             controlMapMode = false;
             awaitingControlKey = false;
             loaded = false;
@@ -2063,11 +2095,13 @@ public final class main extends MIDlet {
                     if (lanAvatars[i] != null && world != null) {
                         try { world.removeChild(lanAvatars[i]); } catch (Throwable ignored) {}
                         lanAvatars[i] = null;
+                        lanAvatarSkins[i]=lanAvatarShirts[i]=lanAvatarLegs[i]=-1;
                     }
                 }
                 return;
             }
-            lanSession.publish(px, jumpY, pz, yaw, playerHealth, !dead);
+            lanSession.publish(px, jumpY, pz, yaw, playerHealth, !dead,
+                    avatarSkinColor, avatarShirtColor, avatarLegColor);
             if (lanPlayers == null) lanPlayers = new LanSession.PlayerState[5];
             lanSession.copySnapshot(lanPlayers);
             LanSession.PlayerState[] states = lanPlayers;
@@ -2077,16 +2111,37 @@ public final class main extends MIDlet {
                     if (lanAvatars[i] != null && world != null) {
                         try { world.removeChild(lanAvatars[i]); } catch (Throwable ignored) {}
                         lanAvatars[i] = null;
+                        lanAvatarSkins[i]=lanAvatarShirts[i]=lanAvatarLegs[i]=-1;
                     }
+                    lanAvatarSkins[i]=lanAvatarShirts[i]=lanAvatarLegs[i]=-1;
                     continue;
                 }
+                boolean avatarColorsChanged=lanAvatars[i]!=null&&
+                        (lanAvatarSkins[i]!=states[i].skinColor||
+                         lanAvatarShirts[i]!=states[i].shirtColor||
+                         lanAvatarLegs[i]!=states[i].legColor);
+                if(avatarColorsChanged&&world!=null) {
+                    try { world.removeChild(lanAvatars[i]); } catch(Throwable ignored) {}
+                    lanAvatars[i]=null;
+                }
                 if (lanAvatars[i] == null && world != null) {
+                    int oldSkin=avatarSkinColor,oldShirt=avatarShirtColor,oldLegs=avatarLegColor;
                     Mesh oldLeft=leftArm,oldRight=rightArm,oldLegL=leftLeg,oldLegR=rightLeg;
                     Group oldSword=swordVisual;
-                    try { lanAvatars[i]=buildNoob(false); }
-                    catch (Throwable t) { continue; }
-                    leftArm=oldLeft; rightArm=oldRight; leftLeg=oldLegL; rightLeg=oldLegR;
-                    swordVisual=oldSword;
+                    try {
+                        avatarSkinColor=states[i].skinColor;
+                        avatarShirtColor=states[i].shirtColor;
+                        avatarLegColor=states[i].legColor;
+                        lanAvatars[i]=buildNoob(false);
+                    } catch (Throwable t) { continue; }
+                    finally {
+                        avatarSkinColor=oldSkin;avatarShirtColor=oldShirt;avatarLegColor=oldLegs;
+                        leftArm=oldLeft;rightArm=oldRight;leftLeg=oldLegL;rightLeg=oldLegR;
+                        swordVisual=oldSword;
+                    }
+                    lanAvatarSkins[i]=states[i].skinColor;
+                    lanAvatarShirts[i]=states[i].shirtColor;
+                    lanAvatarLegs[i]=states[i].legColor;
                     world.addChild(lanAvatars[i]);
                 }
                 if (lanAvatars[i] != null) {
@@ -2807,9 +2862,9 @@ public final class main extends MIDlet {
 
         private Group buildNoob(boolean zombie) throws Exception {
             Group model = new Group();
-            int skin = zombie ? 0x35B64A : 0xF5C542;
-            int clothing = zombie ? 0x795438 : 0x1769AA;
-            int legs = zombie ? 0x795438 : 0x2E9E45;
+            int skin = zombie ? 0x35B64A : avatarSkinColor;
+            int clothing = zombie ? 0x795438 : avatarShirtColor;
+            int legs = zombie ? 0x795438 : avatarLegColor;
 
             // Zombie copies use the noob body proportions and face with a green/brown palette.
             model.addChild(makeBox(0, 1.45f, 0, 0.78f, 0.95f, 0.40f, clothing));
@@ -3119,6 +3174,8 @@ public final class main extends MIDlet {
             for (int i=0;i<lanAvatars.length;i++) lanAvatars[i]=null;
             paused = false;
             configMode = false;
+            avatarEditorMode = false;
+            menuSettings = false;
             menuMode = true;
             playMusic(3);
             loaded = false;
@@ -3133,7 +3190,172 @@ public final class main extends MIDlet {
             clearInput();
         }
 
+        private void handleAvatarSettingsInput(int keyCode,int action,
+                boolean up,boolean down,boolean leftKey,boolean rightKey,boolean fire) {
+            if(keyCode==KEY_STAR||keyCode==KEY_POUND||keyCode==KEY_NUM0) {
+                avatarEditorMode=false;
+                settingsMessage="";
+                return;
+            }
+            if(up)avatarColorSelection=(avatarColorSelection+2)%3;
+            else if(down)avatarColorSelection=(avatarColorSelection+1)%3;
+            else if(leftKey||rightKey||fire) {
+                int direction=rightKey||fire?1:-1;
+                int[] palette=avatarColorSelection==0?BOT_SKIN_COLORS:
+                        (avatarColorSelection==1?BOT_SHIRT_COLORS:BOT_LEG_COLORS);
+                int current=avatarColorSelection==0?avatarSkinColor:
+                        (avatarColorSelection==1?avatarShirtColor:avatarLegColor);
+                int index=0;
+                for(int i=0;i<palette.length;i++)if(palette[i]==current){index=i;break;}
+                int next=palette[(index+direction+palette.length)%palette.length];
+                if(avatarColorSelection==0)avatarSkinColor=next;
+                else if(avatarColorSelection==1)avatarShirtColor=next;
+                else avatarLegColor=next;
+                applyAvatarColors();
+                settingsMessage=saveSettings()?"Color saved":"Could not save color";
+            }
+        }
+
+        private void applyAvatarColors() {
+            if(avatar!=null) {
+                try {
+                    if(activeModel!=null)avatar.removeChild(activeModel);
+                    activeModel=buildNoob(false);
+                    avatar.addChild(activeModel);
+                    animateNoob();
+                } catch(Throwable t) {
+                    modelError="Avatar update: "+t.toString();
+                }
+            }
+            rebuildAvatarPreview();
+        }
+
+        private Group buildPreviewAvatar() throws Exception {
+            Mesh oldLeft=leftArm,oldRight=rightArm,oldLegL=leftLeg,oldLegR=rightLeg;
+            Group oldSword=swordVisual;
+            try {
+                return buildNoob(false);
+            } finally {
+                leftArm=oldLeft;rightArm=oldRight;
+                leftLeg=oldLegL;rightLeg=oldLegR;
+                swordVisual=oldSword;
+            }
+        }
+
+        private void ensureAvatarPreview() {
+            if(avatarPreviewWorld!=null)return;
+            try {
+                avatarPreviewWorld=new World();
+                Background background=new Background();
+                background.setColor(0x243B50);
+                background.setColorClearEnable(true);
+                background.setDepthClearEnable(true);
+                avatarPreviewWorld.setBackground(background);
+                avatarPreviewCamera=new Camera();
+                avatarPreviewCamera.setPerspective(40.0f,0.75f,0.1f,20.0f);
+                avatarPreviewCamera.setTranslation(0.0f,1.2f,5.8f);
+                avatarPreviewWorld.addChild(avatarPreviewCamera);
+                avatarPreviewWorld.setActiveCamera(avatarPreviewCamera);
+                avatarPreviewModel=buildPreviewAvatar();
+                avatarPreviewWorld.addChild(avatarPreviewModel);
+            } catch(Throwable t) {
+                avatarPreviewWorld=null;
+                avatarPreviewModel=null;
+                modelError="Avatar preview: "+t.toString();
+            }
+        }
+
+        private void rebuildAvatarPreview() {
+            if(avatarPreviewWorld==null) {
+                ensureAvatarPreview();
+                return;
+            }
+            try {
+                if(avatarPreviewModel!=null)
+                    avatarPreviewWorld.removeChild(avatarPreviewModel);
+                avatarPreviewModel=buildPreviewAvatar();
+                avatarPreviewWorld.addChild(avatarPreviewModel);
+            } catch(Throwable t) {
+                modelError="Avatar preview: "+t.toString();
+            }
+        }
+
+        private void renderAvatarPreview(Graphics g,int x,int y,int width,int height) {
+            ensureAvatarPreview();
+            if(avatarPreviewWorld==null||width<1||height<1)return;
+            boolean bound=false;
+            try {
+                avatarPreviewCamera.setPerspective(40.0f,(float)width/(float)height,
+                        0.1f,20.0f);
+                float turn=(float)((System.currentTimeMillis()/24L)%360L);
+                avatarPreviewModel.setOrientation(turn,0.0f,1.0f,0.0f);
+                g3d.bindTarget(g,true,Graphics3D.DITHER);
+                bound=true;
+                g3d.setViewport(x,y,width,height);
+                g3d.render(avatarPreviewWorld);
+            } catch(Throwable t) {
+                modelError="Avatar preview: "+t.toString();
+            } finally {
+                if(bound)try{g3d.releaseTarget();}catch(Throwable ignored){}
+            }
+        }
+
+        private void drawAvatarSettingsPanel(Graphics g) {
+            int width=getWidth(),height=getHeight();
+            if(menuSettings) {
+                g.setColor(0x101820);
+                g.fillRect(0,0,width,height);
+                drawMenuPanorama(g);
+                if(scaledLogo!=null)
+                    g.drawImage(scaledLogo,(width-scaledLogo.getWidth())/2,
+                            Math.max(3,height/28),Graphics.TOP|Graphics.LEFT);
+            }
+            if(pauseOverlayPixels==null||pauseOverlayWidth!=width||pauseOverlayHeight!=height) {
+                pauseOverlayWidth=width;pauseOverlayHeight=height;
+                pauseOverlayPixels=new int[width*height];
+                for(int i=0;i<pauseOverlayPixels.length;i++)pauseOverlayPixels[i]=0x9908121E;
+            }
+            g.drawRGB(pauseOverlayPixels,0,width,0,0,width,height,true);
+            int panelWidth=Math.min(280,Math.max(1,width-10));
+            int panelHeight=Math.min(height-8,Math.max(120,height*4/5));
+            int panelX=(width-panelWidth)/2,panelY=(height-panelHeight)/2;
+            g.setColor(0x1A2D40);
+            g.fillRoundRect(panelX,panelY,panelWidth,panelHeight,14,14);
+            Font font=g.getFont();
+            g.setColor(0xFFFFFF);
+            g.drawString("AVATAR",width/2,panelY+4,Graphics.TOP|Graphics.HCENTER);
+
+            int rowHeight=Math.max(14,Math.min(18,font.getHeight()+2));
+            int previewHeight=Math.max(28,Math.min(120,
+                    panelHeight-22-3*rowHeight-font.getHeight()-12));
+            int previewWidth=Math.min(panelWidth-16,Math.max(48,previewHeight*3/4));
+            int previewX=(width-previewWidth)/2;
+            int previewY=panelY+21;
+            renderAvatarPreview(g,previewX,previewY,previewWidth,previewHeight);
+
+            String[] names={"Skin","Shirt","Pants"};
+            int[] colors={avatarSkinColor,avatarShirtColor,avatarLegColor};
+            int rowsY=previewY+previewHeight+3;
+            for(int i=0;i<3;i++) {
+                int y=rowsY+i*rowHeight;
+                g.setColor(i==avatarColorSelection?0xF5C542:0x263B50);
+                g.fillRoundRect(panelX+8,y,panelWidth-16,rowHeight-1,6,6);
+                g.setColor(i==avatarColorSelection?0x17202A:0xFFFFFF);
+                g.drawString(names[i],panelX+16,y+1,Graphics.TOP|Graphics.LEFT);
+                g.setColor(colors[i]);
+                g.fillRect(panelX+panelWidth-38,y+3,20,rowHeight-7);
+            }
+            g.setColor(0xFFFFFF);
+            g.drawString("UP/DOWN: part  LEFT/RIGHT: color",
+                    width/2,panelY+panelHeight-font.getHeight()-3,
+                    Graphics.TOP|Graphics.HCENTER);
+        }
+
         private void drawSettingsPanel(Graphics g, boolean pausedPanel) {
+            if(avatarEditorMode) {
+                drawAvatarSettingsPanel(g);
+                return;
+            }
             int width=getWidth(),height=getHeight();
             if(pauseOverlayPixels==null||pauseOverlayWidth!=width||pauseOverlayHeight!=height) {
                 pauseOverlayWidth=width;pauseOverlayHeight=height;
@@ -3143,7 +3365,7 @@ public final class main extends MIDlet {
             g.drawRGB(pauseOverlayPixels,0,width,0,0,width,height,true);
             int rowHeight=Math.max(18,g.getFont().getHeight()+5);
             int optionCount=controlMapMode?Math.min(8,Math.max(1,(height-88)/rowHeight)):
-                    Math.min(5,Math.max(1,(height-88)/rowHeight));
+                    Math.min(6,Math.max(1,(height-88)/rowHeight));
             int panelWidth=Math.min(270,Math.max(1,width-12));
             int panelHeight=Math.min(height-8,48+optionCount*rowHeight+34);
             int panelX=(width-panelWidth)/2,panelY=(height-panelHeight)/2;
@@ -3169,7 +3391,7 @@ public final class main extends MIDlet {
                         (botCountSetting==BOT_COUNT_OFF?"Off":""+botCountSetting);
                 String[] options={"Camera sensitivity: "+speed,
                     "Invert camera: "+(invertCamera?"On":"Off"),
-                    "Bots: "+bots, "Map buttons", "Back"};
+                    "Bots: "+bots, "Map buttons", "Avatar", "Back"};
                 int first=Math.max(0,Math.min(configSelection-(optionCount/2),
                         options.length-optionCount));
                 for(int row=0;row<optionCount;row++) {
@@ -3236,14 +3458,19 @@ public final class main extends MIDlet {
                 }
                 return;
             }
+            if(avatarEditorMode) {
+                handleAvatarSettingsInput(keyCode,action,up,down,leftKey,rightKey,fire);
+                return;
+            }
             if(keyCode==KEY_STAR||keyCode==KEY_POUND) {
                 if(menuSettings)menuSettings=false;
                 else configMode=false;
+                avatarEditorMode=false;
                 settingsMessage="";
                 return;
             }
-            if(up)configSelection=(configSelection+4)%5;
-            else if(down)configSelection=(configSelection+1)%5;
+            if(up)configSelection=(configSelection+5)%6;
+            else if(down)configSelection=(configSelection+1)%6;
             else if((leftKey||rightKey)&&configSelection<3) {
                 changeCameraSetting(rightKey?1:-1);
             } else if(fire) {
@@ -3253,6 +3480,11 @@ public final class main extends MIDlet {
                     controlSelection=0;
                     awaitingControlKey=false;
                     settingsMessage="";
+                } else if(configSelection==4) {
+                    avatarEditorMode=true;
+                    avatarColorSelection=0;
+                    settingsMessage="";
+                    ensureAvatarPreview();
                 } else {
                     if(menuSettings)menuSettings=false;
                     else configMode=false;
@@ -3650,6 +3882,7 @@ public final class main extends MIDlet {
             if (!reservedThree && isRightSoftkey(keyCode, k)) {
                 if (paused && configMode) {
                     configMode = false;
+                    avatarEditorMode = false;
                     controlMapMode = false;
                     awaitingControlKey = false;
                 } else if (paused) paused = false;

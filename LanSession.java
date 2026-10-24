@@ -14,13 +14,14 @@ import javax.microedition.io.SocketConnection;
  */
 final class LanSession {
     static final int PORT = 47653;
-    private static final int MAGIC = 0x4D334C31; // "M3L1"
+    private static final int MAGIC = 0x4D334C32; // "M3L2"
     private static final int MAX_PLAYERS = 5;
 
     static final class PlayerState {
         public boolean connected;
         public float x, y, z, yaw;
         public int health;
+        public int skinColor=0xF5C542, shirtColor=0x1769AA, legColor=0x2E9E45;
         public boolean alive;
     }
 
@@ -33,6 +34,9 @@ final class LanSession {
     private final boolean[] readConnected = new boolean[MAX_PLAYERS];
     private final float[][] readPosition = new float[MAX_PLAYERS][4];
     private final int[] readHealth = new int[MAX_PLAYERS];
+    private final int[] readSkin = new int[MAX_PLAYERS];
+    private final int[] readShirt = new int[MAX_PLAYERS];
+    private final int[] readLegs = new int[MAX_PLAYERS];
     private final boolean[] readAlive = new boolean[MAX_PLAYERS];
     private ServerSocketConnection server;
     private volatile boolean closed;
@@ -115,11 +119,14 @@ final class LanSession {
             target.connected = source.connected;
             target.x = source.x; target.y = source.y; target.z = source.z;
             target.yaw = source.yaw; target.health = source.health;
+            target.skinColor=source.skinColor; target.shirtColor=source.shirtColor;
+            target.legColor=source.legColor;
             target.alive = source.alive;
         }
     }
 
-    void publish(float x, float y, float z, float yaw, int health, boolean alive) {
+    void publish(float x, float y, float z, float yaw, int health, boolean alive,
+            int skinColor, int shirtColor, int legColor) {
         long now = System.currentTimeMillis();
         if (now - lastWriteAt < 90L || closed) return;
         lastWriteAt = now;
@@ -128,18 +135,23 @@ final class LanSession {
             local.connected = true;
             local.x = x; local.y = y; local.z = z; local.yaw = yaw;
             local.health = health; local.alive = alive;
+            local.skinColor=skinColor; local.shirtColor=shirtColor; local.legColor=legColor;
         }
         if (host) broadcast();
-        else writeClientState(x, y, z, yaw, health, alive);
+        else writeClientState(x, y, z, yaw, health, alive,
+                skinColor, shirtColor, legColor);
     }
 
     private void writeClientState(float x, float y, float z, float yaw,
-            int health, boolean alive) {
+            int health, boolean alive, int skinColor, int shirtColor,
+            int legColor) {
         try {
             synchronized (clientOut) {
                 clientOut.writeFloat(x); clientOut.writeFloat(y);
                 clientOut.writeFloat(z); clientOut.writeFloat(yaw);
                 clientOut.writeInt(health); clientOut.writeBoolean(alive);
+                clientOut.writeInt(skinColor); clientOut.writeInt(shirtColor);
+                clientOut.writeInt(legColor);
                 clientOut.flush();
             }
         } catch (Throwable t) {
@@ -210,6 +222,9 @@ final class LanSession {
                             peer.output.writeFloat(state.yaw);
                             peer.output.writeInt(state.health);
                             peer.output.writeBoolean(state.alive);
+                            peer.output.writeInt(state.skinColor);
+                            peer.output.writeInt(state.shirtColor);
+                            peer.output.writeInt(state.legColor);
                         }
                     }
                     peer.output.flush();
@@ -232,6 +247,9 @@ final class LanSession {
                         readPosition[i][3] = clientIn.readFloat();
                         readHealth[i] = clientIn.readInt();
                         readAlive[i] = clientIn.readBoolean();
+                        readSkin[i] = clientIn.readInt();
+                        readShirt[i] = clientIn.readInt();
+                        readLegs[i] = clientIn.readInt();
                     }
                 }
                 synchronized (this) {
@@ -242,6 +260,8 @@ final class LanSession {
                             state.x = readPosition[i][0]; state.y = readPosition[i][1];
                             state.z = readPosition[i][2]; state.yaw = readPosition[i][3];
                             state.health = readHealth[i]; state.alive = readAlive[i];
+                            state.skinColor=readSkin[i]; state.shirtColor=readShirt[i];
+                            state.legColor=readLegs[i];
                         }
                     }
                 }
@@ -284,10 +304,15 @@ final class LanSession {
                     float yaw = input.readFloat();
                     int health = input.readInt();
                     boolean alive = input.readBoolean();
+                    int skinColor=input.readInt();
+                    int shirtColor=input.readInt();
+                    int legColor=input.readInt();
                     synchronized (LanSession.this) {
                         PlayerState state = players[slot];
                         state.x = x; state.y = y; state.z = z;
                         state.yaw = yaw; state.health = health;
+                        state.skinColor=skinColor;state.shirtColor=shirtColor;
+                        state.legColor=legColor;
                         state.alive = alive; state.connected = true;
                     }
                 }
