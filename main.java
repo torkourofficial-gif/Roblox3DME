@@ -5,6 +5,11 @@ import javax.microedition.lcdui.*;
 import javax.microedition.m3g.*;
 import javax.microedition.media.Manager;
 import javax.microedition.media.Player;
+import javax.microedition.rms.RecordStore;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import javax.microedition.lcdui.TextBox;
 import javax.microedition.lcdui.TextField;
 import javax.microedition.lcdui.Command;
@@ -50,6 +55,10 @@ public final class main extends MIDlet {
         private float cameraSensitivity = 0.0025f;
         private int sensitivityLevel = 1;
         private boolean invertCamera;
+        // 0 = random 3-5, 1-5 = exact count, 6 = no bots.
+        private int botCountSetting;
+        private static final int BOT_COUNT_RANDOM=0, BOT_COUNT_OFF=6;
+        private static final String SETTINGS_STORE="Roblox3DMESettings";
         private int currentGame;
         private boolean paused, configMode;
         private int pauseSelection, configSelection;
@@ -267,7 +276,78 @@ public final class main extends MIDlet {
 
         Game(main m) {
             midlet = m;
+            loadSettings();
             setFullScreenMode(true);
+        }
+
+        private void loadSettings() {
+            RecordStore store=null;
+            DataInputStream input=null;
+            try {
+                store=RecordStore.openRecordStore(SETTINGS_STORE,true);
+                if(store.getNumRecords()<1)return;
+                byte[] data=store.getRecord(1);
+                input=new DataInputStream(new ByteArrayInputStream(data));
+                int version=input.readInt();
+                if(version!=1)return;
+                int loadedSensitivity=input.readInt();
+                boolean loadedInvert=input.readBoolean();
+                float loadedDistance=input.readFloat();
+                int loadedBots=input.readInt();
+                int controlCount=input.readInt();
+                if(loadedSensitivity<0||loadedSensitivity>2||
+                        loadedDistance<2.0f||loadedDistance>9.0f||
+                        loadedBots<BOT_COUNT_RANDOM||loadedBots>BOT_COUNT_OFF||
+                        controlCount!=mappedControls.length)return;
+                int[] loadedControls=new int[controlCount];
+                for(int i=0;i<controlCount;i++)loadedControls[i]=input.readInt();
+                for(int i=0;i<loadedControls.length;i++) {
+                    if(loadedControls[i]<KEY_NUM1||loadedControls[i]>KEY_NUM9)return;
+                    for(int j=0;j<i;j++)if(loadedControls[i]==loadedControls[j])return;
+                }
+                sensitivityLevel=loadedSensitivity;
+                cameraSensitivity=sensitivityLevel==0?0.0015f:
+                        (sensitivityLevel==1?0.0025f:0.0040f);
+                invertCamera=loadedInvert;
+                camDistance=loadedDistance;
+                botCountSetting=loadedBots;
+                for(int i=0;i<mappedControls.length;i++)mappedControls[i]=loadedControls[i];
+            } catch(Throwable ignored) {
+                // Keep safe defaults when RMS is unavailable or the record is corrupt.
+            } finally {
+                if(input!=null)try{input.close();}catch(Throwable ignored){}
+                if(store!=null)try{store.closeRecordStore();}catch(Throwable ignored){}
+            }
+        }
+
+        private boolean saveSettings() {
+            RecordStore store=null;
+            ByteArrayOutputStream bytes=null;
+            DataOutputStream output=null;
+            try {
+                bytes=new ByteArrayOutputStream();
+                output=new DataOutputStream(bytes);
+                output.writeInt(1);
+                output.writeInt(sensitivityLevel);
+                output.writeBoolean(invertCamera);
+                output.writeFloat(camDistance);
+                output.writeInt(botCountSetting);
+                output.writeInt(mappedControls.length);
+                for(int i=0;i<mappedControls.length;i++)output.writeInt(mappedControls[i]);
+                output.flush();
+                byte[] data=bytes.toByteArray();
+                store=RecordStore.openRecordStore(SETTINGS_STORE,true);
+                if(store.getNumRecords()<1)store.addRecord(data,0,data.length);
+                else store.setRecord(1,data,0,data.length);
+                return true;
+            } catch(Throwable t) {
+                settingsMessage="Settings could not be saved";
+                return false;
+            } finally {
+                if(output!=null)try{output.close();}catch(Throwable ignored){}
+                if(bytes!=null)try{bytes.close();}catch(Throwable ignored){}
+                if(store!=null)try{store.closeRecordStore();}catch(Throwable ignored){}
+            }
         }
 
         public void commandAction(Command command, Displayable displayable) {
@@ -593,9 +673,15 @@ public final class main extends MIDlet {
             randomState=randomState*1103515245+12345;
             return limit<=0?0:((randomState>>>8)&0x7fffffff)%limit;
         }
+        private int configuredBotCount(int maximum) {
+            if(botCountSetting==BOT_COUNT_OFF)return 0;
+            if(botCountSetting==BOT_COUNT_RANDOM)
+                return Math.min(maximum,3+nextRandom(3));
+            return Math.min(maximum,botCountSetting);
+        }
         private void spawnPlayerBots() {
             if(currentGame==11){playerBotCount=0;return;}
-            playerBotCount=currentGame==13?3:3+nextRandom(3);
+            playerBotCount=configuredBotCount(currentGame==13?3:5);
             botDialogue="";
             talkingBot=-1;
             botDialogueUntil=0;
@@ -1018,9 +1104,10 @@ public final class main extends MIDlet {
 
         private void spawnKingBots() {
             zombies=new Zombie[4];
-            spawnSimpleBot(0,-8,-8);
-            spawnSimpleBot(1,8,-8);
-            spawnSimpleBot(2,0,9);
+            int count=configuredBotCount(3);
+            if(count>0)spawnSimpleBot(0,-8,-8);
+            if(count>1)spawnSimpleBot(1,8,-8);
+            if(count>2)spawnSimpleBot(2,0,9);
         }
 
         private void spawnHideBot(int slot,float x,float z) {
@@ -1038,7 +1125,7 @@ public final class main extends MIDlet {
 
         private void spawnSeekBots() {
             zombies=new Zombie[6];
-            int count=3+nextRandom(3);
+            int count=configuredBotCount(5);
             int[] order={0,1,2,3,4};
             for(int i=order.length-1;i>0;i--){
                 int j=nextRandom(i+1),swap=order[i];
@@ -3055,7 +3142,8 @@ public final class main extends MIDlet {
             }
             g.drawRGB(pauseOverlayPixels,0,width,0,0,width,height,true);
             int rowHeight=Math.max(18,g.getFont().getHeight()+5);
-            int optionCount=controlMapMode?Math.min(8,Math.max(1,(height-88)/rowHeight)):4;
+            int optionCount=controlMapMode?Math.min(8,Math.max(1,(height-88)/rowHeight)):
+                    Math.min(5,Math.max(1,(height-88)/rowHeight));
             int panelWidth=Math.min(270,Math.max(1,width-12));
             int panelHeight=Math.min(height-8,48+optionCount*rowHeight+34);
             int panelX=(width-panelWidth)/2,panelY=(height-panelHeight)/2;
@@ -3077,15 +3165,19 @@ public final class main extends MIDlet {
                 }
             } else {
                 String speed=sensitivityLevel==0?"Low":(sensitivityLevel==1?"Normal":"High");
+                String bots=botCountSetting==BOT_COUNT_RANDOM?"Random (3-5)":
+                        (botCountSetting==BOT_COUNT_OFF?"Off":""+botCountSetting);
                 String[] options={"Camera sensitivity: "+speed,
                     "Invert camera: "+(invertCamera?"On":"Off"),
-                    "Map buttons", "Back"};
-                for(int row=0;row<options.length;row++) {
-                    int y=panelY+31+row*rowHeight;
-                    g.setColor(row==configSelection?0xF5C542:0x263B50);
+                    "Bots: "+bots, "Map buttons", "Back"};
+                int first=Math.max(0,Math.min(configSelection-(optionCount/2),
+                        options.length-optionCount));
+                for(int row=0;row<optionCount;row++) {
+                    int index=first+row,y=panelY+31+row*rowHeight;
+                    g.setColor(index==configSelection?0xF5C542:0x263B50);
                     g.fillRoundRect(panelX+7,y,panelWidth-14,rowHeight-2,7,7);
-                    g.setColor(row==configSelection?0x17202A:0xFFFFFF);
-                    g.drawString(options[row],width/2,y+1,Graphics.TOP|Graphics.HCENTER);
+                    g.setColor(index==configSelection?0x17202A:0xFFFFFF);
+                    g.drawString(options[index],width/2,y+1,Graphics.TOP|Graphics.HCENTER);
                 }
             }
             g.setColor(0xFFFFFF);
@@ -3127,7 +3219,8 @@ public final class main extends MIDlet {
                     }
                     mappedControls[controlSelection]=assigned;
                     awaitingControlKey=false;
-                    settingsMessage="Assigned "+keyIndex;
+                    settingsMessage=saveSettings()?"Assigned "+keyIndex+" - saved":
+                            "Assigned, but could not save";
                     return;
                 }
                 if(keyCode==KEY_STAR||keyCode==KEY_POUND||keyCode==KEY_NUM0) {
@@ -3149,13 +3242,13 @@ public final class main extends MIDlet {
                 settingsMessage="";
                 return;
             }
-            if(up)configSelection=(configSelection+3)%4;
-            else if(down)configSelection=(configSelection+1)%4;
-            else if((leftKey||rightKey)&&configSelection<2) {
+            if(up)configSelection=(configSelection+4)%5;
+            else if(down)configSelection=(configSelection+1)%5;
+            else if((leftKey||rightKey)&&configSelection<3) {
                 changeCameraSetting(rightKey?1:-1);
             } else if(fire) {
-                if(configSelection<2)changeCameraSetting(1);
-                else if(configSelection==2) {
+                if(configSelection<3)changeCameraSetting(1);
+                else if(configSelection==3) {
                     controlMapMode=true;
                     controlSelection=0;
                     awaitingControlKey=false;
@@ -3175,7 +3268,10 @@ public final class main extends MIDlet {
                 else cameraSensitivity = 0.0040f;
             } else if (configSelection == 1) {
                 invertCamera = !invertCamera;
+            } else if (configSelection == 2) {
+                botCountSetting=(botCountSetting+direction+7)%7;
             }
+            settingsMessage=saveSettings()?"Saved":"Settings could not be saved";
         }
 
         private void handlePauseInput(int keyCode, int action) {
@@ -3622,6 +3718,7 @@ public final class main extends MIDlet {
                 camDistance += keyCode == KEY_STAR ? -0.5f : 0.5f;
                 if (camDistance < 2) camDistance=2;
                 if (camDistance > 9) camDistance=9;
+                saveSettings();
             }
         }
         protected void keyReleased(int keyCode) {
