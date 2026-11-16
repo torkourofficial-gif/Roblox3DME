@@ -248,8 +248,7 @@ public final class main extends MIDlet {
             int tycoonLevel,tycoonCash;
             long simonMoveAt,tycoonAt,tycoonIncomeAt;
             boolean simonMoving,alive=true,grounded=true;
-            Mesh swordArm;
-            Group leftArm, rightArm, leftLeg, rightLeg;
+            Group swordArm, leftArm, rightArm, leftLeg, rightLeg;
             Group sword;
             long attackUntil;
             PlayerBot(float x,float z) {
