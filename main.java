@@ -823,8 +823,8 @@ public final class main extends MIDlet {
             float c=(float)Math.cos(bot.yaw),sn=(float)Math.sin(bot.yaw);
             addBotDeathPiece(bot,0,makeRoundedCylinderHead(bot.skinColor),0,2.19f,0,0.28f,0.25f,0.28f,c,sn);
             addBotDeathPiece(bot,1,makeBox(0,0,0,0.78f,0.95f,0.40f,bot.shirtColor),0,1.45f,0,0.39f,0.475f,0.20f,c,sn);
-            addBotDeathPiece(bot,2,makeBox(0,0,0,0.30f,0.88f,0.40f,bot.skinColor),-0.54f,1.48f,0,0.15f,0.44f,0.20f,c,sn);
-            addBotDeathPiece(bot,3,makeBox(0,0,0,0.30f,0.88f,0.40f,bot.skinColor),0.54f,1.48f,0,0.15f,0.44f,0.20f,c,sn);
+            addBotDeathPiece(bot,2,makeStuddedBox(0,0,0,0.30f,0.88f,0.40f,bot.skinColor),-0.54f,1.48f,0,0.15f,0.44f,0.20f,c,sn);
+            addBotDeathPiece(bot,3,makeStuddedBox(0,0,0,0.30f,0.88f,0.40f,bot.skinColor),0.54f,1.48f,0,0.15f,0.44f,0.20f,c,sn);
             addBotDeathPiece(bot,4,makeBox(0,0,0,0.36f,0.78f,0.40f,bot.legColor),-0.20f,0.52f,0,0.18f,0.39f,0.20f,c,sn);
             addBotDeathPiece(bot,5,makeBox(0,0,0,0.36f,0.78f,0.40f,bot.legColor),0.20f,0.52f,0,0.18f,0.39f,0.20f,c,sn);
         }
@@ -2404,8 +2404,8 @@ public final class main extends MIDlet {
             float c = (float)Math.cos(yaw), sn = (float)Math.sin(yaw);
             addDeathPiece(0, makeRoundedCylinderHead(avatarSkinColor), 0, 2.19f, 0, 0.28f, 0.25f, 0.28f, c, sn);
             addDeathPiece(1, makeBox(0,0,0,0.78f,0.95f,0.40f,avatarShirtColor), 0,1.45f,0, 0.39f,0.475f,0.20f, c,sn);
-            addDeathPiece(2, makeBox(0,0,0,0.30f,0.88f,0.40f,avatarSkinColor), -0.54f,1.48f,0, 0.15f,0.44f,0.20f, c,sn);
-            addDeathPiece(3, makeBox(0,0,0,0.30f,0.88f,0.40f,avatarSkinColor), 0.54f,1.48f,0, 0.15f,0.44f,0.20f, c,sn);
+            addDeathPiece(2, makeStuddedBox(0,0,0,0.30f,0.88f,0.40f,avatarSkinColor), -0.54f,1.48f,0, 0.15f,0.44f,0.20f, c,sn);
+            addDeathPiece(3, makeStuddedBox(0,0,0,0.30f,0.88f,0.40f,avatarSkinColor), 0.54f,1.48f,0, 0.15f,0.44f,0.20f, c,sn);
             addDeathPiece(4, makeBox(0,0,0,0.36f,0.78f,0.40f,avatarLegColor), -0.20f,0.52f,0, 0.18f,0.39f,0.20f, c,sn);
             addDeathPiece(5, makeBox(0,0,0,0.36f,0.78f,0.40f,avatarLegColor), 0.20f,0.52f,0, 0.18f,0.39f,0.20f, c,sn);
         }
