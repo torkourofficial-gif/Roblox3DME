@@ -2134,7 +2134,7 @@ public final class main extends MIDlet {
                 }
                 if (lanAvatars[i] == null && world != null) {
                     int oldSkin=avatarSkinColor,oldShirt=avatarShirtColor,oldLegs=avatarLegColor;
-                    Mesh oldLeft=leftArm,oldRight=rightArm,oldLegL=leftLeg,oldLegR=rightLeg;
+                    Group oldLeft=leftArm,oldRight=rightArm,oldLegL=leftLeg,oldLegR=rightLeg;
                     Group oldSword=swordVisual;
                     try {
                         avatarSkinColor=states[i].skinColor;
@@ -3357,7 +3357,7 @@ public final class main extends MIDlet {
         }
 
         private Group buildPreviewAvatar() throws Exception {
-            Mesh oldLeft=leftArm,oldRight=rightArm,oldLegL=leftLeg,oldLegR=rightLeg;
+            Group oldLeft=leftArm,oldRight=rightArm,oldLegL=leftLeg,oldLegR=rightLeg;
             Group oldSword=swordVisual;
             try {
                 return buildNoob(false);
