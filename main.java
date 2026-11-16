@@ -3022,9 +3022,14 @@ public final class main extends MIDlet {
             Appearance ap=new Appearance();
             ap.setTexture(0,texture);
             Material mat=new Material();
-            mat.setColor(Material.AMBIENT,scaleRgb(tint,0.50f));
-            mat.setColor(Material.DIFFUSE,scaleRgb(tint,0.85f));
-            mat.setColor(Material.EMISSIVE,scaleRgb(tint,0.12f));
+            // Clothing atlas pixels already contain the shirt/pants artwork.
+            // A colored material here MODULATEs every pixel by the flat avatar
+            // color, washing out logos, patterns and the original fabric colors.
+            // Keep the textured surface neutral; the colored box underneath
+            // remains visible only through transparent parts of the clothing PNG.
+            mat.setColor(Material.AMBIENT,0xFFFFFFFF);
+            mat.setColor(Material.DIFFUSE,0xFFFFFFFF);
+            mat.setColor(Material.EMISSIVE,0xFF000000);
             ap.setMaterial(mat);
             CompositingMode cm=new CompositingMode();
             cm.setBlending(CompositingMode.ALPHA);
