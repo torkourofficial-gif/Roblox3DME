@@ -3002,7 +3002,7 @@ public final class main extends MIDlet {
             Material mat = new Material();
             mat.setColor(Material.AMBIENT, scaleRgb(color, 0.50f));
             mat.setColor(Material.DIFFUSE, scaleRgb(color, 0.85f));
-            mat.setColor(Material.EMISSIVE, scaleRgb(color, 0.12f));
+            mat.setColor(Material.EMISSIVE, scaleRgb(color, 0.30f));
             mat.setShininess(0.0f);
             ap.setMaterial(mat);
             PolygonMode pm = new PolygonMode();
@@ -3116,7 +3116,7 @@ public final class main extends MIDlet {
             Material mat = new Material();
             mat.setColor(Material.AMBIENT, scaleRgb(color, 0.50f));
             mat.setColor(Material.DIFFUSE, scaleRgb(color, 0.85f));
-            mat.setColor(Material.EMISSIVE, scaleRgb(color, 0.12f));
+            mat.setColor(Material.EMISSIVE, scaleRgb(color, 0.30f));
             mat.setShininess(0.0f);
             ap.setMaterial(mat);
             PolygonMode pm = new PolygonMode();
