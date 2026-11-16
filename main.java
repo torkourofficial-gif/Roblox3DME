@@ -2381,12 +2381,12 @@ public final class main extends MIDlet {
             if (avatar != null) world.removeChild(avatar);
             deathPieces = new PhysicsPiece[6];
             float c = (float)Math.cos(yaw), sn = (float)Math.sin(yaw);
-            addDeathPiece(0, makeRoundedCylinderHead(), 0, 2.19f, 0, 0.28f, 0.25f, 0.28f, c, sn);
-            addDeathPiece(1, makeBox(0,0,0,0.78f,0.95f,0.40f,0x1769AA), 0,1.45f,0, 0.39f,0.475f,0.20f, c,sn);
-            addDeathPiece(2, makeBox(0,0,0,0.30f,0.88f,0.40f,0xF5C542), -0.54f,1.48f,0, 0.15f,0.44f,0.20f, c,sn);
-            addDeathPiece(3, makeBox(0,0,0,0.30f,0.88f,0.40f,0xF5C542), 0.54f,1.48f,0, 0.15f,0.44f,0.20f, c,sn);
-            addDeathPiece(4, makeBox(0,0,0,0.36f,0.78f,0.40f,0x2E9E45), -0.20f,0.52f,0, 0.18f,0.39f,0.20f, c,sn);
-            addDeathPiece(5, makeBox(0,0,0,0.36f,0.78f,0.40f,0x2E9E45), 0.20f,0.52f,0, 0.18f,0.39f,0.20f, c,sn);
+            addDeathPiece(0, makeRoundedCylinderHead(avatarSkinColor), 0, 2.19f, 0, 0.28f, 0.25f, 0.28f, c, sn);
+            addDeathPiece(1, makeBox(0,0,0,0.78f,0.95f,0.40f,avatarShirtColor), 0,1.45f,0, 0.39f,0.475f,0.20f, c,sn);
+            addDeathPiece(2, makeBox(0,0,0,0.30f,0.88f,0.40f,avatarSkinColor), -0.54f,1.48f,0, 0.15f,0.44f,0.20f, c,sn);
+            addDeathPiece(3, makeBox(0,0,0,0.30f,0.88f,0.40f,avatarSkinColor), 0.54f,1.48f,0, 0.15f,0.44f,0.20f, c,sn);
+            addDeathPiece(4, makeBox(0,0,0,0.36f,0.78f,0.40f,avatarLegColor), -0.20f,0.52f,0, 0.18f,0.39f,0.20f, c,sn);
+            addDeathPiece(5, makeBox(0,0,0,0.36f,0.78f,0.40f,avatarLegColor), 0.20f,0.52f,0, 0.18f,0.39f,0.20f, c,sn);
         }
 
         private void addDeathPiece(int index, Node node, float ox, float oy, float oz,
@@ -2487,14 +2487,28 @@ public final class main extends MIDlet {
                         resolvePieceAgainstBox(p,object.x,object.y,object.z,
                                 object.sx*0.5f,object.sy*0.5f,object.sz*0.5f);
                 }
+            } else if (modeBlockCount > 0) {
+                for (int i=0; i<modeBlockCount; i++) {
+                    float[] b=modeBlocks[i];
+                    if(b!=null)resolvePieceAgainstBox(p,b[0],b[1],b[2],
+                            b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
+                }
+            }
+            for(int i=0;i<worldObjects.length;i++) {
+                WorldObject object=worldObjects[i];
+                if(object!=null&&object.active&&!object.bomb&&object.body!=p) {
+                    PhysicsPiece other=object.body;
+                    resolvePieceAgainstBox(p,other.x,other.y,other.z,
+                            other.extentX,other.extentY,other.extentZ);
+                }
             }
             if (currentGame != 0 && currentGame != 6 && currentGame != 7 &&
                     Math.abs(p.x) <= 12.0f + p.extentX && Math.abs(p.z) <= 12.0f + p.extentZ &&
                     p.y - p.extentY < 0.0f) {
                 p.y = p.extentY;
-                if (p.vy < -0.0005f) p.vy = -p.vy * 0.28f;
+                if (p.vy < -0.0005f) p.vy = -p.vy * 0.18f;
                 else p.vy = 0.0f;
-                p.vx *= 0.86f; p.vz *= 0.86f; p.spin *= 0.82f;
+                p.vx *= 0.78f; p.vz *= 0.78f; p.spin *= 0.72f;
             }
         }
 
@@ -2508,17 +2522,17 @@ public final class main extends MIDlet {
             if (ox <= oy && ox <= oz) {
                 float n = dx >= 0 ? 1.0f : -1.0f;
                 p.x += n * (ox + 0.001f);
-                if (p.vx * n < 0) p.vx = -p.vx * 0.28f;
+                if (p.vx * n < 0) p.vx = -p.vx * 0.20f;
             } else if (oy <= ox && oy <= oz) {
                 float n = dy >= 0 ? 1.0f : -1.0f;
                 p.y += n * (oy + 0.001f);
-                if (p.vy * n < 0) p.vy = -p.vy * 0.28f;
+                if (p.vy * n < 0) p.vy = -p.vy * 0.20f;
             } else {
                 float n = dz >= 0 ? 1.0f : -1.0f;
                 p.z += n * (oz + 0.001f);
-                if (p.vz * n < 0) p.vz = -p.vz * 0.28f;
+                if (p.vz * n < 0) p.vz = -p.vz * 0.20f;
             }
-            p.vx *= 0.92f; p.vz *= 0.92f; p.spin *= 0.90f;
+            p.vx *= 0.86f; p.vz *= 0.86f; p.spin *= 0.84f;
         }
 
         private void resolvePiecePair(PhysicsPiece a, PhysicsPiece b) {
@@ -2536,7 +2550,7 @@ public final class main extends MIDlet {
             b.x-=nx*push; b.y-=ny*push; b.z-=nz*push;
             float relative=(a.vx-b.vx)*nx+(a.vy-b.vy)*ny+(a.vz-b.vz)*nz;
             if (relative < 0) {
-                float impulse=-0.65f*relative;
+                float impulse=-0.82f*relative;
                 a.vx+=impulse*nx; a.vy+=impulse*ny; a.vz+=impulse*nz;
                 b.vx-=impulse*nx; b.vy-=impulse*ny; b.vz-=impulse*nz;
             }
