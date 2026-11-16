@@ -3094,27 +3094,27 @@ public final class main extends MIDlet {
             int color=colors[(style-1)%colors.length];
             // The head top is near y=2.65; hats overlap slightly to avoid floating gaps.
             if(style==1) { // Baseball cap
-                hat.addChild(makeBox(0,2.77f,0,0.43f,0.20f,0.43f,color));
-                hat.addChild(makeBox(0,2.68f,0.245f,0.48f,0.045f,0.25f,color));
-                hat.addChild(makeBox(0,2.875f,0,0.055f,0.035f,0.055f,0xE0E0E0));
+                hat.addChild(makeBox(0,2.54f,0,0.43f,0.20f,0.43f,color));
+                hat.addChild(makeBox(0,2.45f,0.245f,0.48f,0.045f,0.25f,color));
+                hat.addChild(makeBox(0,2.645f,0,0.055f,0.035f,0.055f,0xE0E0E0));
             } else if(style==2) { // Top hat
-                hat.addChild(makeBox(0,2.69f,0,0.52f,0.055f,0.52f,0x151515));
-                hat.addChild(makeBox(0,2.89f,0,0.34f,0.36f,0.34f,color));
-                hat.addChild(makeBox(0,2.76f,0,0.35f,0.045f,0.35f,0x151515));
+                hat.addChild(makeBox(0,2.46f,0,0.52f,0.055f,0.52f,0x151515));
+                hat.addChild(makeBox(0,2.66f,0,0.34f,0.36f,0.34f,color));
+                hat.addChild(makeBox(0,2.53f,0,0.35f,0.045f,0.35f,0x151515));
             } else if(style==3) { // Beanie
-                hat.addChild(makeBox(0,2.73f,0,0.43f,0.12f,0.43f,0x263238));
-                hat.addChild(makeBox(0,2.85f,0,0.40f,0.18f,0.40f,color));
-                hat.addChild(makeBox(0,2.94f,0,0.25f,0.055f,0.25f,color));
+                hat.addChild(makeBox(0,2.50f,0,0.43f,0.12f,0.43f,0x263238));
+                hat.addChild(makeBox(0,2.62f,0,0.40f,0.18f,0.40f,color));
+                hat.addChild(makeBox(0,2.71f,0,0.25f,0.055f,0.25f,color));
             } else if(style==4) { // Stepped party hat
-                hat.addChild(makeBox(0,2.69f,0,0.48f,0.06f,0.48f,0xF5F5F5));
-                hat.addChild(makeBox(0,2.76f,0,0.36f,0.12f,0.36f,color));
-                hat.addChild(makeBox(0,2.86f,0,0.23f,0.12f,0.23f,color));
-                hat.addChild(makeBox(0,2.96f,0,0.10f,0.10f,0.10f,0xF5D442));
+                hat.addChild(makeBox(0,2.46f,0,0.48f,0.06f,0.48f,0xF5F5F5));
+                hat.addChild(makeBox(0,2.53f,0,0.36f,0.12f,0.36f,color));
+                hat.addChild(makeBox(0,2.63f,0,0.23f,0.12f,0.23f,color));
+                hat.addChild(makeBox(0,2.50f,0,0.10f,0.10f,0.10f,0xF5D442));
             } else { // Fedora
-                hat.addChild(makeBox(0,2.68f,0,0.58f,0.055f,0.58f,0x3E2723));
-                hat.addChild(makeBox(0,2.79f,0,0.37f,0.20f,0.37f,color));
-                hat.addChild(makeBox(0,2.73f,0,0.385f,0.045f,0.385f,0x1B1B1B));
-                hat.addChild(makeBox(0,2.89f,0,0.18f,0.025f,0.18f,0x3E2723));
+                hat.addChild(makeBox(0,2.45f,0,0.58f,0.055f,0.58f,0x3E2723));
+                hat.addChild(makeBox(0,2.56f,0,0.37f,0.20f,0.37f,color));
+                hat.addChild(makeBox(0,2.50f,0,0.385f,0.045f,0.385f,0x1B1B1B));
+                hat.addChild(makeBox(0,2.66f,0,0.18f,0.025f,0.18f,0x3E2723));
             }
             return hat;
         }
