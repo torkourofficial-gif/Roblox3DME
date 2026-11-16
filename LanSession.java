@@ -14,7 +14,7 @@ import javax.microedition.io.SocketConnection;
  */
 final class LanSession {
     static final int PORT = 47653;
-    private static final int MAGIC = 0x4D334C34; // "M3L4" - hats added
+    private static final int MAGIC = 0x4D334C35; // "M3L5" - chat support
     private static final int MAX_PLAYERS = 5;
 
     static final class PlayerState {
@@ -25,6 +25,8 @@ final class LanSession {
         public int shirtStyle, pantsStyle;
         public int hatStyle = 0;
         public boolean alive;
+        public int chatSequence;
+        public String chatMessage="";
     }
 
     private final boolean host;
@@ -42,6 +44,8 @@ final class LanSession {
     private final int[] readShirtStyle = new int[MAX_PLAYERS];
     private final int[] readPantsStyle = new int[MAX_PLAYERS];
     private final int[] readHatStyle = new int[MAX_PLAYERS];
+    private final int[] readChatSequence = new int[MAX_PLAYERS];
+    private final String[] readChatMessage = new String[MAX_PLAYERS];
     private final boolean[] readAlive = new boolean[MAX_PLAYERS];
     private ServerSocketConnection server;
     private volatile boolean closed;
@@ -129,7 +133,16 @@ final class LanSession {
             target.shirtStyle=source.shirtStyle;target.pantsStyle=source.pantsStyle;
             target.hatStyle=source.hatStyle;
             target.alive = source.alive;
+            target.chatSequence=source.chatSequence;target.chatMessage=source.chatMessage;
         }
+    }
+
+    void sendChat(String message) {
+        if(message==null)return;
+        message=message.trim();if(message.length()==0)return;
+        if(message.length()>120)message=message.substring(0,120);
+        synchronized(this){PlayerState p=players[localSlot];p.chatSequence++;p.chatMessage=message;}
+        if(host)broadcast();
     }
 
     void publish(float x, float y, float z, float yaw, int health, boolean alive,
@@ -162,6 +175,7 @@ final class LanSession {
                 clientOut.writeInt(skinColor); clientOut.writeInt(shirtColor);
                 clientOut.writeInt(legColor);
                 clientOut.writeInt(shirtStyle);clientOut.writeInt(pantsStyle);clientOut.writeInt(hatStyle);
+                synchronized(this){PlayerState p=players[localSlot];clientOut.writeInt(p.chatSequence);clientOut.writeUTF(p.chatMessage);}
                 clientOut.flush();
             }
         } catch (Throwable t) {
@@ -237,6 +251,8 @@ final class LanSession {
                             peer.output.writeInt(state.legColor);
                             peer.output.writeInt(state.shirtStyle);peer.output.writeInt(state.pantsStyle);
                             peer.output.writeInt(state.hatStyle);
+                            peer.output.writeInt(state.chatSequence);
+                            peer.output.writeUTF(state.chatMessage==null?"":state.chatMessage);
                         }
                     }
                     peer.output.flush();
@@ -264,6 +280,8 @@ final class LanSession {
                         readLegs[i] = clientIn.readInt();
                         readShirtStyle[i]=clientIn.readInt();readPantsStyle[i]=clientIn.readInt();
                         readHatStyle[i]=clientIn.readInt();
+                        readChatSequence[i]=clientIn.readInt();
+                        readChatMessage[i]=clientIn.readUTF();
                     }
                 }
                 synchronized (this) {
@@ -278,6 +296,7 @@ final class LanSession {
                             state.legColor=readLegs[i];
                             state.shirtStyle=readShirtStyle[i];state.pantsStyle=readPantsStyle[i];
                             state.hatStyle=readHatStyle[i];
+                            state.chatSequence=readChatSequence[i];state.chatMessage=readChatMessage[i];
                         }
                     }
                 }
@@ -324,6 +343,7 @@ final class LanSession {
                     int shirtColor=input.readInt();
                     int legColor=input.readInt();
                     int shirtStyle=input.readInt();int pantsStyle=input.readInt();int hatStyle=input.readInt();
+                    int chatSequence=input.readInt();String chatMessage=input.readUTF();
                     synchronized (LanSession.this) {
                         PlayerState state = players[slot];
                         state.x = x; state.y = y; state.z = z;
@@ -332,6 +352,7 @@ final class LanSession {
                         state.legColor=legColor;
                         state.shirtStyle=shirtStyle;state.pantsStyle=pantsStyle;state.hatStyle=hatStyle;
                         state.alive = alive; state.connected = true;
+                        if(chatSequence!=state.chatSequence){state.chatSequence=chatSequence;state.chatMessage=chatMessage;}
                     }
                 }
             } catch (Throwable ignored) {
