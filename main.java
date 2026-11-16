@@ -462,6 +462,15 @@ public final class main extends MIDlet {
         synchronized void stop() {
             running = false;
             thread = null;
+            if (lanSession != null) {
+                lanSession.close();
+                lanSession = null;
+            }
+            if (pendingLanSession != null) {
+                pendingLanSession.close();
+                pendingLanSession = null;
+            }
+            pendingLanGame = -1;
             stopMusic();
         }
 
