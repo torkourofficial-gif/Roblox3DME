@@ -181,6 +181,7 @@ public final class main extends MIDlet {
         private int talkingBot=-1;
         private int projectedScreenX,projectedScreenY;
         private WorldObject[] worldObjects = new WorldObject[80];
+        private int worldObjectScanLimit;
         private MeteorBurst[] meteorBursts = new MeteorBurst[4];
         private Group protectionAura;
         private Material protectionAuraMaterial;
@@ -630,6 +631,7 @@ public final class main extends MIDlet {
             playerBots = new PlayerBot[5]; playerBotCount = 0;
             randomState = (int)(System.currentTimeMillis() ^ (game * 7919L));
             worldObjects = new WorldObject[80];
+            worldObjectScanLimit = 0;
             grounded = true;
             dead = false;
             playerHealth=100;
@@ -1014,7 +1016,7 @@ public final class main extends MIDlet {
                         addWorldObject(bomb,bot.x+dx*inv*0.8f,bot.y+0.45f,
                                 bot.z+dz*inv*0.8f,dx*inv*0.0015f,0,dz*inv*0.0015f,
                                 0.34f,0.44f,0.34f,0,true,2600);
-                        for(int q=0;q<worldObjects.length;q++)
+                        for(int q=0;q<worldObjectScanLimit;q++)
                             if(worldObjects[q]!=null&&worldObjects[q].active&&worldObjects[q].body.node==bomb)
                                 worldObjects[q].botOwned=true;
                         animatePlayerBotWeapon(bot);
@@ -1815,11 +1817,17 @@ public final class main extends MIDlet {
             for (int i = 0; i < worldObjects.length; i++)
                 if (worldObjects[i] == null || !worldObjects[i].active) { slot = i; break; }
             if (slot < 0) {
-                WorldObject oldest = worldObjects[0];
-                for (int i = 1; i < worldObjects.length; i++)
-                    if (worldObjects[i].removeAt < oldest.removeAt) oldest = worldObjects[i];
-                removeWorldObject(oldest);
-                slot = 0;
+                // Reuse the actual oldest slot; do not overwrite an unrelated live object.
+                int oldestSlot = 0;
+                long oldestExpiry = worldObjects[0].removeAt;
+                for (int i = 1; i < worldObjects.length; i++) {
+                    if (worldObjects[i].removeAt < oldestExpiry) {
+                        oldestExpiry = worldObjects[i].removeAt;
+                        oldestSlot = i;
+                    }
+                }
+                removeWorldObject(worldObjects[oldestSlot]);
+                slot = oldestSlot;
             }
             node.setTranslation(x, y, z);
             node.setOrientation(orientation, 0.0f, 1.0f, 0.0f);
@@ -1831,6 +1839,7 @@ public final class main extends MIDlet {
             updatePieceExtents(body);
             worldObjects[slot] = new WorldObject(body, bomb,
                     bomb ? gameClock + fuse : 0, bomb ? 0 : gameClock + 45000);
+            if (slot >= worldObjectScanLimit) worldObjectScanLimit = slot + 1;
             return worldObjects[slot];
         }
 
@@ -1901,6 +1910,10 @@ public final class main extends MIDlet {
             o.active = false;
             try { o.body.node.setRenderingEnable(false); } catch (Throwable ignored) {}
             try { world.removeChild(o.body.node); } catch (Throwable ignored) {}
+            while (worldObjectScanLimit > 0 &&
+                    (worldObjects[worldObjectScanLimit - 1] == null ||
+                    !worldObjects[worldObjectScanLimit - 1].active))
+                worldObjectScanLimit--;
         }
 
         private void explodeBomb(WorldObject bomb) {
