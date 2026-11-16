@@ -789,10 +789,10 @@ public final class main extends MIDlet {
             model.addChild(makeBox(0,1.45f,0,0.78f,0.95f,0.40f,bot.shirtColor));
             model.addChild(makeRoundedCylinderHead(bot.skinColor));
             model.addChild(makeTexturedFace("faceNEW.png",bot.skinColor));
-            Group la=makePivotedLimb(-0.54f,1.925f,0.30f,0.88f,0.40f,bot.skinColor);
-            Group ra=makePivotedLimb(0.54f,1.925f,0.30f,0.88f,0.40f,bot.skinColor);
-            Group ll=makePivotedLimb(-0.20f,0.91f,0.36f,0.78f,0.40f,bot.legColor);
-            Group rl=makePivotedLimb(0.20f,0.91f,0.36f,0.78f,0.40f,bot.legColor);
+            Group la=makePivotedLimb(-0.54f,1.925f,0.30f,0.88f,0.40f,bot.skinColor,true);
+            Group ra=makePivotedLimb(0.54f,1.925f,0.30f,0.88f,0.40f,bot.skinColor,true);
+            Group ll=makePivotedLimb(-0.20f,0.91f,0.36f,0.78f,0.40f,bot.legColor,false);
+            Group rl=makePivotedLimb(0.20f,0.91f,0.36f,0.78f,0.40f,bot.legColor,false);
             model.addChild(la);model.addChild(ra);model.addChild(ll);model.addChild(rl);
             leftArm=la;rightArm=ra;leftLeg=ll;rightLeg=rl;
             Group weapon=new Group();
@@ -2914,10 +2914,10 @@ public final class main extends MIDlet {
             model.addChild(makeBox(0, 1.45f, 0, 0.78f, 0.95f, 0.40f, clothing));
             model.addChild(makeRoundedCylinderHead(skin));
             model.addChild(makeTexturedFace(zombie ? "faceZomb.png" : "faceNEW.png", skin));
-            Group modelLeftArm = makePivotedLimb(-0.54f,1.925f,0.30f,0.88f,0.40f,skin);
-            Group modelRightArm = makePivotedLimb(0.54f,1.925f,0.30f,0.88f,0.40f,skin);
-            Group modelLeftLeg = makePivotedLimb(-0.20f,0.91f,0.36f,0.78f,0.40f,legs);
-            Group modelRightLeg = makePivotedLimb(0.20f,0.91f,0.36f,0.78f,0.40f,legs);
+            Group modelLeftArm = makePivotedLimb(-0.54f,1.925f,0.30f,0.88f,0.40f,skin,true);
+            Group modelRightArm = makePivotedLimb(0.54f,1.925f,0.30f,0.88f,0.40f,skin,true);
+            Group modelLeftLeg = makePivotedLimb(-0.20f,0.91f,0.36f,0.78f,0.40f,legs,false);
+            Group modelRightLeg = makePivotedLimb(0.20f,0.91f,0.36f,0.78f,0.40f,legs,false);
             model.addChild(modelLeftArm);
             model.addChild(modelRightArm);
             model.addChild(modelLeftLeg);
@@ -2932,10 +2932,11 @@ public final class main extends MIDlet {
             return model;
         }
 
-        private Group makePivotedLimb(float x,float jointY,float width,float height,float depth,int color) {
+        private Group makePivotedLimb(float x,float jointY,float width,float height,float depth,int color,boolean studsTop) {
             Group pivot=new Group();
             pivot.setTranslation(x,jointY,0.0f);
-            pivot.addChild(makeStuddedBox(0.0f,-height*0.5f,0.0f,width,height,depth,color));
+            pivot.addChild(studsTop ? makeStuddedBox(0.0f,-height*0.5f,0.0f,width,height,depth,color) :
+                    makeBox(0.0f,-height*0.5f,0.0f,width,height,depth,color));
             return pivot;
         }
 
