@@ -2173,8 +2173,6 @@ public final class main extends MIDlet {
                         lanAvatarSkins[i]=lanAvatarShirts[i]=lanAvatarLegs[i]=-1;
                         lanAvatarShirtStyles[i]=lanAvatarPantsStyles[i]=lanAvatarHatStyles[i]=-1;
                     }
-                    lanAvatarSkins[i]=lanAvatarShirts[i]=lanAvatarLegs[i]=-1;
-                        lanAvatarShirtStyles[i]=lanAvatarPantsStyles[i]=lanAvatarHatStyles[i]=-1;
                     continue;
                 }
                 boolean avatarColorsChanged=lanAvatars[i]!=null&&
