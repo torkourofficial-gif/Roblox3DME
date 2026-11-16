@@ -2954,7 +2954,9 @@ public final class main extends MIDlet {
             try {
                 Image source=loadImageResource("/"+name,"/meblox/"+name);
                 if(source==null)throw new Exception(name+" missing");
-                Image pot=makePowerOfTwoImage(source);
+                // Preserve the classic 585x559 clothing atlas pixel layout.
+                // Stretching it to 1024x1024 breaks the UV coordinates for every body face.
+                Image pot=makePowerOfTwoPaddedImage(source);
                 Texture2D texture=new Texture2D(new Image2D(Image2D.RGBA,pot));
                 texture.setFiltering(Texture2D.FILTER_NEAREST,Texture2D.FILTER_NEAREST);
                 texture.setWrapping(Texture2D.WRAP_CLAMP,Texture2D.WRAP_CLAMP);
@@ -2965,6 +2967,21 @@ public final class main extends MIDlet {
                 modelError="Clothing "+name+": "+t.toString();
                 return null;
             }
+        }
+
+        private Image makePowerOfTwoPaddedImage(Image source) {
+            int sourceWidth=source.getWidth(),sourceHeight=source.getHeight();
+            int width=1,height=1;
+            while(width<sourceWidth)width*=2;
+            while(height<sourceHeight)height*=2;
+            if(width==sourceWidth&&height==sourceHeight)return source;
+            int[] sourcePixels=new int[sourceWidth*sourceHeight];
+            source.getRGB(sourcePixels,0,sourceWidth,0,0,sourceWidth,sourceHeight);
+            int[] pixels=new int[width*height];
+            // Transparent padding keeps atlas pixel coordinates unchanged.
+            for(int y=0;y<sourceHeight;y++)
+                System.arraycopy(sourcePixels,y*sourceWidth,pixels,y*width,sourceWidth);
+            return Image.createRGBImage(pixels,width,height,true);
         }
 
         private Node makeClothingBox(float x,float y,float z,float sx,float sy,float sz,
@@ -2987,10 +3004,14 @@ public final class main extends MIDlet {
             VertexBuffer vb=new VertexBuffer();
             vb.setPositions(positions,0.001f,null);
             vb.setNormals(getSharedBoxNormals());
+            // Atlas is padded (not rescaled) to power-of-two dimensions for M3G.
+            int atlasWidth=1,atlasHeight=1;
+            while(atlasWidth<585)atlasWidth*=2;
+            while(atlasHeight<559)atlasHeight*=2;
             for(int f=0;f<6;f++) {
                 int[] r=regions[f];
-                float u0=r[0]/585.0f,u1=(r[0]+r[2])/585.0f;
-                float v0=r[1]/559.0f,v1=(r[1]+r[3])/559.0f;
+                float u0=(float)r[0]/atlasWidth,u1=(float)(r[0]+r[2])/atlasWidth;
+                float v0=(float)r[1]/atlasHeight,v1=(float)(r[1]+r[3])/atlasHeight;
                 int k=f*8;
                 uv[k]=(short)(u0*1000);uv[k+1]=(short)(v1*1000);
                 uv[k+2]=(short)(u0*1000);uv[k+3]=(short)(v0*1000);
@@ -3010,7 +3031,7 @@ public final class main extends MIDlet {
             CompositingMode cm=new CompositingMode();
             cm.setBlending(CompositingMode.ALPHA);
             cm.setAlphaThreshold(0.01f);
-            cm.setDepthWriteEnable(false);
+            cm.setDepthWriteEnable(true);
             ap.setCompositingMode(cm);
             PolygonMode pm=new PolygonMode();
             pm.setCulling(PolygonMode.CULL_NONE);
@@ -3092,29 +3113,30 @@ public final class main extends MIDlet {
             Group hat=new Group();
             int[] colors={0xC62828,0x202020,0x1565C0,0xF9A825,0x2E7D32};
             int color=colors[(style-1)%colors.length];
-            // The head top is near y=2.65; hats overlap slightly to avoid floating gaps.
+            // Head center is y=2.19 and its top is y=2.44.
+            // Lower each hat into the rounded head so the brim/base visibly rests on it.
             if(style==1) { // Baseball cap
-                hat.addChild(makeBox(0,2.54f,0,0.43f,0.20f,0.43f,color));
-                hat.addChild(makeBox(0,2.45f,0.245f,0.48f,0.045f,0.25f,color));
-                hat.addChild(makeBox(0,2.645f,0,0.055f,0.035f,0.055f,0xE0E0E0));
+                hat.addChild(makeBox(0,2.48f,0,0.43f,0.20f,0.43f,color));
+                hat.addChild(makeBox(0,2.39f,0.245f,0.48f,0.045f,0.25f,color));
+                hat.addChild(makeBox(0,2.585f,0,0.055f,0.035f,0.055f,0xE0E0E0));
             } else if(style==2) { // Top hat
-                hat.addChild(makeBox(0,2.46f,0,0.52f,0.055f,0.52f,0x151515));
-                hat.addChild(makeBox(0,2.66f,0,0.34f,0.36f,0.34f,color));
-                hat.addChild(makeBox(0,2.53f,0,0.35f,0.045f,0.35f,0x151515));
+                hat.addChild(makeBox(0,2.40f,0,0.52f,0.055f,0.52f,0x151515));
+                hat.addChild(makeBox(0,2.60f,0,0.34f,0.36f,0.34f,color));
+                hat.addChild(makeBox(0,2.47f,0,0.35f,0.045f,0.35f,0x151515));
             } else if(style==3) { // Beanie
-                hat.addChild(makeBox(0,2.50f,0,0.43f,0.12f,0.43f,0x263238));
-                hat.addChild(makeBox(0,2.62f,0,0.40f,0.18f,0.40f,color));
-                hat.addChild(makeBox(0,2.71f,0,0.25f,0.055f,0.25f,color));
+                hat.addChild(makeBox(0,2.44f,0,0.43f,0.12f,0.43f,0x263238));
+                hat.addChild(makeBox(0,2.56f,0,0.40f,0.18f,0.40f,color));
+                hat.addChild(makeBox(0,2.65f,0,0.25f,0.055f,0.25f,color));
             } else if(style==4) { // Stepped party hat
-                hat.addChild(makeBox(0,2.46f,0,0.48f,0.06f,0.48f,0xF5F5F5));
-                hat.addChild(makeBox(0,2.53f,0,0.36f,0.12f,0.36f,color));
-                hat.addChild(makeBox(0,2.63f,0,0.23f,0.12f,0.23f,color));
-                hat.addChild(makeBox(0,2.50f,0,0.10f,0.10f,0.10f,0xF5D442));
+                hat.addChild(makeBox(0,2.40f,0,0.48f,0.06f,0.48f,0xF5F5F5));
+                hat.addChild(makeBox(0,2.47f,0,0.36f,0.12f,0.36f,color));
+                hat.addChild(makeBox(0,2.57f,0,0.23f,0.12f,0.23f,color));
+                hat.addChild(makeBox(0,2.44f,0,0.10f,0.10f,0.10f,0xF5D442));
             } else { // Fedora
-                hat.addChild(makeBox(0,2.45f,0,0.58f,0.055f,0.58f,0x3E2723));
-                hat.addChild(makeBox(0,2.56f,0,0.37f,0.20f,0.37f,color));
-                hat.addChild(makeBox(0,2.50f,0,0.385f,0.045f,0.385f,0x1B1B1B));
-                hat.addChild(makeBox(0,2.66f,0,0.18f,0.025f,0.18f,0x3E2723));
+                hat.addChild(makeBox(0,2.39f,0,0.58f,0.055f,0.58f,0x3E2723));
+                hat.addChild(makeBox(0,2.50f,0,0.37f,0.20f,0.37f,color));
+                hat.addChild(makeBox(0,2.44f,0,0.385f,0.045f,0.385f,0x1B1B1B));
+                hat.addChild(makeBox(0,2.60f,0,0.18f,0.025f,0.18f,0x3E2723));
             }
             return hat;
         }
