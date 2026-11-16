@@ -14,7 +14,7 @@ import javax.microedition.io.SocketConnection;
  */
 final class LanSession {
     static final int PORT = 47653;
-    private static final int MAGIC = 0x4D334C35; // "M3L5" - chat support
+    private static final int MAGIC = 0x4D334C36; // "M3L6" - chat and avatar face support
     private static final int MAX_PLAYERS = 5;
 
     static final class PlayerState {
@@ -24,6 +24,7 @@ final class LanSession {
         public int skinColor=0xF5C542, shirtColor=0x1769AA, legColor=0x2E9E45;
         public int shirtStyle, pantsStyle;
         public int hatStyle = 0;
+        public int faceStyle = 0;
         public boolean alive;
         public int chatSequence;
         public String chatMessage="";
@@ -44,6 +45,7 @@ final class LanSession {
     private final int[] readShirtStyle = new int[MAX_PLAYERS];
     private final int[] readPantsStyle = new int[MAX_PLAYERS];
     private final int[] readHatStyle = new int[MAX_PLAYERS];
+    private final int[] readFaceStyle = new int[MAX_PLAYERS];
     private final int[] readChatSequence = new int[MAX_PLAYERS];
     private final String[] readChatMessage = new String[MAX_PLAYERS];
     private final boolean[] readAlive = new boolean[MAX_PLAYERS];
@@ -142,6 +144,7 @@ final class LanSession {
             target.legColor=source.legColor;
             target.shirtStyle=source.shirtStyle;target.pantsStyle=source.pantsStyle;
             target.hatStyle=source.hatStyle;
+            target.faceStyle=source.faceStyle;
             target.alive = source.alive;
             target.chatSequence=source.chatSequence;target.chatMessage=source.chatMessage;
         }
@@ -156,7 +159,7 @@ final class LanSession {
 
     void publish(float x, float y, float z, float yaw, int health, boolean alive,
             int skinColor, int shirtColor, int legColor,
-            int shirtStyle, int pantsStyle, int hatStyle) {
+            int shirtStyle, int pantsStyle, int hatStyle, int faceStyle) {
         long now = System.currentTimeMillis();
         if (now - lastWriteAt < 90L || closed) return;
         lastWriteAt = now;
@@ -167,15 +170,16 @@ final class LanSession {
             local.health = health; local.alive = alive;
             local.skinColor=skinColor; local.shirtColor=shirtColor; local.legColor=legColor;
             local.shirtStyle=shirtStyle;local.pantsStyle=pantsStyle;local.hatStyle=hatStyle;
+            local.faceStyle=faceStyle;
         }
         if (host) broadcast();
         else writeClientState(x, y, z, yaw, health, alive,
-                skinColor, shirtColor, legColor, shirtStyle, pantsStyle, hatStyle);
+                skinColor, shirtColor, legColor, shirtStyle, pantsStyle, hatStyle, faceStyle);
     }
 
     private void writeClientState(float x, float y, float z, float yaw,
             int health, boolean alive, int skinColor, int shirtColor,
-            int legColor, int shirtStyle, int pantsStyle, int hatStyle) {
+            int legColor, int shirtStyle, int pantsStyle, int hatStyle, int faceStyle) {
         try {
             synchronized (clientOut) {
                 clientOut.writeFloat(x); clientOut.writeFloat(y);
@@ -184,6 +188,7 @@ final class LanSession {
                 clientOut.writeInt(skinColor); clientOut.writeInt(shirtColor);
                 clientOut.writeInt(legColor);
                 clientOut.writeInt(shirtStyle);clientOut.writeInt(pantsStyle);clientOut.writeInt(hatStyle);
+                clientOut.writeInt(faceStyle);
                 synchronized(this){PlayerState p=players[localSlot];clientOut.writeInt(p.chatSequence);clientOut.writeUTF(p.chatMessage);}
                 clientOut.flush();
             }
@@ -265,6 +270,7 @@ final class LanSession {
                             peer.output.writeInt(state.legColor);
                             peer.output.writeInt(state.shirtStyle);peer.output.writeInt(state.pantsStyle);
                             peer.output.writeInt(state.hatStyle);
+                            peer.output.writeInt(state.faceStyle);
                             peer.output.writeInt(state.chatSequence);
                             peer.output.writeUTF(state.chatMessage==null?"":state.chatMessage);
                         }
@@ -294,6 +300,7 @@ final class LanSession {
                         readLegs[i] = clientIn.readInt();
                         readShirtStyle[i]=clientIn.readInt();readPantsStyle[i]=clientIn.readInt();
                         readHatStyle[i]=clientIn.readInt();
+                        readFaceStyle[i]=clientIn.readInt();
                         readChatSequence[i]=clientIn.readInt();
                         readChatMessage[i]=clientIn.readUTF();
                     }
@@ -310,6 +317,7 @@ final class LanSession {
                             state.legColor=readLegs[i];
                             state.shirtStyle=readShirtStyle[i];state.pantsStyle=readPantsStyle[i];
                             state.hatStyle=readHatStyle[i];
+                            state.faceStyle=readFaceStyle[i];
                             state.chatSequence=readChatSequence[i];state.chatMessage=readChatMessage[i];
                         }
                     }
@@ -357,6 +365,7 @@ final class LanSession {
                     int shirtColor=input.readInt();
                     int legColor=input.readInt();
                     int shirtStyle=input.readInt();int pantsStyle=input.readInt();int hatStyle=input.readInt();
+                    int faceStyle=input.readInt();
                     int chatSequence=input.readInt();String chatMessage=input.readUTF();
                     synchronized (LanSession.this) {
                         PlayerState state = players[slot];
@@ -365,6 +374,7 @@ final class LanSession {
                         state.skinColor=skinColor;state.shirtColor=shirtColor;
                         state.legColor=legColor;
                         state.shirtStyle=shirtStyle;state.pantsStyle=pantsStyle;state.hatStyle=hatStyle;
+                        state.faceStyle=faceStyle;
                         state.alive = alive; state.connected = true;
                         if(chatSequence!=state.chatSequence){state.chatSequence=chatSequence;state.chatMessage=chatMessage;}
                     }
