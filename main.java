@@ -70,6 +70,7 @@ public final class main extends MIDlet {
         private Camera avatarPreviewCamera;
         private Group avatarPreviewModel;
         private Image avatarPreviewImage;
+        private Graphics avatarPreviewImageGraphics;
         private int avatarPreviewImageWidth=-1, avatarPreviewImageHeight=-1;
         private boolean avatarPreviewPrerenderFailed;
         private long avatarPreviewLastRenderTime;
@@ -3978,6 +3979,7 @@ public final class main extends MIDlet {
 
         private void rebuildAvatarPreview() {
             avatarPreviewImage=null;
+            avatarPreviewImageGraphics=null;
             avatarPreviewImageWidth=avatarPreviewImageHeight=-1;
             avatarPreviewPrerenderFailed=false;
             avatarPreviewLastRenderTime=0L;
@@ -4006,8 +4008,13 @@ public final class main extends MIDlet {
             if(!avatarPreviewPrerenderFailed&&previewNeedsFrame) {
                 boolean bound=false;
                 try {
-                    Image rendered=Image.createImage(width,height);
-                    Graphics target=rendered.getGraphics();
+                    if(avatarPreviewImage==null||previewSizeChanged) {
+                        avatarPreviewImage=Image.createImage(width,height);
+                        avatarPreviewImageGraphics=avatarPreviewImage.getGraphics();
+                        avatarPreviewImageWidth=width;
+                        avatarPreviewImageHeight=height;
+                    }
+                    Graphics target=avatarPreviewImageGraphics;
                     avatarPreviewCamera.setPerspective(32.0f,(float)width/(float)height,
                             0.1f,20.0f);
                     float previewAngle=(float)((previewNow/200L)%360L);
@@ -4018,9 +4025,6 @@ public final class main extends MIDlet {
                     g3d.render(avatarPreviewWorld);
                     g3d.releaseTarget();
                     bound=false;
-                    avatarPreviewImage=rendered;
-                    avatarPreviewImageWidth=width;
-                    avatarPreviewImageHeight=height;
                     avatarPreviewLastRenderTime=previewNow;
                 } catch(Throwable t) {
                     modelError="Avatar preview: "+t.toString();
