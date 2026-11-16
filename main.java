@@ -239,7 +239,7 @@ public final class main extends MIDlet {
         private static final float[] SIMON_PAD_X={-4.0f,4.0f,-4.0f,4.0f};
         private static final float[] SIMON_PAD_Z={-4.0f,-4.0f,4.0f,4.0f};
         private static final int[] AVATAR_SKIN_PALETTE = {0xF5C542,0xF1C27D,0xFFDBAC,0xE0AC69,0xC68642,0x8D5524,0x5C3317,0xFFE0BD,0xD9A066,0xB87333,0xFFFFFF,0xD8D8D8,0x888888,0x333333};
-        private static final int[] AVATAR_CLOTHING_PALETTE = {0xFFFFFF,0xC0C0C0,0x808080,0x333333,0x000000,0xF44336,0xB71C1C,0xFF9800,0xFFC107,0xFFEB3B,0x8BC34A,0x4CAF50,0x006400,0x00BCD4,0x03A9F4,0x1565C0,0x3F51B5,0x673AB7,0x9C27B0,0xE91E63,0x795548,0xD7CCC8,0x607D8B,0x1A237E,0x004D40,0xF8BBD0,0xB2DFDB,0xCFD8DC};
+        private static final int[] AVATAR_CLOTHING_PALETTE = {0x1769AA,0x2E9E45,0xC43C35,0x7F58A5,0x2C8C65,0x303F9F,0xD87C22,0x365E9D,0x6D4635,0x6B3E76,0xB8A23A,0xFFFFFF,0xC0C0C0,0x808080,0x333333,0x000000,0xF44336,0xB71C1C,0xFF9800,0xFFC107,0xFFEB3B,0x8BC34A,0x4CAF50,0x006400,0x00BCD4,0x03A9F4,0x1565C0,0x3F51B5,0x673AB7,0x9C27B0,0xE91E63,0x795548,0xD7CCC8,0x607D8B,0x1A237E,0x004D40,0xF8BBD0,0xB2DFDB,0xCFD8DC};
         private static final int[] BOT_SKIN_COLORS =
                 {0xF5C542,0xC68642,0xF1C27D,0x8D5524,0xE0AC69,0xD9A066};
         private static final int[] BOT_SHIRT_COLORS =
@@ -3002,6 +3002,7 @@ public final class main extends MIDlet {
             CompositingMode cm=new CompositingMode();
             cm.setBlending(CompositingMode.ALPHA);
             cm.setAlphaThreshold(0.01f);
+            cm.setDepthWriteEnable(false);
             ap.setCompositingMode(cm);
             PolygonMode pm=new PolygonMode();
             pm.setCulling(PolygonMode.CULL_NONE);
@@ -3050,6 +3051,8 @@ public final class main extends MIDlet {
             Texture2D pants=getClothingTexture(false,zombie?0:avatarPantsStyle);
             model.addChild(makeClothingBox(0,1.45f,0,0.78f,0.95f,0.40f,
                     clothing,shirt,shirtTorsoRegions()));
+            // Preserve the classic two-stud top plate above the shirt template.
+            model.addChild(makeStuddedBox(0,1.922f,0,0.78f,0.006f,0.40f,clothing));
             model.addChild(makeRoundedCylinderHead(skin));
             model.addChild(makeTexturedFace(zombie ? "faceZomb.png" : "faceNEW.png", skin));
             Group modelLeftArm = makePivotedClothedLimb(-0.585f,1.925f,0.39f,0.95f,0.40f,
