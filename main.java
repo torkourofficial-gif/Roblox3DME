@@ -786,7 +786,7 @@ public final class main extends MIDlet {
         }
         private Group buildBotNoob(PlayerBot bot) {
             Group model=new Group();
-            model.addChild(makeBox(0,1.45f,0,0.78f,0.95f,0.40f,bot.shirtColor));
+            model.addChild(makeStuddedBox(0,1.45f,0,0.78f,0.95f,0.40f,bot.shirtColor));
             model.addChild(makeRoundedCylinderHead(bot.skinColor));
             model.addChild(makeTexturedFace("faceNEW.png",bot.skinColor));
             Group la=makePivotedLimb(-0.54f,1.925f,0.30f,0.88f,0.40f,bot.skinColor,true);
@@ -2911,7 +2911,7 @@ public final class main extends MIDlet {
             int legs = zombie ? 0x795438 : avatarLegColor;
 
             // Zombie copies use the noob body proportions and face with a green/brown palette.
-            model.addChild(makeBox(0, 1.45f, 0, 0.78f, 0.95f, 0.40f, clothing));
+            model.addChild(makeStuddedBox(0, 1.45f, 0, 0.78f, 0.95f, 0.40f, clothing));
             model.addChild(makeRoundedCylinderHead(skin));
             model.addChild(makeTexturedFace(zombie ? "faceZomb.png" : "faceNEW.png", skin));
             Group modelLeftArm = makePivotedLimb(-0.54f,1.925f,0.30f,0.88f,0.40f,skin,true);
@@ -3304,11 +3304,17 @@ public final class main extends MIDlet {
             vb.setNormals(getSharedBoxNormals());
             if (studsTop && cachedStudsTexture != null) {
                 short[] uv = new short[24 * 2];
+                // Tile the studs instead of stretching one tile over the whole face.
+                // Arms (0.30 x 0.40) show one stud; the 0.78-wide torso shows two.
+                int tilesX = Math.max(1, Math.round(sx / 0.40f));
+                int tilesZ = Math.max(1, Math.round(sz / 0.40f));
+                short uMax = (short)(tilesX * 1000);
+                short vMax = (short)(tilesZ * 1000);
                 // The upper face uses vertices 12..15 in faceOrder.
                 uv[24] = 0;    uv[25] = 0;
-                uv[26] = 0;    uv[27] = 1000;
-                uv[28] = 1000; uv[29] = 0;
-                uv[30] = 1000; uv[31] = 1000;
+                uv[26] = 0;    uv[27] = vMax;
+                uv[28] = uMax; uv[29] = 0;
+                uv[30] = uMax; uv[31] = vMax;
                 VertexArray texCoords = new VertexArray(24, 2, 2);
                 texCoords.set(0, 24, uv);
                 vb.setTexCoords(0, texCoords, 0.001f, null);
