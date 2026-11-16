@@ -43,6 +43,8 @@ public final class main extends MIDlet {
         private int gameMusicIndex=3, lastGameMusicTrack;
         private boolean running;
         private Graphics3D g3d = Graphics3D.getInstance();
+        private VertexArray sharedBoxNormals;
+        private String renderError = "";
         private World world;
         private Camera camera;
         private Group avatar;
@@ -2686,8 +2688,9 @@ public final class main extends MIDlet {
                     updateSkyCrop();
                     g3d.render(world);
                 } catch (Throwable t) {
+                    renderError = t.toString();
                     g.setColor(0xFFFFFF);
-                    g.drawString("M3G render error", 3, 3, Graphics.TOP|Graphics.LEFT);
+                    g.drawString("M3G: " + renderError, 3, 3, Graphics.TOP|Graphics.LEFT);
                 } finally {
                     if (bound) {
                         try { g3d.releaseTarget(); } catch (Throwable t) {}
@@ -2929,6 +2932,7 @@ public final class main extends MIDlet {
                 ap.setCompositingMode(compositing);
                 PolygonMode polygonMode = new PolygonMode();
                 polygonMode.setCulling(PolygonMode.CULL_NONE);
+                polygonMode.setShading(PolygonMode.SHADE_SMOOTH);
                 ap.setPolygonMode(polygonMode);
                 return makeCurvedTexturedFace(ap);
             } catch (Throwable t) {
@@ -2965,8 +2969,20 @@ public final class main extends MIDlet {
             pos.set(0, (segments + 1) * 2, positions);
             VertexArray uvArray = new VertexArray((segments + 1) * 2, 2, 2);
             uvArray.set(0, (segments + 1) * 2, texCoords);
+            short[] faceNormals = new short[(segments + 1) * 2 * 3];
+            for (int i = 0; i <= segments; i++) {
+                double angle = -0.68 + 1.36 * i / segments;
+                short nx = (short)(Math.sin(angle) * 32767.0);
+                short nz = (short)(-Math.cos(angle) * 32767.0);
+                int n = i * 6;
+                faceNormals[n] = nx; faceNormals[n + 1] = 0; faceNormals[n + 2] = nz;
+                faceNormals[n + 3] = nx; faceNormals[n + 4] = 0; faceNormals[n + 5] = nz;
+            }
+            VertexArray normalArray = new VertexArray((segments + 1) * 2, 3, 2);
+            normalArray.set(0, (segments + 1) * 2, faceNormals);
             VertexBuffer vb = new VertexBuffer();
             vb.setPositions(pos, 0.001f, null);
+            vb.setNormals(normalArray);
             vb.setTexCoords(0, uvArray, 0.001f, null);
             TriangleStripArray strip = new TriangleStripArray(0, new int[] {(segments + 1) * 2});
             return new Mesh(vb, new IndexBuffer[] {strip}, new Appearance[] {ap});
@@ -3063,8 +3079,10 @@ public final class main extends MIDlet {
             int bandCount = ringCount - 1;
             int verticesPerBand = (segments + 1) * 2;
             short[] shellCoords = new short[bandCount * verticesPerBand * 3];
+            short[] shellNormals = new short[shellCoords.length];
             int[] shellStrips = new int[bandCount];
             int out = 0;
+            int normalOut = 0;
             for (int band = 0; band < bandCount; band++) {
                 shellStrips[band] = verticesPerBand;
                 for (int point = 0; point <= segments; point++) {
@@ -3077,11 +3095,24 @@ public final class main extends MIDlet {
                     shellCoords[out++] = (short)(ringRadius[band + 1] * sn * 1000.0f);
                     shellCoords[out++] = (short)(ringY[band + 1] * 1000.0f);
                     shellCoords[out++] = (short)(-ringRadius[band + 1] * c * 1000.0f);
+                    for (int ringIndex = band; ringIndex <= band + 1; ringIndex++) {
+                        float radial, vertical;
+                        if (ringIndex <= bevelSteps) {
+                            double a = 1.57079632679 * ringIndex / bevelSteps;
+                            radial = (float)Math.sin(a); vertical = -(float)Math.cos(a);
+                        } else {
+                            double a = 1.57079632679 * (ringIndex - bevelSteps) / bevelSteps;
+                            radial = (float)Math.cos(a); vertical = (float)Math.sin(a);
+                        }
+                        shellNormals[normalOut++] = (short)(radial * sn * 32767.0f);
+                        shellNormals[normalOut++] = (short)(vertical * 32767.0f);
+                        shellNormals[normalOut++] = (short)(-radial * c * 32767.0f);
+                    }
                 }
             }
 
             Group head = new Group();
-            head.addChild(makeSolidMesh(shellCoords, shellStrips, color));
+            head.addChild(makeSolidMesh(shellCoords, shellStrips, color, shellNormals));
             head.addChild(makeCylinderDisk(-halfHeight, endRadius, segments, color));
             head.addChild(makeCylinderDisk(halfHeight, endRadius, segments, color));
             head.setTranslation(0, 2.19f, 0);
@@ -3108,11 +3139,20 @@ public final class main extends MIDlet {
         }
 
         private Mesh makeSolidMesh(short[] coords, int[] stripLengths, int color) {
+            return makeSolidMesh(coords, stripLengths, color, null);
+        }
+
+        private Mesh makeSolidMesh(short[] coords, int[] stripLengths, int color, short[] normalCoords) {
             int vertexCount = coords.length / 3;
             VertexArray vertices = new VertexArray(vertexCount, 3, 2);
             vertices.set(0, vertexCount, coords);
             VertexBuffer vb = new VertexBuffer();
             vb.setPositions(vertices, 0.001f, null);
+            if (normalCoords != null && normalCoords.length == coords.length) {
+                VertexArray normals = new VertexArray(vertexCount, 3, 2);
+                normals.set(0, vertexCount, normalCoords);
+                vb.setNormals(normals);
+            }
             TriangleStripArray strips = new TriangleStripArray(0, stripLengths);
             Appearance ap = new Appearance();
             Material mat = new Material();
@@ -3123,6 +3163,7 @@ public final class main extends MIDlet {
             ap.setMaterial(mat);
             PolygonMode pm = new PolygonMode();
             pm.setCulling(PolygonMode.CULL_NONE);
+            pm.setShading(PolygonMode.SHADE_SMOOTH);
             ap.setPolygonMode(pm);
             return new Mesh(vb, new IndexBuffer[] {strips}, new Appearance[] {ap});
         }
@@ -3139,6 +3180,21 @@ public final class main extends MIDlet {
             leftLeg.setOrientation(-swing, 1, 0, 0);
             rightLeg.setOrientation(swingingSword ? 34.0f : swing, 1, 0, 0);
             if (swordVisual != null) swordVisual.setRenderingEnable(swingingSword);
+        }
+
+        private VertexArray getSharedBoxNormals() {
+            if (sharedBoxNormals != null) return sharedBoxNormals;
+            short[] data = new short[] {
+                0,0,-32767, 0,0,-32767, 0,0,-32767, 0,0,-32767,
+                0,0,32767, 0,0,32767, 0,0,32767, 0,0,32767,
+                0,-32767,0, 0,-32767,0, 0,-32767,0, 0,-32767,0,
+                0,32767,0, 0,32767,0, 0,32767,0, 0,32767,0,
+                -32767,0,0, -32767,0,0, -32767,0,0, -32767,0,0,
+                32767,0,0, 32767,0,0, 32767,0,0, 32767,0,0
+            };
+            sharedBoxNormals = new VertexArray(24, 3, 2);
+            sharedBoxNormals.set(0, 24, data);
+            return sharedBoxNormals;
         }
 
         private Node makeBox(float x, float y, float z, float sx, float sy, float sz, int color) {
@@ -3168,24 +3224,9 @@ public final class main extends MIDlet {
             short[] coords = new short[p.length];
             for (int i=0;i<p.length;i++) coords[i]=(short)(p[i]*1000);
             va.set(0, faceOrder.length, coords);
-            VertexArray normalArray = new VertexArray(faceOrder.length, 3, 2);
-            short[] normalData = new short[faceOrder.length * 3];
-            short[][] faceNormals = {
-                {0, 0, -32767}, {0, 0, 32767}, {0, -32767, 0},
-                {0, 32767, 0}, {-32767, 0, 0}, {32767, 0, 0}
-            };
-            for (int face = 0; face < 6; face++) {
-                for (int vertex = 0; vertex < 4; vertex++) {
-                    int normalOffset = (face * 4 + vertex) * 3;
-                    normalData[normalOffset] = faceNormals[face][0];
-                    normalData[normalOffset + 1] = faceNormals[face][1];
-                    normalData[normalOffset + 2] = faceNormals[face][2];
-                }
-            }
-            normalArray.set(0, faceOrder.length, normalData);
             VertexBuffer vb = new VertexBuffer();
             vb.setPositions(va, 0.001f, null);
-            vb.setNormals(normalArray);
+            vb.setNormals(getSharedBoxNormals());
             int[] stripLengths = new int[] {4, 4, 4, 4, 4, 4};
             TriangleStripArray ta = new TriangleStripArray(0, stripLengths);
             Appearance ap = new Appearance();
