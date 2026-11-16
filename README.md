@@ -26,7 +26,7 @@ En la Horda zombi, **7/9** cambian entre **Espada**, **Bomba** y **Pala**, y **3
 Esta variante no requiere JSR-82 ni permisos de Bluetooth. Incluye multijugador TCP por LAN cuando el dispositivo lo soporta:
 - En el menú, pulsa **#** para abrir LAN. El anfitrión inicia el juego seleccionado y muestra la dirección y el puerto **47653**.
 - Los demás dispositivos deben estar en la misma Wi-Fi; eligen **Join by host IP**, escriben la IPv4 del anfitrión y pulsan Connect.
-- Se admiten hasta cinco jugadores contando al anfitrión. Se sincronizan la posición, orientación, vida y estado vivo/reaparecido de los avatares.
+- Se admiten hasta cinco jugadores contando al anfitrión. Se sincronizan la posición, orientación, vida, estado vivo/reaparecido y apariencia completa (tonos y diseños de camisa/pantalón) de los avatares. Todos los dispositivos deben usar esta misma versión del protocolo LAN.
 - Para volver al menú, el anfitrión cierra la sesión LAN. Las partidas de los niveles y sus NPC continúan simulándose localmente en cada dispositivo.
 
 Las conexiones de socket y de servidor son opcionales en MIDP 2.0 y el sistema de seguridad del teléfono puede bloquearlas. El JAD debe solicitar `javax.microedition.io.Connector.socket` y `javax.microedition.io.Connector.serversocket`; si el teléfono no ofrece esos protocolos o deniega el permiso, el menú muestra el error de conexión. Hace falta un firmware/emulador con soporte de sockets y conceder acceso de red de entrada y salida.
