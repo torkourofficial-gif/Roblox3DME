@@ -81,28 +81,38 @@ final class LanSession {
         if (address.length() == 0 || address.indexOf(":") >= 0 ||
                 address.indexOf("/") >= 0 || address.indexOf(" ") >= 0)
             throw new IOException("Enter an IPv4 address, e.g. 192.168.1.20");
-        SocketConnection socket = (SocketConnection)Connector.open(
-                "socket://" + address + ":" + PORT);
-        DataInputStream input = socket.openDataInputStream();
-        DataOutputStream output = socket.openDataOutputStream();
-        output.writeInt(MAGIC);
-        output.flush();
-        int game = input.readInt();
-        int slot = input.readInt();
-        if (game < 0 || game >= 15 || slot < 1 || slot >= MAX_PLAYERS) {
-            try { socket.close(); } catch (Throwable ignored) {}
-            throw new IOException("The host rejected this game session");
+        SocketConnection socket = null;
+        DataInputStream input = null;
+        DataOutputStream output = null;
+        boolean transferred = false;
+        try {
+            socket = (SocketConnection)Connector.open("socket://" + address + ":" + PORT);
+            input = socket.openDataInputStream();
+            output = socket.openDataOutputStream();
+            output.writeInt(MAGIC);
+            output.flush();
+            int game = input.readInt();
+            int slot = input.readInt();
+            if (game < 0 || game >= 15 || slot < 1 || slot >= MAX_PLAYERS)
+                throw new IOException("The host rejected this game session");
+            final LanSession session = new LanSession(false, game, slot);
+            session.client = socket;
+            session.clientIn = input;
+            session.clientOut = output;
+            Thread read = new Thread(new Runnable() {
+                public void run() { session.readSnapshots(); }
+            });
+            session.reader = read;
+            read.start();
+            transferred = true;
+            return session;
+        } finally {
+            if (!transferred) {
+                if (input != null) try { input.close(); } catch (Throwable ignored) {}
+                if (output != null) try { output.close(); } catch (Throwable ignored) {}
+                if (socket != null) try { socket.close(); } catch (Throwable ignored) {}
+            }
         }
-        final LanSession session = new LanSession(false, game, slot);
-        session.client = socket;
-        session.clientIn = input;
-        session.clientOut = output;
-        Thread read = new Thread(new Runnable() {
-            public void run() { session.readSnapshots(); }
-        });
-        session.reader = read;
-        read.start();
-        return session;
     }
 
     int getGameId() { return gameId; }
@@ -204,8 +214,13 @@ final class LanSession {
                 Peer peer = new Peer(socket, input, output, slot);
                 synchronized (this) { peers[slot] = peer; }
                 Thread worker = new Thread(peer);
-                worker.start();
-                socket = null;
+                try {
+                    worker.start();
+                    socket = null;
+                } catch (Throwable startError) {
+                    peer.close();
+                    throw startError;
+                }
             } catch (Throwable t) {
                 if (socket != null) try { socket.close(); } catch (Throwable ignored) {}
                 if (!closed) {
