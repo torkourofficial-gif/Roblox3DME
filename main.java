@@ -505,7 +505,14 @@ public final class main extends MIDlet {
                     if (modelError.length() == 0) modelError = "studs.png not found";
                     return;
                 }
-                Image textureImage = makePowerOfTwoImage(image);
+                // studs.png is a 64x64 atlas: each individual stud tile is 16x16.
+                // Extract one complete tile so WRAP_REPEAT repeats that tile,
+                // rather than wrapping across the full 4x4 atlas.
+                if (image.getWidth() < 16 || image.getHeight() < 16)
+                    throw new IllegalArgumentException("studs.png must be at least 16x16");
+                int[] tilePixels = new int[16 * 16];
+                image.getRGB(tilePixels, 0, 16, 0, 0, 16, 16);
+                Image textureImage = Image.createRGBImage(tilePixels, 16, 16, true);
                 cachedStudsTexture = new Texture2D(new Image2D(Image2D.RGBA, textureImage));
                 cachedStudsTexture.setFiltering(Texture2D.FILTER_NEAREST, Texture2D.FILTER_NEAREST);
                 cachedStudsTexture.setWrapping(Texture2D.WRAP_REPEAT, Texture2D.WRAP_REPEAT);
@@ -3310,10 +3317,9 @@ public final class main extends MIDlet {
                 int tilesZ = (int)(sz / 0.40f + 0.5f);
                 if (tilesX < 1) tilesX = 1;
                 if (tilesZ < 1) tilesZ = 1;
-                // studs.png contains four stud tiles across its U axis.
-                // Sample one quarter of the image per stud: one on each arm,
-                // two across the torso, and repeat that same tile on larger floors.
-                short uMax = (short)(tilesX * 250);
+                // cachedStudsTexture is already cropped to one 16x16 stud.
+                // One UV unit now equals one complete stud tile.
+                short uMax = (short)(tilesX * 1000);
                 short vMax = (short)(tilesZ * 1000);
                 // The upper face uses vertices 12..15 in faceOrder.
                 uv[24] = 0;    uv[25] = 0;
