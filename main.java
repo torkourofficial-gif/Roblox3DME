@@ -65,16 +65,19 @@ public final class main extends MIDlet {
                 avatarLegColor=0x2E9E45;
         private boolean avatarEditorMode;
         private int avatarColorSelection;
-        private int avatarShirtStyle, avatarPantsStyle, avatarHatStyle;
+        private int avatarShirtStyle, avatarPantsStyle, avatarHatStyle, avatarFaceStyle;
         private World avatarPreviewWorld;
         private Camera avatarPreviewCamera;
         private Group avatarPreviewModel;
+        private Image avatarPreviewImage;
+        private int avatarPreviewImageWidth=-1, avatarPreviewImageHeight=-1;
         private int[] lanAvatarSkins = {-1,-1,-1,-1,-1};
         private int[] lanAvatarShirts = {-1,-1,-1,-1,-1};
         private int[] lanAvatarLegs = {-1,-1,-1,-1,-1};
         private int[] lanAvatarShirtStyles = {-1,-1,-1,-1,-1};
         private int[] lanAvatarPantsStyles = {-1,-1,-1,-1,-1};
         private int[] lanAvatarHatStyles = {-1,-1,-1,-1,-1};
+        private int[] lanAvatarFaceStyles = {-1,-1,-1,-1,-1};
         private int currentGame;
         private boolean paused, configMode;
         private int pauseSelection, configSelection;
@@ -145,6 +148,7 @@ public final class main extends MIDlet {
         private Group swordVisual;
         private Image logoSource, titleBackgroundSource, skySource;
         private Texture2D cachedPlayerFaceTexture, cachedZombieFaceTexture;
+        private Texture2D[] cachedAvatarFaceTextures = new Texture2D[4];
         private Texture2D cachedStudsTexture;
         private Texture2D[] shirtTextures = new Texture2D[6];
         private Texture2D[] pantsTextures = new Texture2D[5];
@@ -321,14 +325,14 @@ public final class main extends MIDlet {
                 byte[] data=store.getRecord(1);
                 input=new DataInputStream(new ByteArrayInputStream(data));
                 int version=input.readInt();
-                if(version<1||version>4)return;
+                if(version<1||version>5)return;
                 int loadedSensitivity=input.readInt();
                 boolean loadedInvert=input.readBoolean();
                 float loadedDistance=input.readFloat();
                 int loadedBots=input.readInt();
                 int loadedSkin=avatarSkinColor, loadedShirt=avatarShirtColor,
                         loadedLegs=avatarLegColor;
-                int loadedShirtStyle=0, loadedPantsStyle=0, loadedHatStyle=0;
+                int loadedShirtStyle=0, loadedPantsStyle=0, loadedHatStyle=0, loadedFaceStyle=0;
                 if(version>=2) {
                     loadedSkin=input.readInt();
                     loadedShirt=input.readInt();
@@ -339,6 +343,7 @@ public final class main extends MIDlet {
                     loadedPantsStyle=input.readInt();
                 }
                 if(version>=4)loadedHatStyle=input.readInt();
+                if(version>=5)loadedFaceStyle=input.readInt();
                 int controlCount=input.readInt();
                 if(loadedSensitivity<0||loadedSensitivity>2||
                         loadedDistance<2.0f||loadedDistance>9.0f||
@@ -349,7 +354,7 @@ public final class main extends MIDlet {
                         !isAvatarColor(AVATAR_CLOTHING_PALETTE,loadedLegs)||
                         loadedShirtStyle<0||loadedShirtStyle>6||
                         loadedPantsStyle<0||loadedPantsStyle>5||
-                        loadedHatStyle<0||loadedHatStyle>5)return;
+                        loadedHatStyle<0||loadedHatStyle>5||loadedFaceStyle<0||loadedFaceStyle>3)return;
                 int[] loadedControls=new int[controlCount];
                 for(int i=0;i<controlCount;i++)loadedControls[i]=input.readInt();
                 for(int i=0;i<loadedControls.length;i++) {
@@ -368,6 +373,7 @@ public final class main extends MIDlet {
                 avatarShirtStyle=loadedShirtStyle;
                 avatarPantsStyle=loadedPantsStyle;
                 avatarHatStyle=loadedHatStyle;
+                avatarFaceStyle=loadedFaceStyle;
                 for(int i=0;i<mappedControls.length;i++)mappedControls[i]=loadedControls[i];
             } catch(Throwable ignored) {
                 // Keep safe defaults when RMS is unavailable or the record is corrupt.
@@ -389,7 +395,7 @@ public final class main extends MIDlet {
             try {
                 bytes=new ByteArrayOutputStream();
                 output=new DataOutputStream(bytes);
-                output.writeInt(4);
+                output.writeInt(5);
                 output.writeInt(sensitivityLevel);
                 output.writeBoolean(invertCamera);
                 output.writeFloat(camDistance);
@@ -400,6 +406,7 @@ public final class main extends MIDlet {
                 output.writeInt(avatarShirtStyle);
                 output.writeInt(avatarPantsStyle);
                 output.writeInt(avatarHatStyle);
+                output.writeInt(avatarFaceStyle);
                 output.writeInt(mappedControls.length);
                 for(int i=0;i<mappedControls.length;i++)output.writeInt(mappedControls[i]);
                 output.flush();
@@ -844,7 +851,7 @@ public final class main extends MIDlet {
             Group model=new Group();
             model.addChild(makeStuddedBox(0,1.45f,0,0.78f,0.95f,0.40f,bot.shirtColor));
             model.addChild(makeRoundedCylinderHead(bot.skinColor));
-            model.addChild(makeTexturedFace("faceNEW.png",bot.skinColor));
+            model.addChild(makeTexturedFace("face.png",bot.skinColor));
             Group la=makePivotedLimb(-0.585f,1.925f,0.39f,0.95f,0.40f,bot.skinColor,true);
             Group ra=makePivotedLimb(0.585f,1.925f,0.39f,0.95f,0.40f,bot.skinColor,true);
             Group ll=makePivotedLimb(-0.195f,0.975f,0.39f,0.95f,0.40f,bot.legColor,false);
@@ -2210,13 +2217,14 @@ public final class main extends MIDlet {
                         lanAvatars[i] = null;
                         lanAvatarSkins[i]=lanAvatarShirts[i]=lanAvatarLegs[i]=-1;
                         lanAvatarShirtStyles[i]=lanAvatarPantsStyles[i]=lanAvatarHatStyles[i]=-1;
+                        lanAvatarFaceStyles[i]=-1;
                     }
                 }
                 return;
             }
             lanSession.publish(px, jumpY, pz, yaw, playerHealth, !dead,
                     avatarSkinColor, avatarShirtColor, avatarLegColor,
-                    avatarShirtStyle, avatarPantsStyle, avatarHatStyle);
+                    avatarShirtStyle, avatarPantsStyle, avatarHatStyle, avatarFaceStyle);
             if (lanPlayers == null) lanPlayers = new LanSession.PlayerState[5];
             lanSession.copySnapshot(lanPlayers);
             for(int ci=0;ci<lanPlayers.length;ci++)if(lanPlayers[ci]!=null&&lanPlayers[ci].connected&&lanPlayers[ci].chatSequence!=seenChatSequence[ci]){
@@ -2233,6 +2241,7 @@ public final class main extends MIDlet {
                         lanAvatars[i] = null;
                         lanAvatarSkins[i]=lanAvatarShirts[i]=lanAvatarLegs[i]=-1;
                         lanAvatarShirtStyles[i]=lanAvatarPantsStyles[i]=lanAvatarHatStyles[i]=-1;
+                        lanAvatarFaceStyles[i]=-1;
                     }
                     continue;
                 }
@@ -2242,14 +2251,15 @@ public final class main extends MIDlet {
                          lanAvatarLegs[i]!=states[i].legColor||
                          lanAvatarShirtStyles[i]!=states[i].shirtStyle||
                          lanAvatarPantsStyles[i]!=states[i].pantsStyle||
-                         lanAvatarHatStyles[i]!=states[i].hatStyle);
+                         lanAvatarHatStyles[i]!=states[i].hatStyle||
+                         lanAvatarFaceStyles[i]!=states[i].faceStyle);
                 if(avatarColorsChanged&&world!=null) {
                     try { world.removeChild(lanAvatars[i]); } catch(Throwable ignored) {}
                     lanAvatars[i]=null;
                 }
                 if (lanAvatars[i] == null && world != null) {
                     int oldSkin=avatarSkinColor,oldShirt=avatarShirtColor,oldLegs=avatarLegColor;
-                    int oldShirtStyle=avatarShirtStyle,oldPantsStyle=avatarPantsStyle,oldHatStyle=avatarHatStyle;
+                    int oldShirtStyle=avatarShirtStyle,oldPantsStyle=avatarPantsStyle,oldHatStyle=avatarHatStyle,oldFaceStyle=avatarFaceStyle;
                     Group oldLeft=leftArm,oldRight=rightArm,oldLegL=leftLeg,oldLegR=rightLeg;
                     Group oldSword=swordVisual;
                     try {
@@ -2259,11 +2269,12 @@ public final class main extends MIDlet {
                         avatarShirtStyle=states[i].shirtStyle;
                         avatarPantsStyle=states[i].pantsStyle;
                         avatarHatStyle=states[i].hatStyle;
+                        avatarFaceStyle=states[i].faceStyle;
                         lanAvatars[i]=buildNoob(false);
                     } catch (Throwable t) { continue; }
                     finally {
                         avatarSkinColor=oldSkin;avatarShirtColor=oldShirt;avatarLegColor=oldLegs;
-                        avatarShirtStyle=oldShirtStyle;avatarPantsStyle=oldPantsStyle;avatarHatStyle=oldHatStyle;
+                        avatarShirtStyle=oldShirtStyle;avatarPantsStyle=oldPantsStyle;avatarHatStyle=oldHatStyle;avatarFaceStyle=oldFaceStyle;
                         leftArm=oldLeft;rightArm=oldRight;leftLeg=oldLegL;rightLeg=oldLegR;
                         swordVisual=oldSword;
                     }
@@ -2273,6 +2284,7 @@ public final class main extends MIDlet {
                     lanAvatarShirtStyles[i]=states[i].shirtStyle;
                     lanAvatarPantsStyles[i]=states[i].pantsStyle;
                     lanAvatarHatStyles[i]=states[i].hatStyle;
+                    lanAvatarFaceStyles[i]=states[i].faceStyle;
                     world.addChild(lanAvatars[i]);
                 }
                 if (lanAvatars[i] != null) {
@@ -3255,7 +3267,7 @@ public final class main extends MIDlet {
             // Preserve the classic two-stud top plate above the shirt template.
             model.addChild(makeStuddedBox(0,1.922f,0,0.78f,0.006f,0.40f,clothing));
             model.addChild(makeRoundedCylinderHead(skin));
-            model.addChild(makeTexturedFace(zombie ? "faceZomb.png" : "faceNEW.png", skin));
+            model.addChild(makeTexturedFace(zombie ? "faceZomb.png" : avatarFaceResource(), skin));
             if(!zombie&&avatarHatStyle>0)model.addChild(buildClassicHat(avatarHatStyle));
             Group modelLeftArm = makePivotedClothedLimb(-0.585f,1.925f,0.39f,0.95f,0.40f,
                     skin,true,shirt,shirtSleeveRegions(true));
@@ -3409,11 +3421,23 @@ public final class main extends MIDlet {
             return pivot;
         }
 
+        private String avatarFaceResource() {
+            switch(avatarFaceStyle) {
+                case 1: return "Face1.png";
+                case 2: return "Face2.png";
+                case 3: return "Face3.png";
+                default: return "face.png";
+            }
+        }
+
         private Node makeTexturedFace(String resourceName, int fallbackColor) {
             try {
                 Texture2D texture;
                 boolean zombie = "faceZomb.png".equals(resourceName);
-                texture = zombie ? cachedZombieFaceTexture : cachedPlayerFaceTexture;
+                int faceIndex = "Face1.png".equals(resourceName) ? 1 :
+                        ("Face2.png".equals(resourceName) ? 2 :
+                        ("Face3.png".equals(resourceName) ? 3 : 0));
+                texture = zombie ? cachedZombieFaceTexture : cachedAvatarFaceTextures[faceIndex];
                 if (texture == null) {
                     Image img = loadImageResource("/" + resourceName, "/meblox/" + resourceName);
                     if (img == null) {
@@ -3427,7 +3451,7 @@ public final class main extends MIDlet {
                     texture.setWrapping(Texture2D.WRAP_CLAMP, Texture2D.WRAP_CLAMP);
                     texture.setBlending(Texture2D.FUNC_MODULATE);
                     if (zombie) cachedZombieFaceTexture = texture;
-                    else cachedPlayerFaceTexture = texture;
+                    else cachedAvatarFaceTextures[faceIndex] = texture;
                 }
 
                 Appearance ap = new Appearance();
@@ -3872,8 +3896,8 @@ public final class main extends MIDlet {
                 settingsMessage="";
                 return;
             }
-            if(up)avatarColorSelection=(avatarColorSelection+5)%6;
-            else if(down)avatarColorSelection=(avatarColorSelection+1)%6;
+            if(up)avatarColorSelection=(avatarColorSelection+6)%7;
+            else if(down)avatarColorSelection=(avatarColorSelection+1)%7;
             else if(leftKey||rightKey||fire) {
                 int direction=rightKey||fire?1:-1;
                 if(avatarColorSelection==0||avatarColorSelection==1||avatarColorSelection==2) {
@@ -3890,8 +3914,10 @@ public final class main extends MIDlet {
                     avatarShirtStyle=(avatarShirtStyle+direction+7)%7;
                 } else if(avatarColorSelection==4) {
                     avatarPantsStyle=(avatarPantsStyle+direction+6)%6;
-                } else {
+                } else if(avatarColorSelection==5) {
                     avatarHatStyle=(avatarHatStyle+direction+6)%6;
+                } else {
+                    avatarFaceStyle=(avatarFaceStyle+direction+4)%4;
                 }
                 applyAvatarColors();
                 settingsMessage=saveSettings()?"Avatar saved":"Could not save avatar";
@@ -3949,6 +3975,8 @@ public final class main extends MIDlet {
         }
 
         private void rebuildAvatarPreview() {
+            avatarPreviewImage=null;
+            avatarPreviewImageWidth=avatarPreviewImageHeight=-1;
             if(avatarPreviewWorld==null) {
                 ensureAvatarPreview();
                 return;
@@ -3966,21 +3994,32 @@ public final class main extends MIDlet {
         private void renderAvatarPreview(Graphics g,int x,int y,int width,int height) {
             ensureAvatarPreview();
             if(avatarPreviewWorld==null||width<1||height<1)return;
-            boolean bound=false;
-            try {
-                avatarPreviewCamera.setPerspective(40.0f,(float)width/(float)height,
-                        0.1f,20.0f);
-                float turn=(float)((System.currentTimeMillis()/24L)%360L);
-                avatarPreviewModel.setOrientation(turn,0.0f,1.0f,0.0f);
-                g3d.bindTarget(g,true,Graphics3D.DITHER);
-                bound=true;
-                g3d.setViewport(x,y,width,height);
-                g3d.render(avatarPreviewWorld);
-            } catch(Throwable t) {
-                modelError="Avatar preview: "+t.toString();
-            } finally {
-                if(bound)try{g3d.releaseTarget();}catch(Throwable ignored){}
+            if(avatarPreviewImage==null||avatarPreviewImageWidth!=width||
+                    avatarPreviewImageHeight!=height) {
+                boolean bound=false;
+                try {
+                    Image rendered=Image.createImage(width,height);
+                    Graphics target=rendered.getGraphics();
+                    avatarPreviewCamera.setPerspective(40.0f,(float)width/(float)height,
+                            0.1f,20.0f);
+                    avatarPreviewModel.setOrientation(18.0f,0.0f,1.0f,0.0f);
+                    g3d.bindTarget(target,true,Graphics3D.DITHER);
+                    bound=true;
+                    g3d.setViewport(0,0,width,height);
+                    g3d.render(avatarPreviewWorld);
+                    g3d.releaseTarget();
+                    bound=false;
+                    avatarPreviewImage=rendered;
+                    avatarPreviewImageWidth=width;
+                    avatarPreviewImageHeight=height;
+                } catch(Throwable t) {
+                    modelError="Avatar preview: "+t.toString();
+                } finally {
+                    if(bound)try{g3d.releaseTarget();}catch(Throwable ignored){}
+                }
             }
+            if(avatarPreviewImage!=null)
+                g.drawImage(avatarPreviewImage,x,y,Graphics.TOP|Graphics.LEFT);
         }
 
         private void drawAvatarSettingsPanel(Graphics g) {
@@ -4006,23 +4045,26 @@ public final class main extends MIDlet {
             g.fillRoundRect(panelX,panelY,panelWidth,panelHeight,14,14);
             Font font=g.getFont();
             g.setColor(0xFFFFFF);
-            g.drawString("AVATAR",width/2,panelY+4,Graphics.TOP|Graphics.HCENTER);
+            g.drawString("AVATAR CUSTOMIZER",width/2,panelY+4,Graphics.TOP|Graphics.HCENTER);
 
-            int rowHeight=Math.max(13,Math.min(17,font.getHeight()+1));
-            int previewHeight=Math.max(28,Math.min(92,
-                    panelHeight-28-6*rowHeight-font.getHeight()-10));
+            int rowHeight=Math.max(13,Math.min(16,font.getHeight()+1));
+            int previewHeight=Math.max(30,Math.min(100,
+                    panelHeight-34-7*rowHeight-font.getHeight()-12));
             int previewWidth=Math.min(panelWidth-16,Math.max(48,previewHeight*3/4));
             int previewX=(width-previewWidth)/2;
             int previewY=panelY+20;
+            g.setColor(0x101B27);
+            g.fillRoundRect(previewX-3,previewY-3,previewWidth+6,previewHeight+6,9,9);
             renderAvatarPreview(g,previewX,previewY,previewWidth,previewHeight);
 
-            String[] names={"Skin tone","Shirt color","Pants color","Shirt design","Pants design","Hat"};
-            int[] colors={avatarSkinColor,avatarShirtColor,avatarLegColor,0xFFFFFF,0xFFFFFF,0xFFFFFF};
+            String[] names={"Skin","Shirt color","Pants color","Shirt","Pants","Hat","Face"};
+            String[] faceNames={"Classic","Smile","Grin","Surprised"};
+            int[] colors={avatarSkinColor,avatarShirtColor,avatarLegColor,0xFFFFFF,0xFFFFFF,0xFFFFFF,0xFFFFFF};
             String[] values={"","","",avatarShirtStyle==0?"None":avatarShirtStyle+"/6",
                     avatarPantsStyle==0?"None":avatarPantsStyle+"/5",
-                    avatarHatStyle==0?"None":avatarHatStyle+"/5"};
-            int rowsY=previewY+previewHeight+2;
-            for(int i=0;i<6;i++) {
+                    avatarHatStyle==0?"None":avatarHatStyle+"/5",faceNames[avatarFaceStyle]};
+            int rowsY=previewY+previewHeight+5;
+            for(int i=0;i<7;i++) {
                 int y=rowsY+i*rowHeight;
                 g.setColor(i==avatarColorSelection?0xF5C542:0x263B50);
                 g.fillRoundRect(panelX+7,y,panelWidth-14,rowHeight-1,5,5);
@@ -4036,7 +4078,7 @@ public final class main extends MIDlet {
                 }
             }
             g.setColor(0xFFFFFF);
-            g.drawString("UP/DOWN: select   LEFT/RIGHT: change",
+            g.drawString("UP/DOWN select   LEFT/RIGHT change",
                     width/2,panelY+panelHeight-font.getHeight()-2,
                     Graphics.TOP|Graphics.HCENTER);
         }
