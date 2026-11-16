@@ -248,6 +248,8 @@ public final class main extends MIDlet {
                 {0x1769AA,0xC43C35,0x7F58A5,0x2C8C65,0x303F9F,0xD87C22,0x444444};
         private static final int[] BOT_LEG_COLORS =
                 {0x2E9E45,0x333333,0x365E9D,0x6D4635,0x6B3E76,0xB8A23A};
+        private static final String[] BOT_NAMES =
+                {"Kubo","Zeta","Milo","Byte","Luma"};
 
         private static final class PlayerBot {
             Group model, aura;
@@ -2865,41 +2867,40 @@ public final class main extends MIDlet {
         }
 
         private void drawRobloxPlayerHud(Graphics g) {
-            Font font=g.getFont();
-            int line=font.getHeight()+2;
-            int panelWidth=Math.min(126,Math.max(76,getWidth()-8));
-            int x=getWidth()-panelWidth-4;
-            int y=4;
-            int healthHeight=6;
-            int headerHeight=line+healthHeight+7;
-            int maxRows=Math.max(1,(getHeight()-headerHeight-12)/line);
-            int total=2;
+            Font oldFont=g.getFont();
+            Font compact=Font.getFont(Font.FACE_SYSTEM,Font.STYLE_PLAIN,Font.SIZE_SMALL);
+            g.setFont(compact);
+            int line=compact.getHeight()+1;
+            int panelWidth=Math.min(94,Math.max(68,getWidth()-8));
+            int x=getWidth()-panelWidth-4,y=4;
+            int healthHeight=4;
+            int headerHeight=line*2+healthHeight+8;
+            int total=1;
             for(int i=0;i<playerBotCount;i++)
                 if(playerBots[i]!=null)total++;
             if(lanPlayers!=null)
                 for(int i=0;i<lanPlayers.length;i++)
                     if(lanPlayers[i]!=null&&lanPlayers[i].connected&&
                             (lanSession==null||i!=lanSession.getLocalSlot()))total++;
+            int maxRows=Math.max(1,(getHeight()-headerHeight-8)/line);
             int rows=Math.min(total,maxRows);
-            int panelHeight=headerHeight+rows*line+5;
-            g.setColor(0x101820);g.fillRoundRect(x,y,panelWidth,panelHeight,7,7);
-            g.setColor(0xFFFFFF);g.drawRoundRect(x,y,panelWidth,panelHeight,7,7);
+            int panelHeight=headerHeight+rows*line+4;
+            g.setColor(0x101820);g.fillRoundRect(x,y,panelWidth,panelHeight,6,6);
+            g.setColor(0xFFFFFF);g.drawRoundRect(x,y,panelWidth,panelHeight,6,6);
             String username=playerUsername;
             if(username==null||username.length()==0)username="Player";
-            if(font.stringWidth(username)>panelWidth-10){
-                while(username.length()>1&&font.stringWidth(username+"...")>panelWidth-10)
+            if(compact.stringWidth(username)>panelWidth-10){
+                while(username.length()>1&&compact.stringWidth(username+"...")>panelWidth-10)
                     username=username.substring(0,username.length()-1);
                 username+="...";
             }
             g.setColor(0xFFFFFF);
             g.drawString(username,x+5,y+2,Graphics.TOP|Graphics.LEFT);
-            drawCharacterHealthBar(g,x+panelWidth-30,y+line+2,
-                    playerHealth,Math.min(54,panelWidth-12),healthHeight);
-            int rowY=y+headerHeight;
-            int drawn=0;
+            drawCharacterHealthBar(g,x+panelWidth/2,y+line+4,
+                    playerHealth,panelWidth-12,healthHeight);
             g.setColor(0xB8D8F2);
-            g.drawString("PLAYERS ("+total+")",x+5,rowY,Graphics.TOP|Graphics.LEFT);
-            rowY+=line;drawn++;
+            g.drawString("PLAYERS "+(total+1),x+5,y+line*2+7,Graphics.TOP|Graphics.LEFT);
+            int rowY=y+headerHeight,drawn=0;
             if(drawn<rows){
                 g.setColor(dead?0x888888:0x65D879);
                 g.drawString("You",x+5,rowY,Graphics.TOP|Graphics.LEFT);
@@ -2908,7 +2909,8 @@ public final class main extends MIDlet {
             for(int i=0;i<playerBotCount&&drawn<rows;i++){
                 PlayerBot bot=playerBots[i];if(bot==null)continue;
                 g.setColor(bot.alive?0xFFFFFF:0x888888);
-                g.drawString("Bot "+(i+1)+(bot.alive?"":" (KO)"),x+5,rowY,
+                String botName=BOT_NAMES[i%BOT_NAMES.length];
+                g.drawString(botName+(bot.alive?"":" KO"),x+5,rowY,
                         Graphics.TOP|Graphics.LEFT);
                 rowY+=line;drawn++;
             }
@@ -2921,6 +2923,7 @@ public final class main extends MIDlet {
                     rowY+=line;drawn++;
                 }
             }
+            g.setFont(oldFont);
         }
 
         private void drawCharacterHealthBar(Graphics g,int centerX,int centerY,int value,int width,int height) {
