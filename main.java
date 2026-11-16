@@ -3306,8 +3306,10 @@ public final class main extends MIDlet {
                 short[] uv = new short[24 * 2];
                 // Tile the studs instead of stretching one tile over the whole face.
                 // Arms (0.30 x 0.40) show one stud; the 0.78-wide torso shows two.
-                int tilesX = Math.max(1, Math.round(sx / 0.40f));
-                int tilesZ = Math.max(1, Math.round(sz / 0.40f));
+                int tilesX = (int)(sx / 0.40f + 0.5f);
+                int tilesZ = (int)(sz / 0.40f + 0.5f);
+                if (tilesX < 1) tilesX = 1;
+                if (tilesZ < 1) tilesZ = 1;
                 short uMax = (short)(tilesX * 1000);
                 short vMax = (short)(tilesZ * 1000);
                 // The upper face uses vertices 12..15 in faceOrder.
