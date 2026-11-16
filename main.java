@@ -934,7 +934,8 @@ public final class main extends MIDlet {
                 if(bot.attackUntil>0&&gameClock>=bot.attackUntil){
                     if(bot.swordArm!=null)bot.swordArm.setOrientation(0,1,0,0);
                     if(bot.sword!=null)bot.sword.setRenderingEnable(false);
-                    bot.model.setScale(1,1,1);bot.attackUntil=0;
+                    if(bot.model!=null)bot.model.setScale(1,1,1);
+                    bot.attackUntil=0;
                 }
                 if(bot.aura!=null){
                     float pulse=1.0f+(float)Math.sin(gameClock*0.012f)*0.045f;
