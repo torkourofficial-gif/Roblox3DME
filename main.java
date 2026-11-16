@@ -2899,7 +2899,7 @@ public final class main extends MIDlet {
             drawCharacterHealthBar(g,x+panelWidth/2,y+line+4,
                     playerHealth,panelWidth-12,healthHeight);
             g.setColor(0xB8D8F2);
-            g.drawString("PLAYERS "+(total+1),x+5,y+line*2+7,Graphics.TOP|Graphics.LEFT);
+            g.drawString("PLAYERS "+total,x+5,y+line*2+7,Graphics.TOP|Graphics.LEFT);
             int rowY=y+headerHeight,drawn=0;
             if(drawn<rows){
                 g.setColor(dead?0x888888:0x65D879);
