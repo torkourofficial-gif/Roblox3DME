@@ -160,6 +160,7 @@ public final class main extends MIDlet {
         private long menuPanTime;
         private float playerVelocityY;
         private int playerHealth=100;
+        private String playerUsername="Player";
         private boolean grounded = true, dead, lobbyMode;
         private long gameClock, respawnAt, invulnerableUntil;
         private PhysicsPiece[] deathPieces;
@@ -946,6 +947,7 @@ public final class main extends MIDlet {
 
                 if(currentGame==13){
                     updateTycoonBot(bot,dt,i);
+                    syncBotModelVisibility(bot);
                     continue;
                 }
                 boolean simonActive=currentGame==12&&simonRound>0&&simonRound<=12;
@@ -1041,12 +1043,17 @@ public final class main extends MIDlet {
                     bot.leftArm.setOrientation(gait,1,0,0);bot.rightArm.setOrientation(-gait,1,0,0);
                     bot.leftLeg.setOrientation(-gait,1,0,0);bot.rightLeg.setOrientation(gait,1,0,0);
                 }
-                if(bot.model!=null){
-                    if(!isBotInView(bot))despawnBotModel(bot);
-                    else bot.model.setTranslation(bot.x,bot.y,bot.z);
-                }else if(isBotInView(bot)){
-                    addPlayerBotModel(bot,false);
-                }
+                if(bot.model!=null)bot.model.setTranslation(bot.x,bot.y,bot.z);
+                syncBotModelVisibility(bot);
+            }
+        }
+
+        private void syncBotModelVisibility(PlayerBot bot) {
+            if(bot==null||!bot.alive)return;
+            if(bot.model!=null){
+                if(!isBotInView(bot))despawnBotModel(bot);
+            }else if(isBotInView(bot)){
+                addPlayerBotModel(bot,false);
             }
         }
 
@@ -2866,7 +2873,7 @@ public final class main extends MIDlet {
             int healthHeight=6;
             int headerHeight=line+healthHeight+7;
             int maxRows=Math.max(1,(getHeight()-headerHeight-12)/line);
-            int total=1;
+            int total=2;
             for(int i=0;i<playerBotCount;i++)
                 if(playerBots[i]!=null)total++;
             if(lanPlayers!=null)
@@ -2877,7 +2884,13 @@ public final class main extends MIDlet {
             int panelHeight=headerHeight+rows*line+5;
             g.setColor(0x101820);g.fillRoundRect(x,y,panelWidth,panelHeight,7,7);
             g.setColor(0xFFFFFF);g.drawRoundRect(x,y,panelWidth,panelHeight,7,7);
-            String username="Player";
+            String username=playerUsername;
+            if(username==null||username.length()==0)username="Player";
+            if(font.stringWidth(username)>panelWidth-10){
+                while(username.length()>1&&font.stringWidth(username+"...")>panelWidth-10)
+                    username=username.substring(0,username.length()-1);
+                username+="...";
+            }
             g.setColor(0xFFFFFF);
             g.drawString(username,x+5,y+2,Graphics.TOP|Graphics.LEFT);
             drawCharacterHealthBar(g,x+panelWidth-30,y+line+2,
