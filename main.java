@@ -2969,9 +2969,9 @@ public final class main extends MIDlet {
 
         private Image makePowerOfTwoPaddedImage(Image source) {
             int sourceWidth=source.getWidth(),sourceHeight=source.getHeight();
-            // Clothing atlases are 585x559. Resample their content to 512x489
-            // and pad to 512x512, avoiding a 1024x1024 RGBA texture per outfit.
-            final int width=512,height=512;
+            // Clothing atlases are 585x559. Resample their content to 256x244
+            // and pad to 256x256, keeping each cached outfit texture small.
+            final int width=256,height=256;
             int contentHeight=(sourceHeight*width)/sourceWidth;
             if(contentHeight<1||contentHeight>height)
                 throw new IllegalArgumentException("Unsupported clothing atlas size");
@@ -3011,7 +3011,7 @@ public final class main extends MIDlet {
             vb.setPositions(positions,0.001f,null);
             vb.setNormals(getSharedBoxNormals());
             // UVs stay in the original 585x559 atlas coordinate system.
-            // The image is uniformly resampled to 512x489, then padded to 512x512.
+            // The image is uniformly resampled to 256x244, then padded to 256x256.
             for(int f=0;f<6;f++) {
                 int[] r=regions[f];
                 float u0=(float)r[0]/585.0f,u1=(float)(r[0]+r[2])/585.0f;
