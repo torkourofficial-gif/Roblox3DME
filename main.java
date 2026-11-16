@@ -49,7 +49,7 @@ public final class main extends MIDlet {
         private Camera camera;
         private Group avatar;
         private Group activeModel;
-        private Mesh leftArm, rightArm, leftLeg, rightLeg;
+        private Group leftArm, rightArm, leftLeg, rightLeg;
         private int animation = 0; // 0 idle, 1 run, 2 jump
         private float px = 0, pz = 0, yaw = 0;
         private float camYaw = 0, camPitch = 0.22f;
@@ -248,7 +248,8 @@ public final class main extends MIDlet {
             int tycoonLevel,tycoonCash;
             long simonMoveAt,tycoonAt,tycoonIncomeAt;
             boolean simonMoving,alive=true,grounded=true;
-            Mesh swordArm, leftArm, rightArm, leftLeg, rightLeg;
+            Mesh swordArm;
+            Group leftArm, rightArm, leftLeg, rightLeg;
             Group sword;
             long attackUntil;
             PlayerBot(float x,float z) {
@@ -750,7 +751,7 @@ public final class main extends MIDlet {
         }
         private void addPlayerBotModel(PlayerBot bot,boolean protectedSpawn) {
             try{
-                Mesh l=leftArm,r=rightArm,ll=leftLeg,rl=rightLeg;Group sword=swordVisual;
+                Group l=leftArm,r=rightArm,ll=leftLeg,rl=rightLeg;Group sword=swordVisual;
                 bot.model=buildBotNoob(bot);
                 bot.leftArm=leftArm;bot.rightArm=rightArm;bot.leftLeg=leftLeg;bot.rightLeg=rightLeg;
                 bot.swordArm=rightArm;bot.sword=swordVisual;
@@ -770,10 +771,10 @@ public final class main extends MIDlet {
             model.addChild(makeBox(0,1.45f,0,0.78f,0.95f,0.40f,bot.shirtColor));
             model.addChild(makeRoundedCylinderHead(bot.skinColor));
             model.addChild(makeTexturedFace("faceNEW.png",bot.skinColor));
-            Mesh la=(Mesh)makeBox(-0.54f,1.48f,0,0.30f,0.88f,0.40f,bot.skinColor);
-            Mesh ra=(Mesh)makeBox(0.54f,1.48f,0,0.30f,0.88f,0.40f,bot.skinColor);
-            Mesh ll=(Mesh)makeBox(-0.20f,0.52f,0,0.36f,0.78f,0.40f,bot.legColor);
-            Mesh rl=(Mesh)makeBox(0.20f,0.52f,0,0.36f,0.78f,0.40f,bot.legColor);
+            Group la=makePivotedLimb(-0.54f,1.48f,0.30f,0.88f,0.40f,bot.skinColor);
+            Group ra=makePivotedLimb(0.54f,1.48f,0.30f,0.88f,0.40f,bot.skinColor);
+            Group ll=makePivotedLimb(-0.20f,0.91f,0.36f,0.78f,0.40f,bot.legColor);
+            Group rl=makePivotedLimb(0.20f,0.91f,0.36f,0.78f,0.40f,bot.legColor);
             model.addChild(la);model.addChild(ra);model.addChild(ll);model.addChild(rl);
             leftArm=la;rightArm=ra;leftLeg=ll;rightLeg=rl;
             Group weapon=new Group();
@@ -2893,10 +2894,10 @@ public final class main extends MIDlet {
             model.addChild(makeBox(0, 1.45f, 0, 0.78f, 0.95f, 0.40f, clothing));
             model.addChild(makeRoundedCylinderHead(skin));
             model.addChild(makeTexturedFace(zombie ? "faceZomb.png" : "faceNEW.png", skin));
-            Mesh modelLeftArm = (Mesh)makeBox(-0.54f, 1.48f, 0, 0.30f, 0.88f, 0.40f, skin);
-            Mesh modelRightArm = (Mesh)makeBox(0.54f, 1.48f, 0, 0.30f, 0.88f, 0.40f, skin);
-            Mesh modelLeftLeg = (Mesh)makeBox(-0.20f, 0.52f, 0, 0.36f, 0.78f, 0.40f, legs);
-            Mesh modelRightLeg = (Mesh)makeBox(0.20f, 0.52f, 0, 0.36f, 0.78f, 0.40f, legs);
+            Group modelLeftArm = makePivotedLimb(-0.54f,1.48f,0.30f,0.88f,0.40f,skin);
+            Group modelRightArm = makePivotedLimb(0.54f,1.48f,0.30f,0.88f,0.40f,skin);
+            Group modelLeftLeg = makePivotedLimb(-0.20f,0.91f,0.36f,0.78f,0.40f,legs);
+            Group modelRightLeg = makePivotedLimb(0.20f,0.91f,0.36f,0.78f,0.40f,legs);
             model.addChild(modelLeftArm);
             model.addChild(modelRightArm);
             model.addChild(modelLeftLeg);
@@ -2909,6 +2910,13 @@ public final class main extends MIDlet {
                 model.addChild(swordVisual);
             }
             return model;
+        }
+
+        private Group makePivotedLimb(float x,float jointY,float width,float height,float depth,int color) {
+            Group pivot=new Group();
+            pivot.setTranslation(x,jointY,0.0f);
+            pivot.addChild(makeBox(0.0f,-height*0.5f,0.0f,width,height,depth,color));
+            return pivot;
         }
 
         private Node makeTexturedFace(String resourceName, int fallbackColor) {
