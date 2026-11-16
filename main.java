@@ -1319,7 +1319,7 @@ public final class main extends MIDlet {
                     float z=(float)((seed*61L)%190L)/10.0f-9.5f;
                     spawnMeteor(x,z);
                 }
-                for(int i=0;i<worldObjects.length;i++) {
+                for(int i=0;i<worldObjectScanLimit;i++) {
                     WorldObject o=worldObjects[i];
                     if(o==null||!o.active) continue;
                     float dx=o.body.x-px,dz=o.body.z-pz;
@@ -1711,7 +1711,7 @@ public final class main extends MIDlet {
 
         private boolean isWorldBlocked(float x, float z, float bottom, float height) {
             if (worldObjects != null) {
-                for (int i = 0; i < worldObjects.length; i++) {
+                for (int i = 0; i < worldObjectScanLimit; i++) {
                     WorldObject o = worldObjects[i];
                     if (o == null || !o.active || o.bomb) continue;
                     PhysicsPiece b = o.body;
@@ -1762,7 +1762,7 @@ public final class main extends MIDlet {
         private void updateWorldObjects(int dt) {
             updateMeteorBursts();
             if (worldObjects == null) return;
-            for (int i = 0; i < worldObjects.length; i++) {
+            for (int i = 0; i < worldObjectScanLimit; i++) {
                 WorldObject o = worldObjects[i];
                 if (o == null || !o.active) continue;
                 if (!o.bomb && gameClock >= o.removeAt) {
@@ -1787,15 +1787,15 @@ public final class main extends MIDlet {
                 }
                 resolvePieceEnvironment(p);
             }
-            for (int i = 0; i < worldObjects.length; i++) {
+            for (int i = 0; i < worldObjectScanLimit; i++) {
                 WorldObject a = worldObjects[i];
                 if (a == null || !a.active) continue;
-                for (int j = i + 1; j < worldObjects.length; j++) {
+                for (int j = i + 1; j < worldObjectScanLimit; j++) {
                     WorldObject b = worldObjects[j];
                     if (b != null && b.active) resolvePiecePair(a.body, b.body);
                 }
             }
-            for (int i = 0; i < worldObjects.length; i++) {
+            for (int i = 0; i < worldObjectScanLimit; i++) {
                 WorldObject o = worldObjects[i];
                 if (o == null || !o.active) continue;
                 PhysicsPiece p = o.body;
@@ -1814,13 +1814,15 @@ public final class main extends MIDlet {
                 float vx, float vy, float vz, float sx, float sy, float sz,
                 float orientation, boolean bomb, long fuse) {
             int slot = -1;
-            for (int i = 0; i < worldObjects.length; i++)
+            for (int i = 0; i < worldObjectScanLimit; i++)
                 if (worldObjects[i] == null || !worldObjects[i].active) { slot = i; break; }
+            if (slot < 0 && worldObjectScanLimit < worldObjects.length)
+                slot = worldObjectScanLimit;
             if (slot < 0) {
                 // Reuse the actual oldest slot; do not overwrite an unrelated live object.
                 int oldestSlot = 0;
                 long oldestExpiry = worldObjects[0].removeAt;
-                for (int i = 1; i < worldObjects.length; i++) {
+                for (int i = 1; i < worldObjectScanLimit; i++) {
                     if (worldObjects[i].removeAt < oldestExpiry) {
                         oldestExpiry = worldObjects[i].removeAt;
                         oldestSlot = i;
@@ -2620,7 +2622,7 @@ public final class main extends MIDlet {
                     float[] b = ZOMBIE_BLOCKS[i];
                     resolvePieceAgainstBox(p,b[0],b[1],b[2],b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
                 }
-                for (int i = 0; i < worldObjects.length; i++) {
+                for (int i = 0; i < worldObjectScanLimit; i++) {
                     WorldObject o = worldObjects[i];
                     if (o != null && o.active && !o.bomb && o.body != p) {
                         PhysicsPiece b = o.body;
@@ -2641,7 +2643,7 @@ public final class main extends MIDlet {
                             b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
                 }
             }
-            for(int i=0;i<worldObjects.length;i++) {
+            for(int i=0;i<worldObjectScanLimit;i++) {
                 WorldObject object=worldObjects[i];
                 if(object!=null&&object.active&&!object.bomb&&object.body!=p) {
                     PhysicsPiece other=object.body;
