@@ -22,7 +22,8 @@ final class LanSession {
         public float x, y, z, yaw;
         public int health;
         public int skinColor=0xF5C542, shirtColor=0x1769AA, legColor=0x2E9E45;
-        public int shirtStyle, pantsStyle, hatStyle;
+        public int shirtStyle, pantsStyle;
+        public int hatStyle = 0;
         public boolean alive;
     }
 
