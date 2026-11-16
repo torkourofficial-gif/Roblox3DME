@@ -573,6 +573,7 @@ public final class main extends MIDlet {
             defenseLeaked=0; lavaHeight=-1.0f; lavaNode=null;
             modeStartAt=0; modeEventAt=0; modeScoreAt=0;
             world = new World();
+            installClassicLighting(world);
             sceneBackground = new Background();
             sceneBackground.setColor(0x78BCE8);
             sceneBackground.setDepthClearEnable(true);
@@ -2971,12 +2972,38 @@ public final class main extends MIDlet {
             return new Mesh(vb, new IndexBuffer[] {strip}, new Appearance[] {ap});
         }
 
+        private int scaleRgb(int color, float factor) {
+            int a = color & 0xFF000000;
+            int r = (int)(((color >> 16) & 255) * factor);
+            int g = (int)(((color >> 8) & 255) * factor);
+            int b = (int)((color & 255) * factor);
+            if (r > 255) r = 255;
+            if (g > 255) g = 255;
+            if (b > 255) b = 255;
+            return a | (r << 16) | (g << 8) | b;
+        }
+
+        private void installClassicLighting(World target) {
+            AmbientLight ambient = new AmbientLight();
+            ambient.setColor(0xFFFFE8);
+            ambient.setIntensity(0.72f);
+            target.addChild(ambient);
+
+            DirectionalLight sun = new DirectionalLight();
+            sun.setColor(0xFFF3D8);
+            sun.setIntensity(0.72f);
+            sun.setOrientation(-38.0f, 1.0f, 0.0f, 0.0f);
+            sun.postRotate(28.0f, 0.0f, 1.0f, 0.0f);
+            target.addChild(sun);
+        }
+
         private Appearance makeSolidAppearance(int color) {
             Appearance ap = new Appearance();
             Material mat = new Material();
-            mat.setColor(Material.AMBIENT, color);
-            mat.setColor(Material.DIFFUSE, color);
-            mat.setColor(Material.EMISSIVE, color);
+            mat.setColor(Material.AMBIENT, scaleRgb(color, 0.50f));
+            mat.setColor(Material.DIFFUSE, scaleRgb(color, 0.85f));
+            mat.setColor(Material.EMISSIVE, scaleRgb(color, 0.12f));
+            mat.setShininess(0.0f);
             ap.setMaterial(mat);
             PolygonMode pm = new PolygonMode();
             pm.setCulling(PolygonMode.CULL_NONE);
@@ -3087,9 +3114,10 @@ public final class main extends MIDlet {
             TriangleStripArray strips = new TriangleStripArray(0, stripLengths);
             Appearance ap = new Appearance();
             Material mat = new Material();
-            mat.setColor(Material.AMBIENT, color);
-            mat.setColor(Material.DIFFUSE, color);
-            mat.setColor(Material.EMISSIVE, color);
+            mat.setColor(Material.AMBIENT, scaleRgb(color, 0.50f));
+            mat.setColor(Material.DIFFUSE, scaleRgb(color, 0.85f));
+            mat.setColor(Material.EMISSIVE, scaleRgb(color, 0.12f));
+            mat.setShininess(0.0f);
             ap.setMaterial(mat);
             PolygonMode pm = new PolygonMode();
             pm.setCulling(PolygonMode.CULL_NONE);
@@ -3138,15 +3166,32 @@ public final class main extends MIDlet {
             short[] coords = new short[p.length];
             for (int i=0;i<p.length;i++) coords[i]=(short)(p[i]*1000);
             va.set(0, faceOrder.length, coords);
+            VertexArray normalArray = new VertexArray(faceOrder.length, 3, 2);
+            short[] normalData = new short[faceOrder.length * 3];
+            short[][] faceNormals = {
+                {0, 0, -32767}, {0, 0, 32767}, {0, -32767, 0},
+                {0, 32767, 0}, {-32767, 0, 0}, {32767, 0, 0}
+            };
+            for (int face = 0; face < 6; face++) {
+                for (int vertex = 0; vertex < 4; vertex++) {
+                    int normalOffset = (face * 4 + vertex) * 3;
+                    normalData[normalOffset] = faceNormals[face][0];
+                    normalData[normalOffset + 1] = faceNormals[face][1];
+                    normalData[normalOffset + 2] = faceNormals[face][2];
+                }
+            }
+            normalArray.set(0, faceOrder.length, normalData);
             VertexBuffer vb = new VertexBuffer();
             vb.setPositions(va, 0.001f, null);
+            vb.setNormals(normalArray, 1.0f / 32767.0f, null);
             int[] stripLengths = new int[] {4, 4, 4, 4, 4, 4};
             TriangleStripArray ta = new TriangleStripArray(0, stripLengths);
             Appearance ap = new Appearance();
             Material mat = new Material();
-            mat.setColor(Material.AMBIENT, color);
-            mat.setColor(Material.DIFFUSE, color);
-            mat.setColor(Material.EMISSIVE, color);
+            mat.setColor(Material.AMBIENT, scaleRgb(color, 0.50f));
+            mat.setColor(Material.DIFFUSE, scaleRgb(color, 0.85f));
+            mat.setColor(Material.EMISSIVE, scaleRgb(color, 0.12f));
+            mat.setShininess(0.0f);
             ap.setMaterial(mat);
             Mesh mesh = new Mesh(vb, new IndexBuffer[] { ta }, new Appearance[] { ap });
             mesh.setTranslation(x,y,z);
@@ -3252,6 +3297,7 @@ public final class main extends MIDlet {
             if(avatarPreviewWorld!=null)return;
             try {
                 avatarPreviewWorld=new World();
+                installClassicLighting(avatarPreviewWorld);
                 Background background=new Background();
                 background.setColor(0x243B50);
                 background.setColorClearEnable(true);
