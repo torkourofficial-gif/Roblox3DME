@@ -148,11 +148,10 @@ final class LanSession {
     }
 
     void sendChat(String message) {
-        if(message==null)return;
+        if(closed||message==null)return;
         message=message.trim();if(message.length()==0)return;
         if(message.length()>120)message=message.substring(0,120);
         synchronized(this){PlayerState p=players[localSlot];p.chatSequence++;p.chatMessage=message;}
-        if(host)broadcast();
     }
 
     void publish(float x, float y, float z, float yaw, int health, boolean alive,
