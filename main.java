@@ -3135,7 +3135,14 @@ public final class main extends MIDlet {
                 coords[out++] = (short)(y * 1000.0f);
                 coords[out++] = (short)(-radius * Math.cos(a1) * 1000.0);
             }
-            return makeSolidMesh(coords, strips, color);
+            short[] normals = new short[coords.length];
+            short ny = (short)(y < 0.0f ? -32767 : 32767);
+            for (int i = 0; i < segments * 3; i++) {
+                normals[i * 3] = 0;
+                normals[i * 3 + 1] = ny;
+                normals[i * 3 + 2] = 0;
+            }
+            return makeSolidMesh(coords, strips, color, normals);
         }
 
         private Mesh makeSolidMesh(short[] coords, int[] stripLengths, int color) {
@@ -3236,6 +3243,10 @@ public final class main extends MIDlet {
             mat.setColor(Material.EMISSIVE, scaleRgb(color, 0.12f));
             mat.setShininess(0.0f);
             ap.setMaterial(mat);
+            PolygonMode pm = new PolygonMode();
+            pm.setCulling(PolygonMode.CULL_NONE);
+            pm.setShading(PolygonMode.SHADE_SMOOTH);
+            ap.setPolygonMode(pm);
             Mesh mesh = new Mesh(vb, new IndexBuffer[] { ta }, new Appearance[] { ap });
             mesh.setTranslation(x,y,z);
             return mesh;
