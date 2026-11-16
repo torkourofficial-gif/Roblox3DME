@@ -141,6 +141,7 @@ public final class main extends MIDlet {
         private Group swordVisual;
         private Image logoSource, titleBackgroundSource, skySource;
         private Texture2D cachedPlayerFaceTexture, cachedZombieFaceTexture;
+        private Texture2D cachedStudsTexture;
         private Image scaledLogo;
         private int[] menuPanPixels;
         private float menuPanScale;
@@ -446,6 +447,7 @@ public final class main extends MIDlet {
             logoSource = loadImageResource("/logoR.png", "/meblox/logoR.png");
             titleBackgroundSource = loadImageResource("/bgtitle.png", "/meblox/bgtitle.png");
             skySource = loadImageResource("/skyboxR.png", "/meblox/skyboxR.png");
+            loadStudsTexture();
             if (logoSource == null) modelError = "logoR.png not found";
             if (titleBackgroundSource == null) modelError = "bgtitle.png not found";
             if (skySource != null) {
@@ -496,6 +498,23 @@ public final class main extends MIDlet {
             }
         }
 
+        private void loadStudsTexture() {
+            try {
+                Image image = loadImageResource("/studs.png", "/meblox/studs.png");
+                if (image == null) {
+                    if (modelError.length() == 0) modelError = "studs.png not found";
+                    return;
+                }
+                Image textureImage = makePowerOfTwoImage(image);
+                cachedStudsTexture = new Texture2D(new Image2D(Image2D.RGBA, textureImage));
+                cachedStudsTexture.setFiltering(Texture2D.FILTER_NEAREST, Texture2D.FILTER_NEAREST);
+                cachedStudsTexture.setWrapping(Texture2D.WRAP_REPEAT, Texture2D.WRAP_REPEAT);
+                cachedStudsTexture.setBlending(Texture2D.FUNC_MODULATE);
+            } catch (Throwable t) {
+                cachedStudsTexture = null;
+                if (modelError.length() == 0) modelError = "studs.png: " + t.toString();
+            }
+        }
         private synchronized void stopMusic() {
             Player old=musicPlayer;
             musicPlayer=null;
@@ -595,24 +614,24 @@ public final class main extends MIDlet {
             // Every mode uses a compact procedural scene; Lava Rise replaces the floor with lava.
             // Obby, falling tiles, and their time trial course should float over the void.
             if (game != 0 && game != 4 && game != 6 && game != 7)
-                world.addChild(makeBox(0, -0.25f, 0,
+                world.addChild(makeStuddedBox(0, -0.25f, 0,
                         game == 11 ? 44 : 24, 0.5f, game == 11 ? 44 : 24, 0x54A64B));
             meteorBursts = new MeteorBurst[4];
             if (game == 0) {
                 // An 80-platform zigzag course ending on an enlarged green finish.
                 for (int i = 0; i < OBBY_BLOCKS.length; i++) {
                     float[] b = OBBY_BLOCKS[i];
-                    world.addChild(makeBox(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]));
+                    world.addChild(makeStuddedBox(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]));
                 }
             } else if (game == 1) {
                 // Red touch-to-die test block in the baseplate lobby.
                 float[] hazard=new BaseplateLevel().blocks()[0];
-                world.addChild(makeBox(hazard[0],hazard[1],hazard[2],hazard[3],hazard[4],hazard[5],(int)hazard[6]));
+                world.addChild(makeStuddedBox(hazard[0],hazard[1],hazard[2],hazard[3],hazard[4],hazard[5],(int)hazard[6]));
             } else if (game == 2) {
                 // Multi-level zombie arena with cover, side ledges and jumpable steps.
                 for (int i = 0; i < ZOMBIE_BLOCKS.length; i++) {
                     float[] b = ZOMBIE_BLOCKS[i];
-                    world.addChild(makeBox(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]));
+                    world.addChild(makeStuddedBox(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]));
                 }
             } else if (game == 3) {
                 // Studio begins with a clear baseplate and restores any objects in the editor.
@@ -671,7 +690,7 @@ public final class main extends MIDlet {
             if (modeBlockCount >= modeBlocks.length) return -1;
             int i = modeBlockCount++;
             modeBlocks[i] = new float[] {x,y,z,sx,sy,sz,color};
-            modeBlockNodes[i] = makeBox(x,y,z,sx,sy,sz,color);
+            modeBlockNodes[i] = makeStuddedBox(x,y,z,sx,sy,sz,color);
             modeBlockActive[i] = true;
             world.addChild(modeBlockNodes[i]);
             return i;
@@ -2916,7 +2935,7 @@ public final class main extends MIDlet {
         private Group makePivotedLimb(float x,float jointY,float width,float height,float depth,int color) {
             Group pivot=new Group();
             pivot.setTranslation(x,jointY,0.0f);
-            pivot.addChild(makeBox(0.0f,-height*0.5f,0.0f,width,height,depth,color));
+            pivot.addChild(makeStuddedBox(0.0f,-height*0.5f,0.0f,width,height,depth,color));
             return pivot;
         }
 
@@ -3038,6 +3057,21 @@ public final class main extends MIDlet {
             target.addChild(sun);
         }
 
+        private Appearance makeStudsAppearance(int color) {
+            Appearance ap = new Appearance();
+            ap.setTexture(0, cachedStudsTexture);
+            Material mat = new Material();
+            mat.setColor(Material.AMBIENT, scaleRgb(color, 0.50f));
+            mat.setColor(Material.DIFFUSE, scaleRgb(color, 0.85f));
+            mat.setColor(Material.EMISSIVE, scaleRgb(color, 0.12f));
+            mat.setShininess(0.0f);
+            ap.setMaterial(mat);
+            PolygonMode pm = new PolygonMode();
+            pm.setCulling(PolygonMode.CULL_NONE);
+            pm.setShading(PolygonMode.SHADE_FLAT);
+            ap.setPolygonMode(pm);
+            return ap;
+        }
         private Appearance makeSolidAppearance(int color) {
             Appearance ap = new Appearance();
             Material mat = new Material();
@@ -3228,6 +3262,16 @@ public final class main extends MIDlet {
         }
 
         private Node makeBox(float x, float y, float z, float sx, float sy, float sz, int color) {
+            return makeBox(x,y,z,sx,sy,sz,color,false);
+        }
+
+        private Node makeStuddedBox(float x, float y, float z,
+                float sx, float sy, float sz, int color) {
+            return makeBox(x,y,z,sx,sy,sz,color,true);
+        }
+
+        private Node makeBox(float x, float y, float z, float sx, float sy, float sz,
+                int color, boolean studsTop) {
             float[] corners = new float[] {
                 -sx/2,-sy/2,-sz/2, sx/2,-sy/2,-sz/2, -sx/2,sy/2,-sz/2, sx/2,sy/2,-sz/2,
                 -sx/2,-sy/2,sz/2, sx/2,-sy/2,sz/2, -sx/2,sy/2,sz/2, sx/2,sy/2,sz/2
@@ -3257,20 +3301,37 @@ public final class main extends MIDlet {
             VertexBuffer vb = new VertexBuffer();
             vb.setPositions(va, 0.001f, null);
             vb.setNormals(getSharedBoxNormals());
-            int[] stripLengths = new int[] {4, 4, 4, 4, 4, 4};
-            TriangleStripArray ta = new TriangleStripArray(0, stripLengths);
-            Appearance ap = new Appearance();
+            if (studsTop && cachedStudsTexture != null) {
+                short[] uv = new short[24 * 2];
+                // The upper face uses vertices 12..15 in faceOrder.
+                uv[24] = 0;    uv[25] = 0;
+                uv[26] = 0;    uv[27] = 1000;
+                uv[28] = 1000; uv[29] = 0;
+                uv[30] = 1000; uv[31] = 1000;
+                VertexArray texCoords = new VertexArray(24, 2, 2);
+                texCoords.set(0, 24, uv);
+                vb.setTexCoords(0, texCoords, 0.001f, null);
+            }
+            Appearance solid = new Appearance();
             Material mat = new Material();
             mat.setColor(Material.AMBIENT, scaleRgb(color, 0.50f));
             mat.setColor(Material.DIFFUSE, scaleRgb(color, 0.85f));
             mat.setColor(Material.EMISSIVE, scaleRgb(color, 0.12f));
             mat.setShininess(0.0f);
-            ap.setMaterial(mat);
+            solid.setMaterial(mat);
             PolygonMode pm = new PolygonMode();
             pm.setCulling(PolygonMode.CULL_NONE);
             pm.setShading(PolygonMode.SHADE_SMOOTH);
-            ap.setPolygonMode(pm);
-            Mesh mesh = new Mesh(vb, new IndexBuffer[] { ta }, new Appearance[] { ap });
+            solid.setPolygonMode(pm);
+            IndexBuffer[] faces = new IndexBuffer[6];
+            Appearance[] appearances = new Appearance[6];
+            for (int face = 0; face < 6; face++) {
+                faces[face] = new TriangleStripArray(face * 4, new int[] {4});
+                appearances[face] = solid;
+            }
+            if (studsTop && cachedStudsTexture != null)
+                appearances[3] = makeStudsAppearance(color);
+            Mesh mesh = new Mesh(vb, faces, appearances);
             mesh.setTranslation(x,y,z);
             return mesh;
         }
@@ -3761,7 +3822,7 @@ public final class main extends MIDlet {
             float y = sy * 0.5f;
             StudioObject object = new StudioObject(type,x,y,z,sx,sy,sz,color);
             studioObjects[studioObjectCount] = object;
-            object.node = makeBox(x,y,z,sx,sy,sz,color);
+            object.node = makeStuddedBox(x,y,z,sx,sy,sz,color);
             world.addChild(object.node);
             studioSelected = studioObjectCount++;
             studioPalette = (studioPalette + 1) % STUDIO_TYPE_NAMES.length;
@@ -3825,7 +3886,7 @@ public final class main extends MIDlet {
             if (object.node != null) {
                 try { world.removeChild(object.node); } catch (Throwable ignored) {}
             }
-            object.node = makeBox(object.x,object.y,object.z,
+            object.node = makeStuddedBox(object.x,object.y,object.z,
                     object.sx,object.sy,object.sz,object.color);
             world.addChild(object.node);
             modelStatus = "Studio object " + (studioSelected + 1) +
@@ -3848,7 +3909,7 @@ public final class main extends MIDlet {
             for (int i=0; i<studioObjectCount; i++) {
                 StudioObject object = studioObjects[i];
                 if (object == null) continue;
-                object.node = makeBox(object.x,object.y,object.z,
+                object.node = makeStuddedBox(object.x,object.y,object.z,
                         object.sx,object.sy,object.sz,object.color);
                 world.addChild(object.node);
             }
