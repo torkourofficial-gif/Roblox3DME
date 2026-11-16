@@ -72,6 +72,8 @@ public final class main extends MIDlet {
         private Image avatarPreviewImage;
         private Graphics avatarPreviewImageGraphics;
         private int avatarPreviewImageWidth=-1, avatarPreviewImageHeight=-1;
+        private int[] avatarPreviewLowPixels, avatarPreviewDisplayPixels;
+        private int avatarPreviewDisplayWidth=-1, avatarPreviewDisplayHeight=-1;
         private boolean avatarPreviewPrerenderFailed;
         private long avatarPreviewLastRenderTime;
         private int[] lanAvatarSkins = {-1,-1,-1,-1,-1};
@@ -3981,6 +3983,9 @@ public final class main extends MIDlet {
             avatarPreviewImage=null;
             avatarPreviewImageGraphics=null;
             avatarPreviewImageWidth=avatarPreviewImageHeight=-1;
+            avatarPreviewLowPixels=null;
+            avatarPreviewDisplayPixels=null;
+            avatarPreviewDisplayWidth=avatarPreviewDisplayHeight=-1;
             avatarPreviewPrerenderFailed=false;
             avatarPreviewLastRenderTime=0L;
             if(avatarPreviewWorld==null) {
@@ -4001,30 +4006,52 @@ public final class main extends MIDlet {
             ensureAvatarPreview();
             if(avatarPreviewWorld==null||width<1||height<1)return;
             long previewNow=System.currentTimeMillis();
-            boolean previewSizeChanged=avatarPreviewImageWidth!=width||
-                    avatarPreviewImageHeight!=height;
+            int lowWidth=Math.max(1,width/2);
+            int lowHeight=Math.max(1,height/2);
+            boolean previewSizeChanged=avatarPreviewImageWidth!=lowWidth||
+                    avatarPreviewImageHeight!=lowHeight;
+            boolean displaySizeChanged=avatarPreviewDisplayWidth!=width||
+                    avatarPreviewDisplayHeight!=height;
             boolean previewNeedsFrame=avatarPreviewImage==null||previewSizeChanged||
-                    previewNow-avatarPreviewLastRenderTime>=100L;
+                    previewNow-avatarPreviewLastRenderTime>=200L;
             if(!avatarPreviewPrerenderFailed&&previewNeedsFrame) {
                 boolean bound=false;
                 try {
-                    if(avatarPreviewImage==null||previewSizeChanged) {
-                        avatarPreviewImage=Image.createImage(width,height);
+                    if(previewSizeChanged) {
+                        avatarPreviewImage=Image.createImage(lowWidth,lowHeight);
                         avatarPreviewImageGraphics=avatarPreviewImage.getGraphics();
-                        avatarPreviewImageWidth=width;
-                        avatarPreviewImageHeight=height;
+                        avatarPreviewImageWidth=lowWidth;
+                        avatarPreviewImageHeight=lowHeight;
+                        avatarPreviewLowPixels=new int[lowWidth*lowHeight];
+                    }
+                    if(displaySizeChanged||avatarPreviewDisplayPixels==null) {
+                        avatarPreviewDisplayPixels=new int[width*height];
+                        avatarPreviewDisplayWidth=width;
+                        avatarPreviewDisplayHeight=height;
                     }
                     Graphics target=avatarPreviewImageGraphics;
-                    avatarPreviewCamera.setPerspective(32.0f,(float)width/(float)height,
-                            0.1f,20.0f);
+                    avatarPreviewCamera.setPerspective(32.0f,
+                            (float)lowWidth/(float)lowHeight,0.1f,20.0f);
                     float previewAngle=(float)((previewNow/200L)%360L);
                     avatarPreviewModel.setOrientation(previewAngle,0.0f,1.0f,0.0f);
-                    g3d.bindTarget(target,true,Graphics3D.DITHER);
+                    g3d.bindTarget(target,true,0);
                     bound=true;
-                    g3d.setViewport(0,0,width,height);
+                    g3d.setViewport(0,0,lowWidth,lowHeight);
                     g3d.render(avatarPreviewWorld);
                     g3d.releaseTarget();
                     bound=false;
+                    avatarPreviewImage.getRGB(avatarPreviewLowPixels,0,lowWidth,
+                            0,0,lowWidth,lowHeight);
+                    for(int dy=0;dy<height;dy++) {
+                        int sourceY=(dy*lowHeight)/height;
+                        int sourceRow=sourceY*lowWidth;
+                        int targetRow=dy*width;
+                        for(int dx=0;dx<width;dx++) {
+                            int sourceX=(dx*lowWidth)/width;
+                            avatarPreviewDisplayPixels[targetRow+dx]=
+                                    avatarPreviewLowPixels[sourceRow+sourceX];
+                        }
+                    }
                     avatarPreviewLastRenderTime=previewNow;
                 } catch(Throwable t) {
                     modelError="Avatar preview: "+t.toString();
@@ -4033,18 +4060,17 @@ public final class main extends MIDlet {
                     if(bound)try{g3d.releaseTarget();}catch(Throwable ignored){}
                 }
             }
-            if(avatarPreviewImage!=null) {
-                g.drawImage(avatarPreviewImage,x,y,Graphics.TOP|Graphics.LEFT);
+            if(!avatarPreviewPrerenderFailed&&avatarPreviewDisplayPixels!=null) {
+                g.drawRGB(avatarPreviewDisplayPixels,0,width,x,y,width,height,false);
             } else {
-                // Some early JSR-184 implementations cannot bind an offscreen Image Graphics.
-                // Keep the editor usable there by falling back to direct rendering.
+                // Compatibility fallback for M3G implementations that cannot bind offscreen images.
                 boolean bound=false;
                 try {
                     avatarPreviewCamera.setPerspective(32.0f,(float)width/(float)height,
                             0.1f,20.0f);
                     float previewAngle=(float)((previewNow/200L)%360L);
                     avatarPreviewModel.setOrientation(previewAngle,0.0f,1.0f,0.0f);
-                    g3d.bindTarget(g,true,Graphics3D.DITHER);
+                    g3d.bindTarget(g,true,0);
                     bound=true;
                     g3d.setViewport(x,y,width,height);
                     g3d.render(avatarPreviewWorld);
