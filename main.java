@@ -2969,16 +2969,24 @@ public final class main extends MIDlet {
 
         private Image makePowerOfTwoPaddedImage(Image source) {
             int sourceWidth=source.getWidth(),sourceHeight=source.getHeight();
-            int width=1,height=1;
-            while(width<sourceWidth)width*=2;
-            while(height<sourceHeight)height*=2;
-            if(width==sourceWidth&&height==sourceHeight)return source;
+            // Clothing atlases are 585x559. Resample their content to 512x489
+            // and pad to 512x512, avoiding a 1024x1024 RGBA texture per outfit.
+            final int width=512,height=512;
+            int contentHeight=(sourceHeight*width)/sourceWidth;
+            if(contentHeight<1||contentHeight>height)
+                throw new IllegalArgumentException("Unsupported clothing atlas size");
             int[] sourcePixels=new int[sourceWidth*sourceHeight];
             source.getRGB(sourcePixels,0,sourceWidth,0,0,sourceWidth,sourceHeight);
             int[] pixels=new int[width*height];
-            // Transparent padding keeps atlas pixel coordinates unchanged.
-            for(int y=0;y<sourceHeight;y++)
-                System.arraycopy(sourcePixels,y*sourceWidth,pixels,y*width,sourceWidth);
+            for(int y=0;y<contentHeight;y++) {
+                int sourceY=(y*sourceHeight)/contentHeight;
+                int sourceRow=sourceY*sourceWidth;
+                int targetRow=y*width;
+                for(int x=0;x<width;x++) {
+                    int sourceX=(x*sourceWidth)/width;
+                    pixels[targetRow+x]=sourcePixels[sourceRow+sourceX];
+                }
+            }
             return Image.createRGBImage(pixels,width,height,true);
         }
 
@@ -3002,14 +3010,12 @@ public final class main extends MIDlet {
             VertexBuffer vb=new VertexBuffer();
             vb.setPositions(positions,0.001f,null);
             vb.setNormals(getSharedBoxNormals());
-            // Atlas is padded (not rescaled) to power-of-two dimensions for M3G.
-            int atlasWidth=1,atlasHeight=1;
-            while(atlasWidth<585)atlasWidth*=2;
-            while(atlasHeight<559)atlasHeight*=2;
+            // UVs stay in the original 585x559 atlas coordinate system.
+            // The image is uniformly resampled to 512x489, then padded to 512x512.
             for(int f=0;f<6;f++) {
                 int[] r=regions[f];
-                float u0=(float)r[0]/atlasWidth,u1=(float)(r[0]+r[2])/atlasWidth;
-                float v0=(float)r[1]/atlasHeight,v1=(float)(r[1]+r[3])/atlasHeight;
+                float u0=(float)r[0]/585.0f,u1=(float)(r[0]+r[2])/585.0f;
+                float v0=(float)r[1]/559.0f,v1=(float)(r[1]+r[3])/559.0f;
                 int k=f*8;
                 uv[k]=(short)(u0*1000);uv[k+1]=(short)(v1*1000);
                 uv[k+2]=(short)(u0*1000);uv[k+3]=(short)(v0*1000);
