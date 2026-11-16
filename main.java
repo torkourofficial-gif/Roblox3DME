@@ -3049,7 +3049,9 @@ public final class main extends MIDlet {
             // Classic template atlas mapping: torso, sleeves and both trouser legs.
             Texture2D shirt=getClothingTexture(true,zombie?0:avatarShirtStyle);
             Texture2D pants=getClothingTexture(false,zombie?0:avatarPantsStyle);
-            model.addChild(makeClothingBox(0,1.45f,0,0.78f,0.95f,0.40f,
+            // Opaque body underlay lets transparent template pixels reveal the body color.
+            model.addChild(makeBox(0,1.45f,0,0.78f,0.95f,0.40f,clothing));
+            model.addChild(makeClothingBox(0,1.45f,0,0.784f,0.954f,0.404f,
                     clothing,shirt,shirtTorsoRegions()));
             // Preserve the classic two-stud top plate above the shirt template.
             model.addChild(makeStuddedBox(0,1.922f,0,0.78f,0.006f,0.40f,clothing));
@@ -3081,7 +3083,10 @@ public final class main extends MIDlet {
                 float depth,int color,boolean studsTop,Texture2D texture,int[][] regions) {
             Group pivot=new Group();
             pivot.setTranslation(x,jointY,0.0f);
-            Node body=makeClothingBox(0.0f,-height*0.5f,0.0f,width,height,depth,color,texture,regions);
+            // Solid underlay shows through transparent pixels in shirt/pants templates.
+            pivot.addChild(makeBox(0.0f,-height*0.5f,0.0f,width,height,depth,color));
+            Node body=makeClothingBox(0.0f,-height*0.5f,0.0f,width+0.004f,height+0.004f,
+                    depth+0.004f,color,texture,regions);
             pivot.addChild(body);
             if(studsTop) {
                 // Keep the classic stud plate visible on top of the sleeves.
