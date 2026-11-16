@@ -959,9 +959,8 @@ public final class main extends MIDlet {
                     }
                     continue;
                 }
-                // Keep simulation state while the bot is outside the camera view.
-                // Recreate its M3G nodes only when it becomes visible again.
-                if(bot.model==null&&isBotInView(bot))addPlayerBotModel(bot,false);
+                // Visibility is checked once, after simulation, in syncBotModelVisibility().
+                // Avoid projecting every bot twice per frame on low-end M3G devices.
                 if(bot.attackUntil>0&&gameClock>=bot.attackUntil){
                     if(bot.swordArm!=null)bot.swordArm.setOrientation(0,1,0,0);
                     if(bot.sword!=null)bot.sword.setRenderingEnable(false);
@@ -1664,20 +1663,21 @@ public final class main extends MIDlet {
                 Zombie z = zombies[i];
                 if (z == null || !z.alive) continue;
                 float dx = px - z.x, dz = pz - z.z;
-                float distance = (float)Math.sqrt(dx * dx + dz * dz);
-                if (distance > 0.82f) {
-                    float moveX = dx / distance * speed;
-                    float moveZ = dz / distance * speed;
+                float distanceSquared = dx * dx + dz * dz;
+                if (distanceSquared > 0.82f * 0.82f) {
+                    float inverseDistance = 1.0f / (float)Math.sqrt(distanceSquared);
+                    float moveX = dx * inverseDistance * speed;
+                    float moveZ = dz * inverseDistance * speed;
                     float nextX = z.x + moveX, nextZ = z.z + moveZ;
                     if (!isWorldBlocked(nextX, z.z, 0.0f, 1.9f)) z.x = nextX;
                     if (!isWorldBlocked(z.x, nextZ, 0.0f, 1.9f)) z.z = nextZ;
                     dx = px - z.x; dz = pz - z.z;
+                    distanceSquared = dx * dx + dz * dz;
                     if (moveX != 0.0f || moveZ != 0.0f)
                         z.model.setOrientation((float)(fastAtan2(-moveX, -moveZ) * 57.29578f), 0, 1, 0);
                 }
                 z.model.setTranslation(z.x, 0, z.z);
-                distance = (float)Math.sqrt(dx * dx + dz * dz);
-                if (distance < 0.9f && gameClock >= z.attackAt) {
+                if (distanceSquared < 0.9f * 0.9f && gameClock >= z.attackAt) {
                     z.attackAt = gameClock + 900;
                     if (gameClock >= invulnerableUntil && !dead) {
                         damagePlayer(35);
@@ -2411,11 +2411,10 @@ public final class main extends MIDlet {
             else wantedAnimation = 0;
             animation = wantedAnimation;
             animateNoob();
-            if (world != null) {
-                try { world.animate(animTime); } catch (Throwable t) {}
-            }
+            // All character animation is updated explicitly by animateNoob()/bot updates.
+            // This world has no AnimationTrack/KeyframeSequence objects, so world.animate()
+            // only adds a needless scene-graph traversal every frame.
             updateExtraGame(dt);
-            if (currentGame == 2) updateHordeStatus();
         }
 
         private void resolveLanding(float previousY) {
