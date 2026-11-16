@@ -17,7 +17,7 @@ import javax.microedition.lcdui.CommandListener;
 
 /**
  * Roblox3DME: minimal JSR-184 playground/controller.
- * The character is generated in Java; put faceNEW.png and faceZomb.png in /meblox/ (or the JAR root).
+ * The character is generated in Java; put face.png and Face1.png-Face3.png in /meblox/ (or the JAR root).
  * Intended for MIDP 2.0 + JSR-184 (M3G) devices.
  */
 public final class main extends MIDlet {
@@ -2851,7 +2851,7 @@ public final class main extends MIDlet {
             } else {
                 g.setColor(0xFFFFFF);
                 g.drawString("Roblox3DME - model load failed", 4, 4, Graphics.TOP|Graphics.LEFT);
-                g.drawString("Check Java model and faceNEW.png / faceZomb.png", 4, 22, Graphics.TOP|Graphics.LEFT);
+                g.drawString("Check Java model and face.png / Face1.png-Face3.png", 4, 22, Graphics.TOP|Graphics.LEFT);
             }
             if(currentGame==11&&modeEventAt>gameClock&&modeEventAt>0){
                 g.setColor(0x000000);
@@ -3268,7 +3268,7 @@ public final class main extends MIDlet {
             // Preserve the classic two-stud top plate above the shirt template.
             model.addChild(makeStuddedBox(0,1.922f,0,0.78f,0.006f,0.40f,clothing));
             model.addChild(makeRoundedCylinderHead(skin));
-            model.addChild(makeTexturedFace(zombie ? "faceZomb.png" : avatarFaceResource(), skin));
+            model.addChild(makeTexturedFace(zombie ? "face.png" : avatarFaceResource(), skin));
             if(!zombie&&avatarHatStyle>0)model.addChild(buildClassicHat(avatarHatStyle));
             Group modelLeftArm = makePivotedClothedLimb(-0.585f,1.925f,0.39f,0.95f,0.40f,
                     skin,true,shirt,shirtSleeveRegions(true));
