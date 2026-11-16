@@ -72,6 +72,7 @@ public final class main extends MIDlet {
         private Image avatarPreviewImage;
         private int avatarPreviewImageWidth=-1, avatarPreviewImageHeight=-1;
         private boolean avatarPreviewPrerenderFailed;
+        private long avatarPreviewLastRenderTime;
         private int[] lanAvatarSkins = {-1,-1,-1,-1,-1};
         private int[] lanAvatarShirts = {-1,-1,-1,-1,-1};
         private int[] lanAvatarLegs = {-1,-1,-1,-1,-1};
@@ -3962,8 +3963,8 @@ public final class main extends MIDlet {
                 background.setDepthClearEnable(true);
                 avatarPreviewWorld.setBackground(background);
                 avatarPreviewCamera=new Camera();
-                avatarPreviewCamera.setPerspective(40.0f,0.75f,0.1f,20.0f);
-                avatarPreviewCamera.setTranslation(0.0f,1.2f,5.8f);
+                avatarPreviewCamera.setPerspective(32.0f,0.75f,0.1f,20.0f);
+                avatarPreviewCamera.setTranslation(0.0f,1.25f,5.0f);
                 avatarPreviewWorld.addChild(avatarPreviewCamera);
                 avatarPreviewWorld.setActiveCamera(avatarPreviewCamera);
                 avatarPreviewModel=buildPreviewAvatar();
@@ -3979,6 +3980,7 @@ public final class main extends MIDlet {
             avatarPreviewImage=null;
             avatarPreviewImageWidth=avatarPreviewImageHeight=-1;
             avatarPreviewPrerenderFailed=false;
+            avatarPreviewLastRenderTime=0L;
             if(avatarPreviewWorld==null) {
                 ensureAvatarPreview();
                 return;
@@ -3996,15 +3998,20 @@ public final class main extends MIDlet {
         private void renderAvatarPreview(Graphics g,int x,int y,int width,int height) {
             ensureAvatarPreview();
             if(avatarPreviewWorld==null||width<1||height<1)return;
-            if(!avatarPreviewPrerenderFailed&&(avatarPreviewImage==null||
-                    avatarPreviewImageWidth!=width||avatarPreviewImageHeight!=height)) {
+            long previewNow=System.currentTimeMillis();
+            boolean previewSizeChanged=avatarPreviewImageWidth!=width||
+                    avatarPreviewImageHeight!=height;
+            boolean previewNeedsFrame=avatarPreviewImage==null||previewSizeChanged||
+                    previewNow-avatarPreviewLastRenderTime>=100L;
+            if(!avatarPreviewPrerenderFailed&&previewNeedsFrame) {
                 boolean bound=false;
                 try {
                     Image rendered=Image.createImage(width,height);
                     Graphics target=rendered.getGraphics();
-                    avatarPreviewCamera.setPerspective(40.0f,(float)width/(float)height,
+                    avatarPreviewCamera.setPerspective(32.0f,(float)width/(float)height,
                             0.1f,20.0f);
-                    avatarPreviewModel.setOrientation(18.0f,0.0f,1.0f,0.0f);
+                    float previewAngle=(float)((previewNow/200L)%360L);
+                    avatarPreviewModel.setOrientation(previewAngle,0.0f,1.0f,0.0f);
                     g3d.bindTarget(target,true,Graphics3D.DITHER);
                     bound=true;
                     g3d.setViewport(0,0,width,height);
@@ -4014,6 +4021,7 @@ public final class main extends MIDlet {
                     avatarPreviewImage=rendered;
                     avatarPreviewImageWidth=width;
                     avatarPreviewImageHeight=height;
+                    avatarPreviewLastRenderTime=previewNow;
                 } catch(Throwable t) {
                     modelError="Avatar preview: "+t.toString();
                     avatarPreviewPrerenderFailed=true;
@@ -4028,9 +4036,10 @@ public final class main extends MIDlet {
                 // Keep the editor usable there by falling back to direct rendering.
                 boolean bound=false;
                 try {
-                    avatarPreviewCamera.setPerspective(40.0f,(float)width/(float)height,
+                    avatarPreviewCamera.setPerspective(32.0f,(float)width/(float)height,
                             0.1f,20.0f);
-                    avatarPreviewModel.setOrientation(18.0f,0.0f,1.0f,0.0f);
+                    float previewAngle=(float)((previewNow/200L)%360L);
+                    avatarPreviewModel.setOrientation(previewAngle,0.0f,1.0f,0.0f);
                     g3d.bindTarget(g,true,Graphics3D.DITHER);
                     bound=true;
                     g3d.setViewport(x,y,width,height);
@@ -4069,9 +4078,9 @@ public final class main extends MIDlet {
             g.drawString("AVATAR CUSTOMIZER",width/2,panelY+4,Graphics.TOP|Graphics.HCENTER);
 
             int rowHeight=Math.max(13,Math.min(16,font.getHeight()+1));
-            int previewHeight=Math.max(30,Math.min(100,
+            int previewHeight=Math.max(40,Math.min(118,
                     panelHeight-34-7*rowHeight-font.getHeight()-12));
-            int previewWidth=Math.min(panelWidth-16,Math.max(64,previewHeight*9/10));
+            int previewWidth=Math.min(panelWidth-16,Math.max(100,previewHeight*3/2));
             int previewX=(width-previewWidth)/2;
             int previewY=panelY+20;
             g.setColor(0x101B27);
