@@ -611,6 +611,8 @@ public final class main extends MIDlet {
         private void startGame(int game) throws Exception {
             lanMenu = false;
             currentGame = game;
+            obbyNodes = null;
+            nextObbyCullAt = 0;
             if (game == 3) studioTesting = false;
             menuMode = false;
             paused = false;
@@ -2448,7 +2450,7 @@ public final class main extends MIDlet {
                 float[] block = OBBY_BLOCKS[i];
                 float dx = block[0] - px, dz = block[2] - pz;
                 boolean nearby = dx * dx + dz * dz <= renderRadiusSquared;
-                if (node.isRenderingEnabled() != nearby) node.setRenderingEnable(nearby);
+                node.setRenderingEnable(nearby);
             }
         }
 
