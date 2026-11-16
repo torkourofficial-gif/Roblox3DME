@@ -71,6 +71,7 @@ public final class main extends MIDlet {
         private Group avatarPreviewModel;
         private Image avatarPreviewImage;
         private int avatarPreviewImageWidth=-1, avatarPreviewImageHeight=-1;
+        private boolean avatarPreviewPrerenderFailed;
         private int[] lanAvatarSkins = {-1,-1,-1,-1,-1};
         private int[] lanAvatarShirts = {-1,-1,-1,-1,-1};
         private int[] lanAvatarLegs = {-1,-1,-1,-1,-1};
@@ -3977,6 +3978,7 @@ public final class main extends MIDlet {
         private void rebuildAvatarPreview() {
             avatarPreviewImage=null;
             avatarPreviewImageWidth=avatarPreviewImageHeight=-1;
+            avatarPreviewPrerenderFailed=false;
             if(avatarPreviewWorld==null) {
                 ensureAvatarPreview();
                 return;
@@ -3994,8 +3996,8 @@ public final class main extends MIDlet {
         private void renderAvatarPreview(Graphics g,int x,int y,int width,int height) {
             ensureAvatarPreview();
             if(avatarPreviewWorld==null||width<1||height<1)return;
-            if(avatarPreviewImage==null||avatarPreviewImageWidth!=width||
-                    avatarPreviewImageHeight!=height) {
+            if(!avatarPreviewPrerenderFailed&&(avatarPreviewImage==null||
+                    avatarPreviewImageWidth!=width||avatarPreviewImageHeight!=height)) {
                 boolean bound=false;
                 try {
                     Image rendered=Image.createImage(width,height);
@@ -4014,12 +4016,31 @@ public final class main extends MIDlet {
                     avatarPreviewImageHeight=height;
                 } catch(Throwable t) {
                     modelError="Avatar preview: "+t.toString();
+                    avatarPreviewPrerenderFailed=true;
                 } finally {
                     if(bound)try{g3d.releaseTarget();}catch(Throwable ignored){}
                 }
             }
-            if(avatarPreviewImage!=null)
+            if(avatarPreviewImage!=null) {
                 g.drawImage(avatarPreviewImage,x,y,Graphics.TOP|Graphics.LEFT);
+            } else {
+                // Some early JSR-184 implementations cannot bind an offscreen Image Graphics.
+                // Keep the editor usable there by falling back to direct rendering.
+                boolean bound=false;
+                try {
+                    avatarPreviewCamera.setPerspective(40.0f,(float)width/(float)height,
+                            0.1f,20.0f);
+                    avatarPreviewModel.setOrientation(18.0f,0.0f,1.0f,0.0f);
+                    g3d.bindTarget(g,true,Graphics3D.DITHER);
+                    bound=true;
+                    g3d.setViewport(x,y,width,height);
+                    g3d.render(avatarPreviewWorld);
+                } catch(Throwable t) {
+                    modelError="Avatar preview: "+t.toString();
+                } finally {
+                    if(bound)try{g3d.releaseTarget();}catch(Throwable ignored){}
+                }
+            }
         }
 
         private void drawAvatarSettingsPanel(Graphics g) {
@@ -4050,7 +4071,7 @@ public final class main extends MIDlet {
             int rowHeight=Math.max(13,Math.min(16,font.getHeight()+1));
             int previewHeight=Math.max(30,Math.min(100,
                     panelHeight-34-7*rowHeight-font.getHeight()-12));
-            int previewWidth=Math.min(panelWidth-16,Math.max(48,previewHeight*3/4));
+            int previewWidth=Math.min(panelWidth-16,Math.max(64,previewHeight*9/10));
             int previewX=(width-previewWidth)/2;
             int previewY=panelY+20;
             g.setColor(0x101B27);
