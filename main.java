@@ -3310,7 +3310,10 @@ public final class main extends MIDlet {
                 int tilesZ = (int)(sz / 0.40f + 0.5f);
                 if (tilesX < 1) tilesX = 1;
                 if (tilesZ < 1) tilesZ = 1;
-                short uMax = (short)(tilesX * 1000);
+                // studs.png contains four stud tiles across its U axis.
+                // Sample one quarter of the image per stud: one on each arm,
+                // two across the torso, and repeat that same tile on larger floors.
+                short uMax = (short)(tilesX * 250);
                 short vMax = (short)(tilesZ * 1000);
                 // The upper face uses vertices 12..15 in faceOrder.
                 uv[24] = 0;    uv[25] = 0;
