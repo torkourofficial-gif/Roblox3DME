@@ -806,8 +806,8 @@ public final class main extends MIDlet {
                 leftArm=l;rightArm=r;leftLeg=ll;rightLeg=rl;swordVisual=sword;
                 if(bot.sword!=null)bot.sword.setRenderingEnable(false);
                 bot.model.setTranslation(bot.x,bot.y,bot.z);world.addChild(bot.model);
-                bot.alive=true;bot.health=100;
-                if(protectedSpawn){bot.aura=makeBotAura();bot.model.addChild(bot.aura);
+                bot.alive=true;
+                if(protectedSpawn){bot.health=100;bot.aura=makeBotAura();bot.model.addChild(bot.aura);
                     bot.invulnerableUntil=gameClock+4000;bot.auraUntil=bot.invulnerableUntil;}
             }catch(Throwable t){
                 bot.model=null;bot.aura=null;bot.alive=false;bot.respawnAt=gameClock+10000;
@@ -907,10 +907,10 @@ public final class main extends MIDlet {
                 if(!isWorldBlocked(bot.x,nz,bot.y,1.9f))bot.z=nz;
                 if(moveX!=0||moveZ!=0){
                     bot.yaw=fastAtan2(-moveX,-moveZ);
-                    bot.model.setOrientation(bot.yaw*57.29578f,0,1,0);
+                    if(bot.model!=null)bot.model.setOrientation(bot.yaw*57.29578f,0,1,0);
                 }
             }
-            bot.model.setTranslation(bot.x,bot.y,bot.z);
+            if(bot.model!=null)bot.model.setTranslation(bot.x,bot.y,bot.z);
         }
 
         private void updatePlayerBots(int dt) {
@@ -928,7 +928,9 @@ public final class main extends MIDlet {
                     }
                     continue;
                 }
-                if(bot.model==null){bot.alive=false;bot.respawnAt=gameClock+10000;continue;}
+                // Keep simulation state while the bot is outside the camera view.
+                // Recreate its M3G nodes only when it becomes visible again.
+                if(bot.model==null&&isBotInView(bot))addPlayerBotModel(bot,false);
                 if(bot.attackUntil>0&&gameClock>=bot.attackUntil){
                     if(bot.swordArm!=null)bot.swordArm.setOrientation(0,1,0,0);
                     if(bot.sword!=null)bot.sword.setRenderingEnable(false);
@@ -963,7 +965,7 @@ public final class main extends MIDlet {
                     bot.nextAttack=gameClock+2300+nextRandom(1200);
                     if(d<2.3f){
                         bot.yaw=fastAtan2(-dx,-dz);
-                        bot.model.setOrientation(bot.yaw*57.29578f,0,1,0);
+                        if(bot.model!=null)bot.model.setOrientation(bot.yaw*57.29578f,0,1,0);
                         animatePlayerBotWeapon(bot);
                         if(attackPlayer){
                             if(!dead&&gameClock>=invulnerableUntil)damagePlayer(35);
@@ -1017,7 +1019,7 @@ public final class main extends MIDlet {
                     if(!isWorldBlocked(bot.x,nz,bot.y,1.9f))bot.z=nz;
                     if(mx!=0||mz!=0){
                         bot.yaw=fastAtan2(-mx,-mz);
-                        bot.model.setOrientation(bot.yaw*57.29578f,0,1,0);
+                        if(bot.model!=null)bot.model.setOrientation(bot.yaw*57.29578f,0,1,0);
                     }
                 }
 
@@ -1038,9 +1040,30 @@ public final class main extends MIDlet {
                     bot.leftArm.setOrientation(gait,1,0,0);bot.rightArm.setOrientation(-gait,1,0,0);
                     bot.leftLeg.setOrientation(-gait,1,0,0);bot.rightLeg.setOrientation(gait,1,0,0);
                 }
-                bot.model.setTranslation(bot.x,bot.y,bot.z);
+                if(bot.model!=null){
+                    if(!isBotInView(bot))despawnBotModel(bot);
+                    else bot.model.setTranslation(bot.x,bot.y,bot.z);
+                }else if(isBotInView(bot)){
+                    addPlayerBotModel(bot,false);
+                }
             }
         }
+
+        private boolean isBotInView(PlayerBot bot) {
+            if(bot==null||getWidth()<=0||getHeight()<=0)return false;
+            if(!projectWorldToScreen(bot.x,bot.y+1.15f,bot.z))return false;
+            return projectedScreenX>=-8&&projectedScreenX<=getWidth()+8&&
+                    projectedScreenY>=-12&&projectedScreenY<=getHeight()+12;
+        }
+
+        private void despawnBotModel(PlayerBot bot) {
+            if(bot==null||bot.model==null)return;
+            try{world.removeChild(bot.model);}catch(Throwable ignored){}
+            bot.model=null;bot.aura=null;
+            bot.leftArm=bot.rightArm=bot.leftLeg=bot.rightLeg=null;
+            bot.swordArm=null;bot.sword=null;
+        }
+
         private int nearestLivingZombie(float x,float z) {
             int target=-1;float best=Float.MAX_VALUE;
             if(zombies==null)return -1;
@@ -2797,7 +2820,7 @@ public final class main extends MIDlet {
             if (currentGame >= 4) drawExtraHud(g);
             if (currentGame == 3 && !paused) drawStudioHud(g);
             if (!paused) {
-                drawHealthBars(g);
+                drawRobloxPlayerHud(g);
                 drawBotDialogue(g);
             }
             if (paused) drawPauseMenu(g);
@@ -2833,15 +2856,57 @@ public final class main extends MIDlet {
                     projectedScreenY>=0&&projectedScreenY<=getHeight();
         }
 
-        private void drawHealthBars(Graphics g) {
-            for(int i=0;i<playerBotCount;i++){
-                PlayerBot bot=playerBots[i];
-                if(bot==null||!bot.alive)continue;
-                if(projectWorldToScreen(bot.x,bot.y+2.58f,bot.z))
-                    drawCharacterHealthBar(g,projectedScreenX,projectedScreenY,bot.health,34,5);
+        private void drawRobloxPlayerHud(Graphics g) {
+            Font font=g.getFont();
+            int line=font.getHeight()+2;
+            int panelWidth=Math.min(126,Math.max(76,getWidth()-8));
+            int x=getWidth()-panelWidth-4;
+            int y=4;
+            int healthHeight=6;
+            int headerHeight=line+healthHeight+7;
+            int maxRows=Math.max(1,(getHeight()-headerHeight-12)/line);
+            int total=1;
+            for(int i=0;i<playerBotCount;i++)
+                if(playerBots[i]!=null)total++;
+            if(lanPlayers!=null)
+                for(int i=0;i<lanPlayers.length;i++)
+                    if(lanPlayers[i]!=null&&lanPlayers[i].connected&&
+                            (lanSession==null||i!=lanSession.getLocalSlot()))total++;
+            int rows=Math.min(total,maxRows);
+            int panelHeight=headerHeight+rows*line+5;
+            g.setColor(0x101820);g.fillRoundRect(x,y,panelWidth,panelHeight,7,7);
+            g.setColor(0xFFFFFF);g.drawRoundRect(x,y,panelWidth,panelHeight,7,7);
+            String username="Player";
+            g.setColor(0xFFFFFF);
+            g.drawString(username,x+5,y+2,Graphics.TOP|Graphics.LEFT);
+            drawCharacterHealthBar(g,x+panelWidth-30,y+line+2,
+                    playerHealth,Math.min(54,panelWidth-12),healthHeight);
+            int rowY=y+headerHeight;
+            int drawn=0;
+            g.setColor(0xB8D8F2);
+            g.drawString("PLAYERS ("+total+")",x+5,rowY,Graphics.TOP|Graphics.LEFT);
+            rowY+=line;drawn++;
+            if(drawn<rows){
+                g.setColor(dead?0x888888:0x65D879);
+                g.drawString("You",x+5,rowY,Graphics.TOP|Graphics.LEFT);
+                rowY+=line;drawn++;
             }
-            if(!dead&&projectWorldToScreen(px,jumpY+2.65f,pz))
-                drawCharacterHealthBar(g,projectedScreenX,projectedScreenY,playerHealth,48,6);
+            for(int i=0;i<playerBotCount&&drawn<rows;i++){
+                PlayerBot bot=playerBots[i];if(bot==null)continue;
+                g.setColor(bot.alive?0xFFFFFF:0x888888);
+                g.drawString("Bot "+(i+1)+(bot.alive?"":" (KO)"),x+5,rowY,
+                        Graphics.TOP|Graphics.LEFT);
+                rowY+=line;drawn++;
+            }
+            if(lanPlayers!=null&&lanSession!=null){
+                for(int i=0;i<lanPlayers.length&&drawn<rows;i++){
+                    LanSession.PlayerState player=lanPlayers[i];
+                    if(player==null||!player.connected||i==lanSession.getLocalSlot())continue;
+                    g.setColor(player.alive?0xFFFFFF:0x888888);
+                    g.drawString("Player "+(i+1),x+5,rowY,Graphics.TOP|Graphics.LEFT);
+                    rowY+=line;drawn++;
+                }
+            }
         }
 
         private void drawCharacterHealthBar(Graphics g,int centerX,int centerY,int value,int width,int height) {
