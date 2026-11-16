@@ -69,7 +69,6 @@ public final class main extends MIDlet {
         private World avatarPreviewWorld;
         private Camera avatarPreviewCamera;
         private Group avatarPreviewModel;
-        private boolean avatarPreviewRenderFailed;
         private int[] lanAvatarSkins = {-1,-1,-1,-1,-1};
         private int[] lanAvatarShirts = {-1,-1,-1,-1,-1};
         private int[] lanAvatarLegs = {-1,-1,-1,-1,-1};
@@ -2847,7 +2846,7 @@ public final class main extends MIDlet {
                         try { g3d.releaseTarget(); } catch (Throwable t) {}
                     }
                 }
-            } else {
+            } else if (!showAvatarEditor) {
                 g.setColor(0xFFFFFF);
                 g.drawString("Roblox3DME - model load failed", 4, 4, Graphics.TOP|Graphics.LEFT);
                 g.drawString("Check Java model and face.png / Face1.png-Face3.png", 4, 22, Graphics.TOP|Graphics.LEFT);
@@ -3975,7 +3974,6 @@ public final class main extends MIDlet {
         }
 
         private void rebuildAvatarPreview() {
-            avatarPreviewRenderFailed=false;
             if(avatarPreviewWorld==null) {
                 ensureAvatarPreview();
                 return;
@@ -4006,9 +4004,7 @@ public final class main extends MIDlet {
                 bound=true;
                 g3d.setViewport(x,y,width,height);
                 g3d.render(avatarPreviewWorld);
-                avatarPreviewRenderFailed=false;
             } catch(Throwable t) {
-                avatarPreviewRenderFailed=true;
                 modelError="Avatar preview: "+t.toString();
             } finally {
                 if(bound)try{g3d.releaseTarget();}catch(Throwable ignored){}
