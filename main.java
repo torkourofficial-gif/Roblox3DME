@@ -2247,7 +2247,9 @@ public final class main extends MIDlet {
                 return;
             }
             if (!grounded && jumpY < -8.0f) {
-                damagePlayer(35);
+                // Falling into the void bypasses temporary spawn/damage invulnerability.
+                invulnerableUntil = 0;
+                beginDeath();
                 return;
             }
             if (lobbyMode && gameClock >= invulnerableUntil && jumpY < 1.1f &&
