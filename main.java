@@ -3185,32 +3185,105 @@ public final class main extends MIDlet {
             Group hat=new Group();
             int[] colors={0xC62828,0x202020,0x1565C0,0xF9A825,0x2E7D32};
             int color=colors[(style-1)%colors.length];
-            // Head center is y=2.19 and its top is y=2.44.
-            // Lower each hat into the rounded head so the brim/base visibly rests on it.
+            // Hat bases now sit just above the rounded head instead of intersecting it.
             if(style==1) { // Baseball cap
-                hat.addChild(makeBox(0,2.48f,0,0.43f,0.20f,0.43f,color));
+                hat.addChild(makeHatCylinder(0,2.48f,0,0.43f,0.20f,color,12));
                 hat.addChild(makeBox(0,2.39f,0.245f,0.48f,0.045f,0.25f,color));
-                hat.addChild(makeBox(0,2.585f,0,0.055f,0.035f,0.055f,0xE0E0E0));
+                hat.addChild(makeHatCylinder(0,2.585f,0,0.055f,0.035f,0xE0E0E0,8));
             } else if(style==2) { // Top hat
-                hat.addChild(makeBox(0,2.40f,0,0.52f,0.055f,0.52f,0x151515));
-                hat.addChild(makeBox(0,2.60f,0,0.34f,0.36f,0.34f,color));
-                hat.addChild(makeBox(0,2.47f,0,0.35f,0.045f,0.35f,0x151515));
+                hat.addChild(makeHatCylinder(0,2.40f,0,0.52f,0.055f,0x151515,16));
+                hat.addChild(makeHatCylinder(0,2.60f,0,0.34f,0.36f,color,16));
+                hat.addChild(makeHatCylinder(0,2.47f,0,0.35f,0.045f,0x151515,16));
             } else if(style==3) { // Beanie
-                hat.addChild(makeBox(0,2.44f,0,0.43f,0.12f,0.43f,0x263238));
-                hat.addChild(makeBox(0,2.56f,0,0.40f,0.18f,0.40f,color));
-                hat.addChild(makeBox(0,2.65f,0,0.25f,0.055f,0.25f,color));
-            } else if(style==4) { // Stepped party hat
-                hat.addChild(makeBox(0,2.40f,0,0.48f,0.06f,0.48f,0xF5F5F5));
-                hat.addChild(makeBox(0,2.47f,0,0.36f,0.12f,0.36f,color));
-                hat.addChild(makeBox(0,2.57f,0,0.23f,0.12f,0.23f,color));
-                hat.addChild(makeBox(0,2.44f,0,0.10f,0.10f,0.10f,0xF5D442));
+                hat.addChild(makeHatCylinder(0,2.48f,0,0.43f,0.20f,0x263238,16));
+                hat.addChild(makeHatCylinder(0,2.60f,0,0.40f,0.12f,color,16));
+                hat.addChild(makeHatCylinder(0,2.67f,0,0.25f,0.035f,color,12));
+            } else if(style==4) { // Conical party hat
+                hat.addChild(makeHatCylinder(0,2.40f,0,0.39f,0.06f,0xF5F5F5,16));
+                hat.addChild(makeHatCone(0,2.60f,0,0.36f,0.40f,color,16));
             } else { // Fedora
-                hat.addChild(makeBox(0,2.39f,0,0.58f,0.055f,0.58f,0x3E2723));
-                hat.addChild(makeBox(0,2.50f,0,0.37f,0.20f,0.37f,color));
-                hat.addChild(makeBox(0,2.44f,0,0.385f,0.045f,0.385f,0x1B1B1B));
-                hat.addChild(makeBox(0,2.60f,0,0.18f,0.025f,0.18f,0x3E2723));
+                hat.addChild(makeHatCylinder(0,2.39f,0,0.58f,0.055f,0x3E2723,20));
+                hat.addChild(makeHatCylinder(0,2.50f,0,0.37f,0.20f,color,16));
+                hat.addChild(makeHatCylinder(0,2.44f,0,0.385f,0.045f,0x1B1B1B,16));
+                hat.addChild(makeHatCylinder(0,2.60f,0,0.18f,0.025f,0x3E2723,12));
             }
+            // A small common lift prevents every hat style from clipping into the head.
+            hat.setTranslation(0,0.085f,0);
             return hat;
+        }
+
+        private Group makeHatCylinder(float x,float y,float z,float radius,
+                float height,int color,int segments) {
+            Group cylinder=new Group();
+            int[] strips=new int[segments];
+            short[] coords=new short[segments*4*3];
+            short[] normals=new short[coords.length];
+            int out=0;
+            float half=height*0.5f;
+            for(int i=0;i<segments;i++) {
+                strips[i]=4;
+                double a0=6.283185307179586*i/segments;
+                double a1=6.283185307179586*(i+1)/segments;
+                float x0=(float)Math.sin(a0),z0=(float)-Math.cos(a0);
+                float x1=(float)Math.sin(a1),z1=(float)-Math.cos(a1);
+                float[] v={x0*radius,-half,z0*radius,
+                           x0*radius,half,z0*radius,
+                           x1*radius,-half,z1*radius,
+                           x1*radius,half,z1*radius};
+                for(int j=0;j<4;j++) {
+                    coords[out]=(short)(v[j*3]*1000.0f);
+                    coords[out+1]=(short)(v[j*3+1]*1000.0f);
+                    coords[out+2]=(short)(v[j*3+2]*1000.0f);
+                    normals[out]=(short)(((j<2?x0:x1)*32767.0f));
+                    normals[out+1]=0;
+                    normals[out+2]=(short)(((j<2?z0:z1)*32767.0f));
+                    out+=3;
+                }
+            }
+            cylinder.addChild(makeSolidMesh(coords,strips,color,normals));
+            Mesh top=makeCylinderDisk(0,radius,segments,color);
+            top.setTranslation(0,half,0);
+            cylinder.addChild(top);
+            Mesh bottom=makeCylinderDisk(0,radius,segments,color);
+            bottom.setTranslation(0,-half,0);
+            cylinder.addChild(bottom);
+            cylinder.setTranslation(x,y,z);
+            return cylinder;
+        }
+
+        private Group makeHatCone(float x,float y,float z,float radius,
+                float height,int color,int segments) {
+            Group cone=new Group();
+            int[] strips=new int[segments];
+            short[] coords=new short[segments*3*3];
+            short[] normals=new short[coords.length];
+            int out=0;
+            float base=-height*0.5f, tip=height*0.5f;
+            for(int i=0;i<segments;i++) {
+                strips[i]=3;
+                double a0=6.283185307179586*i/segments;
+                double a1=6.283185307179586*(i+1)/segments;
+                float x0=(float)Math.sin(a0),z0=(float)-Math.cos(a0);
+                float x1=(float)Math.sin(a1),z1=(float)-Math.cos(a1);
+                float[] v={0,tip,0,x0*radius,base,z0*radius,
+                           x1*radius,base,z1*radius};
+                float nx=(x0+x1)*0.5f, nz=(z0+z1)*0.5f;
+                float ny=radius/height;
+                float inv=1.0f/(float)Math.sqrt(nx*nx+ny*ny+nz*nz);
+                nx*=inv;ny*=inv;nz*=inv;
+                for(int j=0;j<3;j++) {
+                    coords[out]=(short)(v[j*3]*1000.0f);
+                    coords[out+1]=(short)(v[j*3+1]*1000.0f);
+                    coords[out+2]=(short)(v[j*3+2]*1000.0f);
+                    normals[out]=(short)(nx*32767.0f);
+                    normals[out+1]=(short)(ny*32767.0f);
+                    normals[out+2]=(short)(nz*32767.0f);
+                    out+=3;
+                }
+            }
+            cone.addChild(makeSolidMesh(coords,strips,color,normals));
+            cone.setTranslation(x,y,z);
+            return cone;
         }
 
         private Group makePivotedClothedLimb(float x,float jointY,float width,float height,
