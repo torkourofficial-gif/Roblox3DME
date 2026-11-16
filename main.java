@@ -161,6 +161,13 @@ public final class main extends MIDlet {
         private float playerVelocityY;
         private int playerHealth=100;
         private String playerUsername="Player";
+        private boolean playerListOpen;
+        private String[] chatLines=new String[5];
+        private int chatLineCount;
+        private int[] seenChatSequence=new int[5];
+        private TextBox chatBox;
+        private final Command chatSendCommand=new Command("Send",Command.OK,1);
+        private final Command chatCancelCommand=new Command("Close",Command.CANCEL,2);
         private boolean grounded = true, dead, lobbyMode;
         private long gameClock, respawnAt, invulnerableUntil;
         private PhysicsPiece[] deathPieces;
@@ -412,6 +419,13 @@ public final class main extends MIDlet {
         }
 
         public void commandAction(Command command, Displayable displayable) {
+            if(command==chatCancelCommand){Display.getDisplay(midlet).setCurrent(this);repaint();return;}
+            if(command==chatSendCommand&&chatBox!=null){
+                String message=chatBox.getString();Display.getDisplay(midlet).setCurrent(this);
+                if(lanSession!=null&&lanSession.isConnected())lanSession.sendChat(message);
+                else addChatLine("System: LAN chat requires a connection");
+                repaint();return;
+            }
             if (command == lanCancelCommand) {
                 Display.getDisplay(midlet).setCurrent(this);
                 lanMenu = true;
@@ -2196,6 +2210,11 @@ public final class main extends MIDlet {
                     avatarShirtStyle, avatarPantsStyle, avatarHatStyle);
             if (lanPlayers == null) lanPlayers = new LanSession.PlayerState[5];
             lanSession.copySnapshot(lanPlayers);
+            for(int ci=0;ci<lanPlayers.length;ci++)if(lanPlayers[ci]!=null&&lanPlayers[ci].connected&&lanPlayers[ci].chatSequence!=seenChatSequence[ci]){
+                seenChatSequence[ci]=lanPlayers[ci].chatSequence;
+                String who=ci==lanSession.getLocalSlot()?playerUsername:"Player "+(ci+1);
+                addChatLine(who+": "+lanPlayers[ci].chatMessage);
+            }
             LanSession.PlayerState[] states = lanPlayers;
             int local = lanSession.getLocalSlot();
             for (int i = 0; i < states.length; i++) {
@@ -2832,6 +2851,7 @@ public final class main extends MIDlet {
             if (!paused) {
                 drawRobloxPlayerHud(g);
                 drawBotDialogue(g);
+                drawChatOverlay(g);
             }
             if (paused) drawPauseMenu(g);
         }
@@ -2867,63 +2887,50 @@ public final class main extends MIDlet {
         }
 
         private void drawRobloxPlayerHud(Graphics g) {
-            Font oldFont=g.getFont();
-            Font compact=Font.getFont(Font.FACE_SYSTEM,Font.STYLE_PLAIN,Font.SIZE_SMALL);
-            g.setFont(compact);
-            int line=compact.getHeight()+1;
-            int panelWidth=Math.min(94,Math.max(68,getWidth()-8));
-            int x=getWidth()-panelWidth-4,y=4;
-            int healthHeight=4;
-            int headerHeight=line*2+healthHeight+8;
-            int total=1;
-            for(int i=0;i<playerBotCount;i++)
-                if(playerBots[i]!=null)total++;
-            if(lanPlayers!=null)
-                for(int i=0;i<lanPlayers.length;i++)
-                    if(lanPlayers[i]!=null&&lanPlayers[i].connected&&
-                            (lanSession==null||i!=lanSession.getLocalSlot()))total++;
-            int maxRows=Math.max(1,(getHeight()-headerHeight-8)/line);
-            int rows=Math.min(total,maxRows);
-            int panelHeight=headerHeight+rows*line+4;
-            g.setColor(0x101820);g.fillRoundRect(x,y,panelWidth,panelHeight,6,6);
-            g.setColor(0xFFFFFF);g.drawRoundRect(x,y,panelWidth,panelHeight,6,6);
-            String username=playerUsername;
-            if(username==null||username.length()==0)username="Player";
-            if(compact.stringWidth(username)>panelWidth-10){
-                while(username.length()>1&&compact.stringWidth(username+"...")>panelWidth-10)
-                    username=username.substring(0,username.length()-1);
-                username+="...";
+            Font old=g.getFont(),small=Font.getFont(Font.FACE_SYSTEM,Font.STYLE_PLAIN,Font.SIZE_SMALL);
+            g.setFont(small);int line=small.getHeight()+1,w=Math.min(94,Math.max(68,getWidth()-8));
+            int x=getWidth()-w-4,y=4,total=1;
+            for(int i=0;i<playerBotCount;i++)if(playerBots[i]!=null)total++;
+            if(lanPlayers!=null)for(int i=0;i<lanPlayers.length;i++)
+                if(lanPlayers[i]!=null&&lanPlayers[i].connected&&(lanSession==null||i!=lanSession.getLocalSlot()))total++;
+            int rows=0;
+            if(playerListOpen){rows=1;for(int i=0;i<playerBotCount;i++)if(playerBots[i]!=null)rows++;
+                if(lanPlayers!=null)for(int i=0;i<lanPlayers.length;i++)
+                    if(lanPlayers[i]!=null&&lanPlayers[i].connected&&(lanSession==null||i!=lanSession.getLocalSlot()))rows++;
+                rows=Math.min(rows,Math.max(1,(getHeight()-line*3-22)/line));}
+            int header=line*2+12,height=header+(playerListOpen?rows*line+4:0);
+            g.setColor(0x101820);g.fillRoundRect(x,y,w,height,6,6);g.setColor(0xFFFFFF);g.drawRoundRect(x,y,w,height,6,6);
+            String name=playerUsername==null||playerUsername.length()==0?"Player":playerUsername;
+            if(small.stringWidth(name)>w-10){while(name.length()>1&&small.stringWidth(name+"...")>w-10)name=name.substring(0,name.length()-1);name+="...";}
+            g.drawString(name,x+5,y+2,Graphics.TOP|Graphics.LEFT);
+            drawCharacterHealthBar(g,x+w/2,y+line+4,playerHealth,w-12,4);
+            g.setColor(0xB8D8F2);g.drawString("PLAYERS "+total+(playerListOpen?" v":" >"),x+5,y+line*2+7,Graphics.TOP|Graphics.LEFT);
+            if(playerListOpen){int ry=y+header,drawn=0;
+                if(drawn<rows){g.setColor(dead?0x888888:0x65D879);g.drawString("You",x+5,ry,Graphics.TOP|Graphics.LEFT);ry+=line;drawn++;}
+                for(int i=0;i<playerBotCount&&drawn<rows;i++){PlayerBot bot=playerBots[i];if(bot==null)continue;
+                    g.setColor(bot.alive?0xFFFFFF:0x888888);g.drawString(BOT_NAMES[i%BOT_NAMES.length]+(bot.alive?"":" KO"),x+5,ry,Graphics.TOP|Graphics.LEFT);ry+=line;drawn++;}
+                if(lanPlayers!=null&&lanSession!=null)for(int i=0;i<lanPlayers.length&&drawn<rows;i++){LanSession.PlayerState p=lanPlayers[i];
+                    if(p==null||!p.connected||i==lanSession.getLocalSlot())continue;
+                    g.setColor(p.alive?0xFFFFFF:0x888888);g.drawString("Player "+(i+1),x+5,ry,Graphics.TOP|Graphics.LEFT);ry+=line;drawn++;}
             }
-            g.setColor(0xFFFFFF);
-            g.drawString(username,x+5,y+2,Graphics.TOP|Graphics.LEFT);
-            drawCharacterHealthBar(g,x+panelWidth/2,y+line+4,
-                    playerHealth,panelWidth-12,healthHeight);
-            g.setColor(0xB8D8F2);
-            g.drawString("PLAYERS "+total,x+5,y+line*2+7,Graphics.TOP|Graphics.LEFT);
-            int rowY=y+headerHeight,drawn=0;
-            if(drawn<rows){
-                g.setColor(dead?0x888888:0x65D879);
-                g.drawString("You",x+5,rowY,Graphics.TOP|Graphics.LEFT);
-                rowY+=line;drawn++;
-            }
-            for(int i=0;i<playerBotCount&&drawn<rows;i++){
-                PlayerBot bot=playerBots[i];if(bot==null)continue;
-                g.setColor(bot.alive?0xFFFFFF:0x888888);
-                String botName=BOT_NAMES[i%BOT_NAMES.length];
-                g.drawString(botName+(bot.alive?"":" KO"),x+5,rowY,
-                        Graphics.TOP|Graphics.LEFT);
-                rowY+=line;drawn++;
-            }
-            if(lanPlayers!=null&&lanSession!=null){
-                for(int i=0;i<lanPlayers.length&&drawn<rows;i++){
-                    LanSession.PlayerState player=lanPlayers[i];
-                    if(player==null||!player.connected||i==lanSession.getLocalSlot())continue;
-                    g.setColor(player.alive?0xFFFFFF:0x888888);
-                    g.drawString("Player "+(i+1),x+5,rowY,Graphics.TOP|Graphics.LEFT);
-                    rowY+=line;drawn++;
-                }
-            }
-            g.setFont(oldFont);
+            g.setFont(old);
+        }
+        private void addChatLine(String value){
+            if(value==null||value.length()==0)return;
+            if(chatLineCount<chatLines.length)chatLines[chatLineCount++]=value;
+            else{for(int i=1;i<chatLines.length;i++)chatLines[i-1]=chatLines[i];chatLines[chatLines.length-1]=value;}
+        }
+        private void drawChatOverlay(Graphics g){
+            if(chatLineCount==0)return;Font old=g.getFont(),small=Font.getFont(Font.FACE_SYSTEM,Font.STYLE_PLAIN,Font.SIZE_SMALL);
+            g.setFont(small);int line=small.getHeight()+2,count=Math.min(4,chatLineCount),w=Math.max(1,Math.min(getWidth()-12,150));
+            int x=5,y=getHeight()-count*line-5;g.setColor(0x990D1720);g.fillRoundRect(x,y,w,count*line+4,6,6);
+            for(int i=0;i<count;i++){String msg=chatLines[chatLineCount-count+i];while(msg.length()>1&&small.stringWidth(msg)>w-10)msg=msg.substring(0,msg.length()-1);
+                g.setColor(0xFFFFFF);g.drawString(msg,x+5,y+2+i*line,Graphics.TOP|Graphics.LEFT);}
+            g.setFont(old);
+        }
+        private void openChat(){
+            chatBox=new TextBox("Chat","",120,TextField.ANY);chatBox.addCommand(chatSendCommand);chatBox.addCommand(chatCancelCommand);
+            chatBox.setCommandListener(this);Display.getDisplay(midlet).setCurrent(chatBox);
         }
 
         private void drawCharacterHealthBar(Graphics g,int centerX,int centerY,int value,int width,int height) {
@@ -3800,6 +3807,11 @@ public final class main extends MIDlet {
             return mesh;
         }
 
+        private boolean isLeftSoftkey(int keyCode,int action){
+            if(keyCode==-6)return true;
+            try{String n=getKeyName(keyCode);return "Left Softkey".equalsIgnoreCase(n)||"Left Soft Key".equalsIgnoreCase(n)||"Soft1".equalsIgnoreCase(n)||"Soft 1".equalsIgnoreCase(n)||"Softkey1".equalsIgnoreCase(n)||"Softkey 1".equalsIgnoreCase(n)||"Left Selection".equalsIgnoreCase(n);}
+            catch(Throwable ignored){return false;}
+        }
         private boolean isRightSoftkey(int keyCode, int action) {
             if (keyCode == -7 || action == GAME_B) return true;
             try {
@@ -3837,6 +3849,7 @@ public final class main extends MIDlet {
         }
 
         private void openPauseMenu() {
+            playerListOpen=false;
             paused = true;
             configMode = false;
             pauseSelection = 0;
@@ -4547,30 +4560,16 @@ public final class main extends MIDlet {
                 repaint();
                 return;
             }
-            // On some devices key 3 is reported with GAME_B, which is also used
-            // by the right softkey. Reserve the mapped action key so softkey detection stays reliable.
-            boolean reservedThree = (currentGame == 3 && keyCode == KEY_NUM3) ||
-                    ((currentGame == 2 || currentGame == 10 ||
-                    currentGame == 13 || currentGame == 14) &&
-                    keyCode == mappedControls[CONTROL_USE]);
-            if (!reservedThree && isRightSoftkey(keyCode, k)) {
+            if(keyCode==KEY_NUM3){if(!paused){playerListOpen=!playerListOpen;repaint();}return;}
+            if(isLeftSoftkey(keyCode,k)&&!paused){openChat();return;}
+            if (isRightSoftkey(keyCode, k)) {
                 if (paused && configMode) {
-                    configMode = false;
-                    avatarEditorMode = false;
-                    controlMapMode = false;
-                    awaitingControlKey = false;
-                } else if (paused) paused = false;
-                else openPauseMenu();
-                repaint();
-                return;
+                    configMode=false;avatarEditorMode=false;controlMapMode=false;awaitingControlKey=false;
+                } else if(paused)paused=false;else openPauseMenu();
+                repaint();return;
             }
             if (paused) {
                 handlePauseInput(keyCode, k);
-                repaint();
-                return;
-            }
-            if (currentGame == 3 && keyCode == KEY_NUM3) {
-                toggleStudioTest();
                 repaint();
                 return;
             }
