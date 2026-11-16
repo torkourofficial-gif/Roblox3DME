@@ -3010,10 +3010,13 @@ public final class main extends MIDlet {
             VertexBuffer vb=new VertexBuffer();
             vb.setPositions(positions,0.001f,null);
             vb.setNormals(getSharedBoxNormals());
-            // Regions are ordered to match the mesh faces:
-            // front, back, bottom, top, left, right.
-            // The atlas content is 256x244 inside a 256x256 texture;
-            // scale V so UVs never sample the transparent padding.
+            // Regions follow makeBox's exact face order:
+            // front (z-), back (z+), bottom (y-), top (y+), left (x-), right (x+).
+            // Each face has a different vertex winding, so its UV corners must be
+            // assigned independently. These rotations reproduce the classic Roblox
+            // unfolded net when the six panels are folded around the cuboid.
+            // M3G uses a top-left texture origin. The 256x244 atlas content is padded
+            // to 256x256, so scale V to avoid sampling the transparent bottom strip.
             final float atlasVScale=244.0f/256.0f;
             for(int f=0;f<6;f++) {
                 int[] r=regions[f];
@@ -3021,10 +3024,37 @@ public final class main extends MIDlet {
                 float v0=((float)r[1]/559.0f)*atlasVScale;
                 float v1=((float)(r[1]+r[3])/559.0f)*atlasVScale;
                 int k=f*8;
-                uv[k]=(short)(u0*1000);uv[k+1]=(short)(v1*1000);
-                uv[k+2]=(short)(u0*1000);uv[k+3]=(short)(v0*1000);
-                uv[k+4]=(short)(u1*1000);uv[k+5]=(short)(v1*1000);
-                uv[k+6]=(short)(u1*1000);uv[k+7]=(short)(v0*1000);
+                if(f==0 || f==3) {
+                    // Front and top: left-bottom, left-top, right-bottom, right-top.
+                    uv[k]=(short)(u0*1000);uv[k+1]=(short)(v1*1000);
+                    uv[k+2]=(short)(u0*1000);uv[k+3]=(short)(v0*1000);
+                    uv[k+4]=(short)(u1*1000);uv[k+5]=(short)(v1*1000);
+                    uv[k+6]=(short)(u1*1000);uv[k+7]=(short)(v0*1000);
+                } else if(f==1) {
+                    // Back is viewed from the opposite side: horizontal direction flips.
+                    uv[k]=(short)(u1*1000);uv[k+1]=(short)(v1*1000);
+                    uv[k+2]=(short)(u0*1000);uv[k+3]=(short)(v1*1000);
+                    uv[k+4]=(short)(u1*1000);uv[k+5]=(short)(v0*1000);
+                    uv[k+6]=(short)(u0*1000);uv[k+7]=(short)(v0*1000);
+                } else if(f==2) {
+                    // Bottom panel is attached below the front panel in the Roblox net.
+                    uv[k]=(short)(u0*1000);uv[k+1]=(short)(v0*1000);
+                    uv[k+2]=(short)(u1*1000);uv[k+3]=(short)(v0*1000);
+                    uv[k+4]=(short)(u0*1000);uv[k+5]=(short)(v1*1000);
+                    uv[k+6]=(short)(u1*1000);uv[k+7]=(short)(v1*1000);
+                } else if(f==4) {
+                    // Left side: front edge is the left edge of its atlas panel.
+                    uv[k]=(short)(u0*1000);uv[k+1]=(short)(v1*1000);
+                    uv[k+2]=(short)(u1*1000);uv[k+3]=(short)(v1*1000);
+                    uv[k+4]=(short)(u0*1000);uv[k+5]=(short)(v0*1000);
+                    uv[k+6]=(short)(u1*1000);uv[k+7]=(short)(v0*1000);
+                } else {
+                    // Right side: its atlas panel is on the opposite side of the front.
+                    uv[k]=(short)(u1*1000);uv[k+1]=(short)(v1*1000);
+                    uv[k+2]=(short)(u1*1000);uv[k+3]=(short)(v0*1000);
+                    uv[k+4]=(short)(u0*1000);uv[k+5]=(short)(v1*1000);
+                    uv[k+6]=(short)(u0*1000);uv[k+7]=(short)(v0*1000);
+                }
             }
             VertexArray tex=new VertexArray(24,2,2);
             tex.set(0,24,uv);
