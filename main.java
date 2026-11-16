@@ -65,6 +65,7 @@ public final class main extends MIDlet {
                 avatarLegColor=0x2E9E45;
         private boolean avatarEditorMode;
         private int avatarColorSelection;
+        private int avatarShirtStyle, avatarPantsStyle;
         private World avatarPreviewWorld;
         private Camera avatarPreviewCamera;
         private Group avatarPreviewModel;
@@ -142,6 +143,8 @@ public final class main extends MIDlet {
         private Image logoSource, titleBackgroundSource, skySource;
         private Texture2D cachedPlayerFaceTexture, cachedZombieFaceTexture;
         private Texture2D cachedStudsTexture;
+        private Texture2D[] shirtTextures = new Texture2D[6];
+        private Texture2D[] pantsTextures = new Texture2D[5];
         private Image scaledLogo;
         private int[] menuPanPixels;
         private float menuPanScale;
@@ -233,6 +236,8 @@ public final class main extends MIDlet {
         private static final float[] TYCOON_BOT_Z={6.0f,7.0f,6.0f};
         private static final float[] SIMON_PAD_X={-4.0f,4.0f,-4.0f,4.0f};
         private static final float[] SIMON_PAD_Z={-4.0f,-4.0f,4.0f,4.0f};
+        private static final int[] AVATAR_SKIN_PALETTE = {0xF5C542,0xF1C27D,0xFFDBAC,0xE0AC69,0xC68642,0x8D5524,0x5C3317,0xFFE0BD,0xD9A066,0xB87333,0xFFFFFF,0xD8D8D8,0x888888,0x333333};
+        private static final int[] AVATAR_CLOTHING_PALETTE = {0xFFFFFF,0xC0C0C0,0x808080,0x333333,0x000000,0xF44336,0xB71C1C,0xFF9800,0xFFC107,0xFFEB3B,0x8BC34A,0x4CAF50,0x006400,0x00BCD4,0x03A9F4,0x1565C0,0x3F51B5,0x673AB7,0x9C27B0,0xE91E63,0x795548,0xD7CCC8,0x607D8B,0x1A237E,0x004D40,0xF8BBD0,0xB2DFDB,0xCFD8DC};
         private static final int[] BOT_SKIN_COLORS =
                 {0xF5C542,0xC68642,0xF1C27D,0x8D5524,0xE0AC69,0xD9A066};
         private static final int[] BOT_SHIRT_COLORS =
@@ -303,26 +308,33 @@ public final class main extends MIDlet {
                 byte[] data=store.getRecord(1);
                 input=new DataInputStream(new ByteArrayInputStream(data));
                 int version=input.readInt();
-                if(version<1||version>2)return;
+                if(version<1||version>3)return;
                 int loadedSensitivity=input.readInt();
                 boolean loadedInvert=input.readBoolean();
                 float loadedDistance=input.readFloat();
                 int loadedBots=input.readInt();
                 int loadedSkin=avatarSkinColor, loadedShirt=avatarShirtColor,
                         loadedLegs=avatarLegColor;
+                int loadedShirtStyle=0, loadedPantsStyle=0;
                 if(version>=2) {
                     loadedSkin=input.readInt();
                     loadedShirt=input.readInt();
                     loadedLegs=input.readInt();
+                }
+                if(version>=3) {
+                    loadedShirtStyle=input.readInt();
+                    loadedPantsStyle=input.readInt();
                 }
                 int controlCount=input.readInt();
                 if(loadedSensitivity<0||loadedSensitivity>2||
                         loadedDistance<2.0f||loadedDistance>9.0f||
                         loadedBots<BOT_COUNT_RANDOM||loadedBots>BOT_COUNT_OFF||
                         controlCount!=mappedControls.length||
-                        !isAvatarColor(BOT_SKIN_COLORS,loadedSkin)||
-                        !isAvatarColor(BOT_SHIRT_COLORS,loadedShirt)||
-                        !isAvatarColor(BOT_LEG_COLORS,loadedLegs))return;
+                        !isAvatarColor(AVATAR_SKIN_PALETTE,loadedSkin)||
+                        !isAvatarColor(AVATAR_CLOTHING_PALETTE,loadedShirt)||
+                        !isAvatarColor(AVATAR_CLOTHING_PALETTE,loadedLegs)||
+                        loadedShirtStyle<0||loadedShirtStyle>6||
+                        loadedPantsStyle<0||loadedPantsStyle>5)return;
                 int[] loadedControls=new int[controlCount];
                 for(int i=0;i<controlCount;i++)loadedControls[i]=input.readInt();
                 for(int i=0;i<loadedControls.length;i++) {
@@ -338,6 +350,8 @@ public final class main extends MIDlet {
                 avatarSkinColor=loadedSkin;
                 avatarShirtColor=loadedShirt;
                 avatarLegColor=loadedLegs;
+                avatarShirtStyle=loadedShirtStyle;
+                avatarPantsStyle=loadedPantsStyle;
                 for(int i=0;i<mappedControls.length;i++)mappedControls[i]=loadedControls[i];
             } catch(Throwable ignored) {
                 // Keep safe defaults when RMS is unavailable or the record is corrupt.
@@ -359,7 +373,7 @@ public final class main extends MIDlet {
             try {
                 bytes=new ByteArrayOutputStream();
                 output=new DataOutputStream(bytes);
-                output.writeInt(2);
+                output.writeInt(3);
                 output.writeInt(sensitivityLevel);
                 output.writeBoolean(invertCamera);
                 output.writeFloat(camDistance);
@@ -367,6 +381,8 @@ public final class main extends MIDlet {
                 output.writeInt(avatarSkinColor);
                 output.writeInt(avatarShirtColor);
                 output.writeInt(avatarLegColor);
+                output.writeInt(avatarShirtStyle);
+                output.writeInt(avatarPantsStyle);
                 output.writeInt(mappedControls.length);
                 for(int i=0;i<mappedControls.length;i++)output.writeInt(mappedControls[i]);
                 output.flush();
@@ -2907,6 +2923,104 @@ public final class main extends MIDlet {
             }
         }
 
+        private Texture2D getClothingTexture(boolean shirt,int style) {
+            if(style<1)return null;
+            Texture2D[] cache=shirt?shirtTextures:pantsTextures;
+            if(style>cache.length)return null;
+            if(cache[style-1]!=null)return cache[style-1];
+            String name=(shirt?"shirt":"pants")+(style==1?"":""+style)+".png";
+            try {
+                Image source=loadImageResource("/"+name,"/meblox/"+name);
+                if(source==null)throw new Exception(name+" missing");
+                Image pot=makePowerOfTwoImage(source);
+                Texture2D texture=new Texture2D(new Image2D(Image2D.RGBA,pot));
+                texture.setFiltering(Texture2D.FILTER_NEAREST,Texture2D.FILTER_NEAREST);
+                texture.setWrapping(Texture2D.WRAP_CLAMP,Texture2D.WRAP_CLAMP);
+                texture.setBlending(Texture2D.FUNC_MODULATE);
+                cache[style-1]=texture;
+                return texture;
+            } catch(Throwable t) {
+                modelError="Clothing "+name+": "+t.toString();
+                return null;
+            }
+        }
+
+        private Node makeClothingBox(float x,float y,float z,float sx,float sy,float sz,
+                int tint,Texture2D texture,int[][] regions) {
+            if(texture==null)return makeBox(x,y,z,sx,sy,sz,tint);
+            float[] corners={-sx/2,-sy/2,-sz/2,sx/2,-sy/2,-sz/2,
+                -sx/2,sy/2,-sz/2,sx/2,sy/2,-sz/2,
+                -sx/2,-sy/2,sz/2,sx/2,-sy/2,sz/2,
+                -sx/2,sy/2,sz/2,sx/2,sy/2,sz/2};
+            int[] order={0,2,1,3,4,5,6,7,0,1,4,5,2,6,3,7,0,4,2,6,1,3,5,7};
+            short[] pos=new short[72],uv=new short[48];
+            for(int i=0;i<24;i++) {
+                int p=order[i]*3;
+                pos[i*3]=(short)(corners[p]*1000);
+                pos[i*3+1]=(short)(corners[p+1]*1000);
+                pos[i*3+2]=(short)(corners[p+2]*1000);
+            }
+            VertexArray positions=new VertexArray(24,3,2);
+            positions.set(0,24,pos);
+            VertexBuffer vb=new VertexBuffer();
+            vb.setPositions(positions,0.001f,null);
+            vb.setNormals(getSharedBoxNormals());
+            for(int f=0;f<6;f++) {
+                int[] r=regions[f];
+                float u0=r[0]/585.0f,u1=(r[0]+r[2])/585.0f;
+                float v0=r[1]/559.0f,v1=(r[1]+r[3])/559.0f;
+                int k=f*8;
+                uv[k]=(short)(u0*1000);uv[k+1]=(short)(v1*1000);
+                uv[k+2]=(short)(u0*1000);uv[k+3]=(short)(v0*1000);
+                uv[k+4]=(short)(u1*1000);uv[k+5]=(short)(v1*1000);
+                uv[k+6]=(short)(u1*1000);uv[k+7]=(short)(v0*1000);
+            }
+            VertexArray tex=new VertexArray(24,2,2);
+            tex.set(0,24,uv);
+            vb.setTexCoords(0,tex,0.001f,null);
+            Appearance ap=new Appearance();
+            ap.setTexture(0,texture);
+            Material mat=new Material();
+            mat.setColor(Material.AMBIENT,scaleRgb(tint,0.50f));
+            mat.setColor(Material.DIFFUSE,scaleRgb(tint,0.85f));
+            mat.setColor(Material.EMISSIVE,scaleRgb(tint,0.12f));
+            ap.setMaterial(mat);
+            CompositingMode cm=new CompositingMode();
+            cm.setBlending(CompositingMode.ALPHA);
+            cm.setAlphaThreshold(0.01f);
+            ap.setCompositingMode(cm);
+            PolygonMode pm=new PolygonMode();
+            pm.setCulling(PolygonMode.CULL_NONE);
+            pm.setShading(PolygonMode.SHADE_SMOOTH);
+            ap.setPolygonMode(pm);
+            IndexBuffer[] faces=new IndexBuffer[6];
+            Appearance[] appearances=new Appearance[6];
+            for(int f=0;f<6;f++) {
+                faces[f]=new TriangleStripArray(f*4,new int[]{4});
+                appearances[f]=ap;
+            }
+            Mesh mesh=new Mesh(vb,faces,appearances);
+            mesh.setTranslation(x,y,z);
+            return mesh;
+        }
+
+        private int[][] shirtTorsoRegions() {
+            return new int[][]{{231,74,128,128},{431,74,128,128},
+                {231,203,128,64},{231,8,128,64},{165,74,64,128},{360,74,64,128}};
+        }
+        private int[][] shirtSleeveRegions(boolean leftSide) {
+            int x=leftSide?19:211;
+            return new int[][]{{x,355,64,128},{x+128,355,64,128},
+                {x+64,483,64,64},{x+64,289,64,64},
+                {x+64,355,64,128},{x+192,355,64,128}};
+        }
+        private int[][] pantsLegRegions(boolean leftSide) {
+            int x=leftSide?19:211;
+            return new int[][]{{x,355,64,128},{x+128,355,64,128},
+                {x+64,483,64,64},{x+64,289,64,64},
+                {x+64,355,64,128},{x+192,355,64,128}};
+        }
+
         private Group buildNoob() throws Exception {
             return buildNoob(false);
         }
@@ -2917,14 +3031,21 @@ public final class main extends MIDlet {
             int clothing = zombie ? 0x795438 : avatarShirtColor;
             int legs = zombie ? 0x795438 : avatarLegColor;
 
-            // Zombie copies use the noob body proportions and face with a green/brown palette.
-            model.addChild(makeStuddedBox(0, 1.45f, 0, 0.78f, 0.95f, 0.40f, clothing));
+            // Classic template atlas mapping: torso, sleeves and both trouser legs.
+            Texture2D shirt=getClothingTexture(true,zombie?0:avatarShirtStyle);
+            Texture2D pants=getClothingTexture(false,zombie?0:avatarPantsStyle);
+            model.addChild(makeClothingBox(0,1.45f,0,0.78f,0.95f,0.40f,
+                    clothing,shirt,shirtTorsoRegions()));
             model.addChild(makeRoundedCylinderHead(skin));
             model.addChild(makeTexturedFace(zombie ? "faceZomb.png" : "faceNEW.png", skin));
-            Group modelLeftArm = makePivotedLimb(-0.585f,1.925f,0.39f,0.95f,0.40f,skin,true);
-            Group modelRightArm = makePivotedLimb(0.585f,1.925f,0.39f,0.95f,0.40f,skin,true);
-            Group modelLeftLeg = makePivotedLimb(-0.195f,0.975f,0.39f,0.95f,0.40f,legs,false);
-            Group modelRightLeg = makePivotedLimb(0.195f,0.975f,0.39f,0.95f,0.40f,legs,false);
+            Group modelLeftArm = makePivotedClothedLimb(-0.585f,1.925f,0.39f,0.95f,0.40f,
+                    skin,true,shirt,shirtSleeveRegions(true));
+            Group modelRightArm = makePivotedClothedLimb(0.585f,1.925f,0.39f,0.95f,0.40f,
+                    skin,true,shirt,shirtSleeveRegions(false));
+            Group modelLeftLeg = makePivotedClothedLimb(-0.195f,0.975f,0.39f,0.95f,0.40f,
+                    legs,false,pants,pantsLegRegions(true));
+            Group modelRightLeg = makePivotedClothedLimb(0.195f,0.975f,0.39f,0.95f,0.40f,
+                    legs,false,pants,pantsLegRegions(false));
             model.addChild(modelLeftArm);
             model.addChild(modelRightArm);
             model.addChild(modelLeftLeg);
@@ -2937,6 +3058,19 @@ public final class main extends MIDlet {
                 model.addChild(swordVisual);
             }
             return model;
+        }
+
+        private Group makePivotedClothedLimb(float x,float jointY,float width,float height,
+                float depth,int color,boolean studsTop,Texture2D texture,int[][] regions) {
+            Group pivot=new Group();
+            pivot.setTranslation(x,jointY,0.0f);
+            Node body=makeClothingBox(0.0f,-height*0.5f,0.0f,width,height,depth,color,texture,regions);
+            pivot.addChild(body);
+            if(studsTop) {
+                // Keep the classic stud plate visible on top of the sleeves.
+                pivot.addChild(makeStuddedBox(0.0f,-0.005f,0.0f,width,0.01f,depth,color));
+            }
+            return pivot;
         }
 
         private Group makePivotedLimb(float x,float jointY,float width,float height,float depth,int color,boolean studsTop) {
@@ -3404,22 +3538,27 @@ public final class main extends MIDlet {
                 settingsMessage="";
                 return;
             }
-            if(up)avatarColorSelection=(avatarColorSelection+2)%3;
-            else if(down)avatarColorSelection=(avatarColorSelection+1)%3;
+            if(up)avatarColorSelection=(avatarColorSelection+4)%5;
+            else if(down)avatarColorSelection=(avatarColorSelection+1)%5;
             else if(leftKey||rightKey||fire) {
                 int direction=rightKey||fire?1:-1;
-                int[] palette=avatarColorSelection==0?BOT_SKIN_COLORS:
-                        (avatarColorSelection==1?BOT_SHIRT_COLORS:BOT_LEG_COLORS);
-                int current=avatarColorSelection==0?avatarSkinColor:
-                        (avatarColorSelection==1?avatarShirtColor:avatarLegColor);
-                int index=0;
-                for(int i=0;i<palette.length;i++)if(palette[i]==current){index=i;break;}
-                int next=palette[(index+direction+palette.length)%palette.length];
-                if(avatarColorSelection==0)avatarSkinColor=next;
-                else if(avatarColorSelection==1)avatarShirtColor=next;
-                else avatarLegColor=next;
+                if(avatarColorSelection==0||avatarColorSelection==1||avatarColorSelection==2) {
+                    int[] palette=avatarColorSelection==0?AVATAR_SKIN_PALETTE:AVATAR_CLOTHING_PALETTE;
+                    int current=avatarColorSelection==0?avatarSkinColor:
+                            (avatarColorSelection==1?avatarShirtColor:avatarLegColor);
+                    int index=0;
+                    for(int i=0;i<palette.length;i++)if(palette[i]==current){index=i;break;}
+                    int next=palette[(index+direction+palette.length)%palette.length];
+                    if(avatarColorSelection==0)avatarSkinColor=next;
+                    else if(avatarColorSelection==1)avatarShirtColor=next;
+                    else avatarLegColor=next;
+                } else if(avatarColorSelection==3) {
+                    avatarShirtStyle=(avatarShirtStyle+direction+7)%7;
+                } else {
+                    avatarPantsStyle=(avatarPantsStyle+direction+6)%6;
+                }
                 applyAvatarColors();
-                settingsMessage=saveSettings()?"Color saved":"Could not save color";
+                settingsMessage=saveSettings()?"Avatar saved":"Could not save avatar";
             }
         }
 
@@ -3533,29 +3672,35 @@ public final class main extends MIDlet {
             g.setColor(0xFFFFFF);
             g.drawString("AVATAR",width/2,panelY+4,Graphics.TOP|Graphics.HCENTER);
 
-            int rowHeight=Math.max(14,Math.min(18,font.getHeight()+2));
-            int previewHeight=Math.max(28,Math.min(120,
-                    panelHeight-22-3*rowHeight-font.getHeight()-12));
+            int rowHeight=Math.max(13,Math.min(17,font.getHeight()+1));
+            int previewHeight=Math.max(28,Math.min(92,
+                    panelHeight-28-5*rowHeight-font.getHeight()-10));
             int previewWidth=Math.min(panelWidth-16,Math.max(48,previewHeight*3/4));
             int previewX=(width-previewWidth)/2;
-            int previewY=panelY+21;
+            int previewY=panelY+20;
             renderAvatarPreview(g,previewX,previewY,previewWidth,previewHeight);
 
-            String[] names={"Skin","Shirt","Pants"};
-            int[] colors={avatarSkinColor,avatarShirtColor,avatarLegColor};
-            int rowsY=previewY+previewHeight+3;
-            for(int i=0;i<3;i++) {
+            String[] names={"Skin tone","Shirt color","Pants color","Shirt design","Pants design"};
+            int[] colors={avatarSkinColor,avatarShirtColor,avatarLegColor,0xFFFFFF,0xFFFFFF};
+            String[] values={"","","",avatarShirtStyle==0?"None":avatarShirtStyle+"/6",
+                    avatarPantsStyle==0?"None":avatarPantsStyle+"/5"};
+            int rowsY=previewY+previewHeight+2;
+            for(int i=0;i<5;i++) {
                 int y=rowsY+i*rowHeight;
                 g.setColor(i==avatarColorSelection?0xF5C542:0x263B50);
-                g.fillRoundRect(panelX+8,y,panelWidth-16,rowHeight-1,6,6);
+                g.fillRoundRect(panelX+7,y,panelWidth-14,rowHeight-1,5,5);
                 g.setColor(i==avatarColorSelection?0x17202A:0xFFFFFF);
-                g.drawString(names[i],panelX+16,y+1,Graphics.TOP|Graphics.LEFT);
-                g.setColor(colors[i]);
-                g.fillRect(panelX+panelWidth-38,y+3,20,rowHeight-7);
+                g.drawString(names[i],panelX+13,y+1,Graphics.TOP|Graphics.LEFT);
+                if(i<3) {
+                    g.setColor(colors[i]);
+                    g.fillRect(panelX+panelWidth-35,y+3,19,rowHeight-7);
+                } else {
+                    g.drawString(values[i],panelX+panelWidth-13,y+1,Graphics.TOP|Graphics.RIGHT);
+                }
             }
             g.setColor(0xFFFFFF);
-            g.drawString("UP/DOWN: part  LEFT/RIGHT: color",
-                    width/2,panelY+panelHeight-font.getHeight()-3,
+            g.drawString("UP/DOWN: select   LEFT/RIGHT: change",
+                    width/2,panelY+panelHeight-font.getHeight()-2,
                     Graphics.TOP|Graphics.HCENTER);
         }
 
