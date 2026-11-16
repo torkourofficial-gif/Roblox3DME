@@ -72,6 +72,8 @@ public final class main extends MIDlet {
         private int[] lanAvatarSkins = {-1,-1,-1,-1,-1};
         private int[] lanAvatarShirts = {-1,-1,-1,-1,-1};
         private int[] lanAvatarLegs = {-1,-1,-1,-1,-1};
+        private int[] lanAvatarShirtStyles = {-1,-1,-1,-1,-1};
+        private int[] lanAvatarPantsStyles = {-1,-1,-1,-1,-1};
         private int currentGame;
         private boolean paused, configMode;
         private int pauseSelection, configSelection;
@@ -2146,12 +2148,14 @@ public final class main extends MIDlet {
                         try { world.removeChild(lanAvatars[i]); } catch (Throwable ignored) {}
                         lanAvatars[i] = null;
                         lanAvatarSkins[i]=lanAvatarShirts[i]=lanAvatarLegs[i]=-1;
+                        lanAvatarShirtStyles[i]=lanAvatarPantsStyles[i]=-1;
                     }
                 }
                 return;
             }
             lanSession.publish(px, jumpY, pz, yaw, playerHealth, !dead,
-                    avatarSkinColor, avatarShirtColor, avatarLegColor);
+                    avatarSkinColor, avatarShirtColor, avatarLegColor,
+                    avatarShirtStyle, avatarPantsStyle);
             if (lanPlayers == null) lanPlayers = new LanSession.PlayerState[5];
             lanSession.copySnapshot(lanPlayers);
             LanSession.PlayerState[] states = lanPlayers;
@@ -2162,36 +2166,46 @@ public final class main extends MIDlet {
                         try { world.removeChild(lanAvatars[i]); } catch (Throwable ignored) {}
                         lanAvatars[i] = null;
                         lanAvatarSkins[i]=lanAvatarShirts[i]=lanAvatarLegs[i]=-1;
+                        lanAvatarShirtStyles[i]=lanAvatarPantsStyles[i]=-1;
                     }
                     lanAvatarSkins[i]=lanAvatarShirts[i]=lanAvatarLegs[i]=-1;
+                        lanAvatarShirtStyles[i]=lanAvatarPantsStyles[i]=-1;
                     continue;
                 }
                 boolean avatarColorsChanged=lanAvatars[i]!=null&&
                         (lanAvatarSkins[i]!=states[i].skinColor||
                          lanAvatarShirts[i]!=states[i].shirtColor||
-                         lanAvatarLegs[i]!=states[i].legColor);
+                         lanAvatarLegs[i]!=states[i].legColor||
+                         lanAvatarShirtStyles[i]!=states[i].shirtStyle||
+                         lanAvatarPantsStyles[i]!=states[i].pantsStyle);
                 if(avatarColorsChanged&&world!=null) {
                     try { world.removeChild(lanAvatars[i]); } catch(Throwable ignored) {}
                     lanAvatars[i]=null;
                 }
                 if (lanAvatars[i] == null && world != null) {
                     int oldSkin=avatarSkinColor,oldShirt=avatarShirtColor,oldLegs=avatarLegColor;
+                    int oldShirtStyle=avatarShirtStyle,oldPantsStyle=avatarPantsStyle;
                     Group oldLeft=leftArm,oldRight=rightArm,oldLegL=leftLeg,oldLegR=rightLeg;
                     Group oldSword=swordVisual;
                     try {
                         avatarSkinColor=states[i].skinColor;
                         avatarShirtColor=states[i].shirtColor;
                         avatarLegColor=states[i].legColor;
+                        avatarShirtStyle=states[i].shirtStyle;
+                        avatarPantsStyle=states[i].pantsStyle;
                         lanAvatars[i]=buildNoob(false);
                     } catch (Throwable t) { continue; }
                     finally {
                         avatarSkinColor=oldSkin;avatarShirtColor=oldShirt;avatarLegColor=oldLegs;
+                        avatarShirtStyle=oldShirtStyle;avatarPantsStyle=oldPantsStyle;
                         leftArm=oldLeft;rightArm=oldRight;leftLeg=oldLegL;rightLeg=oldLegR;
                         swordVisual=oldSword;
                     }
                     lanAvatarSkins[i]=states[i].skinColor;
                     lanAvatarShirts[i]=states[i].shirtColor;
                     lanAvatarLegs[i]=states[i].legColor;
+                    lanAvatarShirtStyles[i]=states[i].shirtStyle;
+                    lanAvatarPantsStyles[i]=states[i].pantsStyle;
                     world.addChild(lanAvatars[i]);
                 }
                 if (lanAvatars[i] != null) {
