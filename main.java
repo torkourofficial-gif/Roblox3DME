@@ -3083,7 +3083,8 @@ public final class main extends MIDlet {
             Texture2D pants=getClothingTexture(false,zombie?0:avatarPantsStyle);
             // Opaque body underlay lets transparent template pixels reveal the body color.
             model.addChild(makeBox(0,1.45f,0,0.78f,0.95f,0.40f,clothing));
-            model.addChild(makeClothingBox(0,1.45f,0,0.784f,0.954f,0.404f,
+            // The clothing shell sits clearly outside the flat-color underlay to prevent z-fighting.
+            model.addChild(makeClothingBox(0,1.45f,0,0.80f,0.974f,0.424f,
                     clothing,shirt,shirtTorsoRegions()));
             // Preserve the classic two-stud top plate above the shirt template.
             model.addChild(makeStuddedBox(0,1.922f,0,0.78f,0.006f,0.40f,clothing));
@@ -3150,8 +3151,9 @@ public final class main extends MIDlet {
             pivot.setTranslation(x,jointY,0.0f);
             // Solid underlay shows through transparent pixels in shirt/pants templates.
             pivot.addChild(makeBox(0.0f,-height*0.5f,0.0f,width,height,depth,color));
-            Node body=makeClothingBox(0.0f,-height*0.5f,0.0f,width+0.004f,height+0.004f,
-                    depth+0.004f,color,texture,regions);
+            // Give the textured sleeve/pant shell a visible clearance over its solid base.
+            Node body=makeClothingBox(0.0f,-height*0.5f,0.0f,width+0.02f,height+0.02f,
+                    depth+0.02f,color,texture,regions);
             pivot.addChild(body);
             if(studsTop) {
                 // Keep the classic stud plate visible on top of the sleeves.
