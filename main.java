@@ -2984,12 +2984,14 @@ public final class main extends MIDlet {
         }
 
         private void installClassicLighting(World target) {
-            AmbientLight ambient = new AmbientLight();
+            Light ambient = new Light();
+            ambient.setMode(Light.AMBIENT);
             ambient.setColor(0xFFFFE8);
             ambient.setIntensity(0.72f);
             target.addChild(ambient);
 
-            DirectionalLight sun = new DirectionalLight();
+            Light sun = new Light();
+            sun.setMode(Light.DIRECTIONAL);
             sun.setColor(0xFFF3D8);
             sun.setIntensity(0.72f);
             sun.setOrientation(-38.0f, 1.0f, 0.0f, 0.0f);
@@ -3183,7 +3185,7 @@ public final class main extends MIDlet {
             normalArray.set(0, faceOrder.length, normalData);
             VertexBuffer vb = new VertexBuffer();
             vb.setPositions(va, 0.001f, null);
-            vb.setNormals(normalArray, 1.0f / 32767.0f, null);
+            vb.setNormals(normalArray);
             int[] stripLengths = new int[] {4, 4, 4, 4, 4, 4};
             TriangleStripArray ta = new TriangleStripArray(0, stripLengths);
             Appearance ap = new Appearance();
