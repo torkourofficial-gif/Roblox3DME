@@ -191,6 +191,8 @@ public final class main extends MIDlet {
 
         private static final int OBBY_PLATFORM_COUNT = 81;
         private static final float[][] OBBY_BLOCKS = new ObbyLevel().blocks();
+        private Node[] obbyNodes = new Node[OBBY_BLOCKS.length];
+        private long nextObbyCullAt;
 
         private static final float[][] ZOMBIE_BLOCKS = new ZombieHordeLevel().blocks();
 
@@ -681,10 +683,13 @@ public final class main extends MIDlet {
                         game == 11 ? 44 : 24, 0.5f, game == 11 ? 44 : 24, 0x54A64B));
             meteorBursts = new MeteorBurst[4];
             if (game == 0) {
-                // An 80-platform zigzag course ending on an enlarged green finish.
+                // Keep the complete course in the scene, but only render nearby platforms.
+                obbyNodes = new Node[OBBY_BLOCKS.length];
+                nextObbyCullAt = 0;
                 for (int i = 0; i < OBBY_BLOCKS.length; i++) {
                     float[] b = OBBY_BLOCKS[i];
-                    world.addChild(makeStuddedBox(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]));
+                    obbyNodes[i] = makeStuddedBox(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]);
+                    world.addChild(obbyNodes[i]);
                 }
             } else if (game == 1) {
                 // Red touch-to-die test block in the baseplate lobby.
@@ -2334,6 +2339,7 @@ public final class main extends MIDlet {
             }
             updateLanPlayers();
             gameClock += dt;
+            updateObbyVisibility();
             if (dead) {
                 if (currentGame == 2 || currentGame == 10) updateZombies(dt);
                 if (currentGame == 2 || currentGame == 5 || currentGame == 10 || currentGame == 14) updateWorldObjects(dt);
@@ -2430,6 +2436,20 @@ public final class main extends MIDlet {
             // This world has no AnimationTrack/KeyframeSequence objects, so world.animate()
             // only adds a needless scene-graph traversal every frame.
             updateExtraGame(dt);
+        }
+
+        private void updateObbyVisibility() {
+            if (currentGame != 0 || obbyNodes == null || gameClock < nextObbyCullAt) return;
+            nextObbyCullAt = gameClock + 200;
+            final float renderRadiusSquared = 28.0f * 28.0f;
+            for (int i = 0; i < obbyNodes.length; i++) {
+                Node node = obbyNodes[i];
+                if (node == null) continue;
+                float[] block = OBBY_BLOCKS[i];
+                float dx = block[0] - px, dz = block[2] - pz;
+                boolean nearby = dx * dx + dz * dz <= renderRadiusSquared;
+                if (node.isRenderingEnabled() != nearby) node.setRenderingEnable(nearby);
+            }
         }
 
         private void resolveLanding(float previousY) {
