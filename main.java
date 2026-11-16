@@ -3010,12 +3010,16 @@ public final class main extends MIDlet {
             VertexBuffer vb=new VertexBuffer();
             vb.setPositions(positions,0.001f,null);
             vb.setNormals(getSharedBoxNormals());
-            // UVs stay in the original 585x559 atlas coordinate system.
-            // The image is uniformly resampled to 256x244, then padded to 256x256.
+            // Regions are ordered to match the mesh faces:
+            // front, back, bottom, top, left, right.
+            // The atlas content is 256x244 inside a 256x256 texture;
+            // scale V so UVs never sample the transparent padding.
+            final float atlasVScale=244.0f/256.0f;
             for(int f=0;f<6;f++) {
                 int[] r=regions[f];
                 float u0=(float)r[0]/585.0f,u1=(float)(r[0]+r[2])/585.0f;
-                float v0=(float)r[1]/559.0f,v1=(float)(r[1]+r[3])/559.0f;
+                float v0=((float)r[1]/559.0f)*atlasVScale;
+                float v1=((float)(r[1]+r[3])/559.0f)*atlasVScale;
                 int k=f*8;
                 uv[k]=(short)(u0*1000);uv[k+1]=(short)(v1*1000);
                 uv[k+2]=(short)(u0*1000);uv[k+3]=(short)(v0*1000);
@@ -3058,20 +3062,42 @@ public final class main extends MIDlet {
         }
 
         private int[][] shirtTorsoRegions() {
-            return new int[][]{{231,74,128,128},{431,74,128,128},
-                {231,203,128,64},{231,8,128,64},{165,74,64,128},{360,74,64,128}};
+            // Classic shirt torso: front, back, bottom, top, left, right.
+            return new int[][]{
+                {231,74,128,128}, {427,74,128,128},
+                {231,204,128,64}, {231,8,128,64},
+                {361,74,64,128}, {165,74,64,128}
+            };
         }
         private int[][] shirtSleeveRegions(boolean leftSide) {
-            int x=leftSide?19:211;
-            return new int[][]{{x,355,64,128},{x+128,355,64,128},
-                {x+64,483,64,64},{x+64,289,64,64},
-                {x+64,355,64,128},{x+192,355,64,128}};
+            // Left and right sleeves use different atlas layouts; do not mirror one.
+            if(leftSide) {
+                return new int[][]{
+                    {308,355,64,128}, {440,355,64,128},
+                    {308,485,64,64}, {308,289,64,64},
+                    {374,355,64,128}, {506,355,64,128}
+                };
+            }
+            return new int[][]{
+                {217,355,64,128}, {85,355,64,128},
+                {217,485,64,64}, {217,289,64,64},
+                {19,355,64,128}, {151,355,64,128}
+            };
         }
         private int[][] pantsLegRegions(boolean leftSide) {
-            int x=leftSide?19:211;
-            return new int[][]{{x,355,64,128},{x+128,355,64,128},
-                {x+64,483,64,64},{x+64,289,64,64},
-                {x+64,355,64,128},{x+192,355,64,128}};
+            // Classic pants use the same face layout as the matching arm panels.
+            if(leftSide) {
+                return new int[][]{
+                    {308,355,64,128}, {440,355,64,128},
+                    {308,485,64,64}, {308,289,64,64},
+                    {374,355,64,128}, {506,355,64,128}
+                };
+            }
+            return new int[][]{
+                {217,355,64,128}, {85,355,64,128},
+                {217,485,64,64}, {217,289,64,64},
+                {19,355,64,128}, {151,355,64,128}
+            };
         }
 
         private Group buildNoob() throws Exception {
