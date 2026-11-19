@@ -4054,7 +4054,13 @@ public final class main extends MIDlet {
         }
 
         private void ensureAvatarPreview() {
-            if(avatarPreviewWorld!=null)return;
+            if(avatarPreviewWorld!=null&&avatarPreviewCamera!=null&&
+                    avatarPreviewModel!=null)return;
+            // Discard an incomplete preview instead of leaving null camera/model
+            // references behind after a failed M3G initialization.
+            avatarPreviewWorld=null;
+            avatarPreviewCamera=null;
+            avatarPreviewModel=null;
             try {
                 avatarPreviewWorld=new World();
                 installClassicLighting(avatarPreviewWorld);
@@ -4089,23 +4095,33 @@ public final class main extends MIDlet {
         }
 
         private void rebuildAvatarPreview() {
-            if(avatarPreviewWorld==null) {
+            if(avatarPreviewWorld==null||avatarPreviewCamera==null||
+                    avatarPreviewModel==null) {
+                avatarPreviewWorld=null;
+                avatarPreviewCamera=null;
+                avatarPreviewModel=null;
                 ensureAvatarPreview();
                 return;
             }
             try {
-                if(avatarPreviewModel!=null)
-                    avatarPreviewWorld.removeChild(avatarPreviewModel);
-                avatarPreviewModel=buildPreviewAvatar();
-                avatarPreviewWorld.addChild(avatarPreviewModel);
+                avatarPreviewWorld.removeChild(avatarPreviewModel);
+                Group replacement=buildPreviewAvatar();
+                if(replacement==null)
+                    throw new Exception("Avatar model is null");
+                avatarPreviewWorld.addChild(replacement);
+                avatarPreviewModel=replacement;
             } catch(Throwable t) {
+                avatarPreviewWorld=null;
+                avatarPreviewCamera=null;
+                avatarPreviewModel=null;
                 modelError="Avatar preview: "+t.toString();
             }
         }
 
         private void renderAvatarPreview(Graphics g,int x,int y,int width,int height) {
             ensureAvatarPreview();
-            if(avatarPreviewWorld==null||width<1||height<1)return;
+            if(avatarPreviewWorld==null||avatarPreviewCamera==null||
+                    avatarPreviewModel==null||width<1||height<1)return;
             boolean bound=false;
             try {
                 // Render directly into the screen target: no offscreen image, getRGB,
@@ -4162,9 +4178,11 @@ public final class main extends MIDlet {
             String[] names={"Skin","Shirt color","Pants color","Shirt","Pants","Hat","Face"};
             String[] faceNames={"Classic","Smile","Grin","Surprised"};
             int[] colors={avatarSkinColor,avatarShirtColor,avatarLegColor,0xFFFFFF,0xFFFFFF,0xFFFFFF,0xFFFFFF};
+            int safeFaceStyle=avatarFaceStyle;
+            if(safeFaceStyle<0||safeFaceStyle>=faceNames.length)safeFaceStyle=0;
             String[] values={"","","",avatarShirtStyle==0?"None":avatarShirtStyle+"/6",
                     avatarPantsStyle==0?"None":avatarPantsStyle+"/5",
-                    avatarHatStyle==0?"None":avatarHatStyle+"/5",faceNames[avatarFaceStyle]};
+                    avatarHatStyle==0?"None":avatarHatStyle+"/5",faceNames[safeFaceStyle]};
             int rowsY=previewY+previewHeight+5;
             int footerY=panelY+panelHeight-font.getHeight()-2;
             int rowHeight=Math.max(18,font.getHeight()+4);
