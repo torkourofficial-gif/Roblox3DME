@@ -65,6 +65,7 @@ public final class main extends MIDlet {
                 avatarLegColor=0x2E9E45;
         private boolean avatarEditorMode;
         private int avatarColorSelection;
+        private int avatarListScroll;
         private int avatarShirtStyle, avatarPantsStyle, avatarHatStyle, avatarFaceStyle;
         private World avatarPreviewWorld;
         private Camera avatarPreviewCamera;
@@ -3914,7 +3915,7 @@ public final class main extends MIDlet {
             catch(Throwable ignored){return false;}
         }
         private boolean isRightSoftkey(int keyCode, int action) {
-            if (keyCode == -7 || action == GAME_B) return true;
+            if (keyCode == -7) return true;
             try {
                 String name = getKeyName(keyCode);
                 return "Right Softkey".equalsIgnoreCase(name) ||
@@ -3975,6 +3976,23 @@ public final class main extends MIDlet {
             if(avatarPreviewYaw<0.0f)avatarPreviewYaw+=360.0f;
         }
 
+        private void keepAvatarSelectionVisible() {
+            int panelHeight=Math.min(getHeight()-8,Math.max(120,getHeight()*4/5));
+            int previewHeight=Math.max(48,Math.min(panelHeight/2,
+                    panelHeight-4*getFont().getHeight()-40));
+            int rowsY=(getHeight()-panelHeight)/2+20+previewHeight+5;
+            int footerY=(getHeight()-panelHeight)/2+panelHeight-getFont().getHeight()-2;
+            int rowHeight=Math.max(18,getFont().getHeight()+4);
+            int visibleRows=Math.max(1,(footerY-rowsY-3)/rowHeight);
+            if(avatarColorSelection<avatarListScroll)
+                avatarListScroll=avatarColorSelection;
+            else if(avatarColorSelection>=avatarListScroll+visibleRows)
+                avatarListScroll=avatarColorSelection-visibleRows+1;
+            int maxScroll=Math.max(0,7-visibleRows);
+            if(avatarListScroll>maxScroll)avatarListScroll=maxScroll;
+            if(avatarListScroll<0)avatarListScroll=0;
+        }
+
         private void handleAvatarSettingsInput(int keyCode,int action,
                 boolean up,boolean down,boolean leftKey,boolean rightKey,boolean fire) {
             if(keyCode==KEY_STAR||keyCode==KEY_POUND||keyCode==KEY_NUM0) {
@@ -3984,8 +4002,13 @@ public final class main extends MIDlet {
                 settingsMessage="";
                 return;
             }
-            if(up)avatarColorSelection=(avatarColorSelection+6)%7;
-            else if(down)avatarColorSelection=(avatarColorSelection+1)%7;
+            if(up) {
+                avatarColorSelection=(avatarColorSelection+6)%7;
+                keepAvatarSelectionVisible();
+            } else if(down) {
+                avatarColorSelection=(avatarColorSelection+1)%7;
+                keepAvatarSelectionVisible();
+            }
             else if(fire) {
                 int direction=1;
                 if(avatarColorSelection==0||avatarColorSelection==1||avatarColorSelection==2) {
@@ -4135,7 +4158,8 @@ public final class main extends MIDlet {
             g.setColor(0xFFFFFF);
             g.drawString("AVATAR CUSTOMIZER",width/2,panelY+4,Graphics.TOP|Graphics.HCENTER);
 
-            int previewHeight=Math.max(64,panelHeight/2);
+            int previewHeight=Math.max(48,Math.min(panelHeight/2,
+                    panelHeight-4*font.getHeight()-40));
             int previewWidth=panelWidth-16;
             int previewX=(width-previewWidth)/2;
             int previewY=panelY+20;
@@ -4150,25 +4174,35 @@ public final class main extends MIDlet {
                     avatarPantsStyle==0?"None":avatarPantsStyle+"/5",
                     avatarHatStyle==0?"None":avatarHatStyle+"/5",faceNames[avatarFaceStyle]};
             int rowsY=previewY+previewHeight+5;
-            int rowHeight=Math.max(10,Math.min(15,
-                    (panelY+panelHeight-font.getHeight()-rowsY-4)/7));
-            for(int i=0;i<7;i++) {
-                int y=rowsY+i*rowHeight;
+            int footerY=panelY+panelHeight-font.getHeight()-2;
+            int rowHeight=Math.max(18,font.getHeight()+4);
+            int listHeight=Math.max(0,footerY-rowsY-3);
+            int visibleRows=Math.max(1,listHeight/rowHeight);
+            int maxScroll=Math.max(0,7-visibleRows);
+            if(avatarListScroll>maxScroll)avatarListScroll=maxScroll;
+            int oldClipX=g.getClipX(),oldClipY=g.getClipY();
+            int oldClipW=g.getClipWidth(),oldClipH=g.getClipHeight();
+            g.setClip(panelX+5,rowsY,panelWidth-10,listHeight);
+            for(int visible=0;visible<visibleRows;visible++) {
+                int i=avatarListScroll+visible;
+                if(i>=7)break;
+                int y=rowsY+visible*rowHeight;
                 g.setColor(i==avatarColorSelection?0xF5C542:0x263B50);
                 g.fillRoundRect(panelX+7,y,panelWidth-14,rowHeight-1,5,5);
                 g.setColor(i==avatarColorSelection?0x17202A:0xFFFFFF);
-                g.drawString(names[i],panelX+13,y+1,Graphics.TOP|Graphics.LEFT);
+                g.drawString(names[i],panelX+13,y+2,Graphics.TOP|Graphics.LEFT);
                 if(i<3) {
                     g.setColor(colors[i]);
-                    g.fillRect(panelX+panelWidth-35,y+3,19,rowHeight-7);
+                    g.fillRect(panelX+panelWidth-35,y+4,19,rowHeight-8);
                 } else {
-                    g.drawString(values[i],panelX+panelWidth-13,y+1,Graphics.TOP|Graphics.RIGHT);
+                    g.drawString(values[i],panelX+panelWidth-13,y+2,
+                            Graphics.TOP|Graphics.RIGHT);
                 }
             }
+            g.setClip(oldClipX,oldClipY,oldClipW,oldClipH);
             g.setColor(0xFFFFFF);
-            g.drawString("UP/DOWN select  LEFT/RIGHT rotate",
-                    width/2,panelY+panelHeight-font.getHeight()-2,
-                    Graphics.TOP|Graphics.HCENTER);
+            g.drawString("UP/DOWN scroll  LEFT/RIGHT rotate",
+                    width/2,footerY,Graphics.TOP|Graphics.HCENTER);
         }
 
         private void drawSettingsPanel(Graphics g, boolean pausedPanel) {
@@ -4305,6 +4339,7 @@ public final class main extends MIDlet {
                     avatarRotateLeftHeld=false;avatarRotateRightHeld=false;
                     avatarPreviewAngularVelocity=0.0f;
                     avatarColorSelection=0;
+                    avatarListScroll=0;
                     settingsMessage="";
                     ensureAvatarPreview();
                 } else {
