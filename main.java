@@ -3792,13 +3792,14 @@ public final class main extends MIDlet {
 
         private VertexArray getSharedBoxNormals() {
             if (sharedBoxNormals != null) return sharedBoxNormals;
+            // Match faceOrder: front, back, bottom, left, right, top.
             short[] data = new short[] {
                 0,0,-32767, 0,0,-32767, 0,0,-32767, 0,0,-32767,
                 0,0,32767, 0,0,32767, 0,0,32767, 0,0,32767,
                 0,-32767,0, 0,-32767,0, 0,-32767,0, 0,-32767,0,
-                0,32767,0, 0,32767,0, 0,32767,0, 0,32767,0,
                 -32767,0,0, -32767,0,0, -32767,0,0, -32767,0,0,
-                32767,0,0, 32767,0,0, 32767,0,0, 32767,0,0
+                32767,0,0, 32767,0,0, 32767,0,0, 32767,0,0,
+                0,32767,0, 0,32767,0, 0,32767,0, 0,32767,0
             };
             sharedBoxNormals = new VertexArray(24, 3, 2);
             sharedBoxNormals.set(0, 24, data);
@@ -3820,15 +3821,15 @@ public final class main extends MIDlet {
                 -sx/2,-sy/2,-sz/2, sx/2,-sy/2,-sz/2, -sx/2,sy/2,-sz/2, sx/2,sy/2,-sz/2,
                 -sx/2,-sy/2,sz/2, sx/2,-sy/2,sz/2, -sx/2,sy/2,sz/2, sx/2,sy/2,sz/2
             };
-            // JSR-184 defines TriangleStripArray (not TriangleArray).
-            // Four vertices per face, six independent strips.
+            // Keep the textured top face last so the other five faces can
+            // share one M3G submesh and one draw call.
             int[] faceOrder = new int[] {
                 0,2,1,3,   // front
                 4,5,6,7,   // back
-                0,1,4,5,   // lower face
-                2,6,3,7,   // upper face
-                0,4,2,6,   // left face
-                1,3,5,7    // right face
+                0,1,4,5,   // bottom
+                0,4,2,6,   // left
+                1,3,5,7,   // right
+                2,6,3,7    // top
             };
             float[] p = new float[faceOrder.length * 3];
             for (int i = 0; i < faceOrder.length; i++) {
@@ -3857,11 +3858,11 @@ public final class main extends MIDlet {
                 // One UV unit now equals one complete stud tile.
                 short uMax = (short)(tilesX * 1000);
                 short vMax = (short)(tilesZ * 1000);
-                // The upper face uses vertices 12..15 in faceOrder.
-                uv[24] = 0;    uv[25] = 0;
-                uv[26] = 0;    uv[27] = vMax;
-                uv[28] = uMax; uv[29] = 0;
-                uv[30] = uMax; uv[31] = vMax;
+                // The upper face uses vertices 20..23 in faceOrder.
+                uv[40] = 0;    uv[41] = 0;
+                uv[42] = 0;    uv[43] = vMax;
+                uv[44] = uMax; uv[45] = 0;
+                uv[46] = uMax; uv[47] = vMax;
                 VertexArray texCoords = new VertexArray(24, 2, 2);
                 texCoords.set(0, 24, uv);
                 vb.setTexCoords(0, texCoords, 0.001f, null);
@@ -3877,14 +3878,23 @@ public final class main extends MIDlet {
             pm.setCulling(PolygonMode.CULL_NONE);
             pm.setShading(PolygonMode.SHADE_SMOOTH);
             solid.setPolygonMode(pm);
-            IndexBuffer[] faces = new IndexBuffer[6];
-            Appearance[] appearances = new Appearance[6];
-            for (int face = 0; face < 6; face++) {
-                faces[face] = new TriangleStripArray(face * 4, new int[] {4});
-                appearances[face] = solid;
+            boolean texturedTop = studsTop && cachedStudsTexture != null;
+            IndexBuffer[] faces;
+            Appearance[] appearances;
+            if (texturedTop) {
+                // Five solid faces in one submesh; the studded top is the second.
+                faces = new IndexBuffer[] {
+                    new TriangleStripArray(0, new int[] {4,4,4,4,4}),
+                    new TriangleStripArray(20, new int[] {4})
+                };
+                appearances = new Appearance[] {solid, makeStudsAppearance(color)};
+            } else {
+                // A regular box is a single M3G submesh instead of six.
+                faces = new IndexBuffer[] {
+                    new TriangleStripArray(0, new int[] {4,4,4,4,4,4})
+                };
+                appearances = new Appearance[] {solid};
             }
-            if (studsTop && cachedStudsTexture != null)
-                appearances[3] = makeStudsAppearance(color);
             Mesh mesh = new Mesh(vb, faces, appearances);
             mesh.setTranslation(x,y,z);
             return mesh;
