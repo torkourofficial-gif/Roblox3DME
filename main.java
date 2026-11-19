@@ -4748,9 +4748,10 @@ public final class main extends MIDlet {
                 repaint();return;
             }
             if (paused) {
-                if(configMode&&avatarEditorMode&&(k==LEFT||k==RIGHT)) {
-                    avatarRotateLeftHeld=k==LEFT;
-                    avatarRotateRightHeld=k==RIGHT;
+                if(configMode&&avatarEditorMode&&
+                        (k==LEFT||k==RIGHT||keyCode==KEY_NUM4||keyCode==KEY_NUM6)) {
+                    avatarRotateLeftHeld=(k==LEFT||keyCode==KEY_NUM4);
+                    avatarRotateRightHeld=(k==RIGHT||keyCode==KEY_NUM6);
                     repaint();
                     return;
                 }
@@ -4814,9 +4815,10 @@ public final class main extends MIDlet {
         }
         protected void keyReleased(int keyCode) {
             int k = getGameAction(keyCode);
-            if(paused&&configMode&&avatarEditorMode&&(k==LEFT||k==RIGHT)) {
-                if(k==LEFT)avatarRotateLeftHeld=false;
-                if(k==RIGHT)avatarRotateRightHeld=false;
+            if(paused&&configMode&&avatarEditorMode&&
+                    (k==LEFT||k==RIGHT||keyCode==KEY_NUM4||keyCode==KEY_NUM6)) {
+                if(k==LEFT||keyCode==KEY_NUM4)avatarRotateLeftHeld=false;
+                if(k==RIGHT||keyCode==KEY_NUM6)avatarRotateRightHeld=false;
                 return;
             }
             if (keyCode == mappedControls[CONTROL_FORWARD]) forward = false;
