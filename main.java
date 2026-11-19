@@ -275,6 +275,8 @@ public final class main extends MIDlet {
             Group swordArm, leftArm, rightArm, leftLeg, rightLeg;
             Group sword;
             long attackUntil;
+            long nextVisibilityCheck;
+            boolean modelVisible = true;
             PlayerBot(float x,float z) {
                 this.x=x; this.z=z; spawnX=x; spawnZ=z; targetX=x; targetZ=z;
             }
@@ -1088,10 +1090,23 @@ public final class main extends MIDlet {
 
         private void syncBotModelVisibility(PlayerBot bot) {
             if(bot==null||!bot.alive)return;
-            if(bot.model!=null){
-                if(!isBotInView(bot))despawnBotModel(bot);
-            }else if(isBotInView(bot)){
+            if(bot.model==null){
                 addPlayerBotModel(bot,false);
+                if(bot.model==null)return;
+                bot.modelVisible=true;
+                bot.nextVisibilityCheck=0;
+            }
+            // Keep the M3G model allocated: rebuilding its meshes/materials every
+            // time a bot crosses the screen edge creates avoidable GC spikes.
+            // Projection is also throttled because it is only a visibility hint.
+            if(gameClock>=bot.nextVisibilityCheck){
+                bot.nextVisibilityCheck=gameClock+150;
+                boolean visible=isBotInView(bot);
+                if(visible!=bot.modelVisible){
+                    if(visible)bot.model.setTranslation(bot.x,bot.y,bot.z);
+                    bot.model.setRenderingEnable(visible);
+                    bot.modelVisible=visible;
+                }
             }
         }
 
