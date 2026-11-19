@@ -847,7 +847,11 @@ public final class main extends MIDlet {
                 bot.swordArm=rightArm;bot.sword=swordVisual;
                 leftArm=l;rightArm=r;leftLeg=ll;rightLeg=rl;swordVisual=sword;
                 if(bot.sword!=null)bot.sword.setRenderingEnable(false);
-                bot.model.setTranslation(bot.x,bot.y,bot.z);world.addChild(bot.model);
+                bot.model.setTranslation(bot.x,bot.y,bot.z);
+                bot.model.setRenderingEnable(true);
+                bot.modelVisible=true;
+                bot.nextVisibilityCheck=0;
+                world.addChild(bot.model);
                 bot.alive=true;
                 if(protectedSpawn){bot.health=100;bot.aura=makeBotAura();bot.model.addChild(bot.aura);
                     bot.invulnerableUntil=gameClock+4000;bot.auraUntil=bot.invulnerableUntil;}
