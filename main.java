@@ -70,6 +70,8 @@ public final class main extends MIDlet {
         private Camera avatarPreviewCamera;
         private Group avatarPreviewModel;
         private float avatarPreviewYaw;
+        private float avatarPreviewAngularVelocity;
+        private boolean avatarRotateLeftHeld, avatarRotateRightHeld;
         private int[] lanAvatarSkins = {-1,-1,-1,-1,-1};
         private int[] lanAvatarShirts = {-1,-1,-1,-1,-1};
         private int[] lanAvatarLegs = {-1,-1,-1,-1,-1};
@@ -2335,6 +2337,7 @@ public final class main extends MIDlet {
         }
 
         private void update(int dt) {
+            updateAvatarPreviewRotation(dt);
             if (pendingLanError != null) {
                 lanMessage = pendingLanError;
                 modelError = lanMessage;
@@ -3954,20 +3957,36 @@ public final class main extends MIDlet {
             clearInput();
         }
 
+        private void updateAvatarPreviewRotation(int dt) {
+            if(!avatarEditorMode)return;
+            if(avatarRotateLeftHeld!=avatarRotateRightHeld) {
+                float acceleration=avatarRotateRightHeld?1050.0f:-1050.0f;
+                avatarPreviewAngularVelocity+=acceleration*(float)dt/1000.0f;
+                if(avatarPreviewAngularVelocity>240.0f)avatarPreviewAngularVelocity=240.0f;
+                if(avatarPreviewAngularVelocity< -240.0f)avatarPreviewAngularVelocity=-240.0f;
+            } else {
+                float damping=1.0f/(1.0f+(float)dt*0.009f);
+                avatarPreviewAngularVelocity*=damping;
+                if(avatarPreviewAngularVelocity<0.5f&&avatarPreviewAngularVelocity> -0.5f)
+                    avatarPreviewAngularVelocity=0.0f;
+            }
+            avatarPreviewYaw+=avatarPreviewAngularVelocity*(float)dt/1000.0f;
+            if(avatarPreviewYaw>=360.0f)avatarPreviewYaw-=360.0f;
+            if(avatarPreviewYaw<0.0f)avatarPreviewYaw+=360.0f;
+        }
+
         private void handleAvatarSettingsInput(int keyCode,int action,
                 boolean up,boolean down,boolean leftKey,boolean rightKey,boolean fire) {
             if(keyCode==KEY_STAR||keyCode==KEY_POUND||keyCode==KEY_NUM0) {
                 avatarEditorMode=false;
+                avatarRotateLeftHeld=false;avatarRotateRightHeld=false;
+                avatarPreviewAngularVelocity=0.0f;
                 settingsMessage="";
                 return;
             }
             if(up)avatarColorSelection=(avatarColorSelection+6)%7;
             else if(down)avatarColorSelection=(avatarColorSelection+1)%7;
-            else if(leftKey||rightKey) {
-                avatarPreviewYaw += rightKey ? 15.0f : -15.0f;
-                if(avatarPreviewYaw>=360.0f)avatarPreviewYaw-=360.0f;
-                if(avatarPreviewYaw<0.0f)avatarPreviewYaw+=360.0f;
-            } else if(fire) {
+            else if(fire) {
                 int direction=1;
                 if(avatarColorSelection==0||avatarColorSelection==1||avatarColorSelection==2) {
                     int[] palette=avatarColorSelection==0?AVATAR_SKIN_PALETTE:AVATAR_CLOTHING_PALETTE;
@@ -4116,10 +4135,8 @@ public final class main extends MIDlet {
             g.setColor(0xFFFFFF);
             g.drawString("AVATAR CUSTOMIZER",width/2,panelY+4,Graphics.TOP|Graphics.HCENTER);
 
-            int rowHeight=Math.max(13,Math.min(16,font.getHeight()+1));
-            int previewHeight=Math.max(40,Math.min(118,
-                    panelHeight-34-7*rowHeight-font.getHeight()-12));
-            int previewWidth=Math.min(panelWidth-16,Math.max(100,previewHeight*3/2));
+            int previewHeight=Math.max(64,panelHeight/2);
+            int previewWidth=panelWidth-16;
             int previewX=(width-previewWidth)/2;
             int previewY=panelY+20;
             g.setColor(0x101B27);
@@ -4133,6 +4150,8 @@ public final class main extends MIDlet {
                     avatarPantsStyle==0?"None":avatarPantsStyle+"/5",
                     avatarHatStyle==0?"None":avatarHatStyle+"/5",faceNames[avatarFaceStyle]};
             int rowsY=previewY+previewHeight+5;
+            int rowHeight=Math.max(10,Math.min(15,
+                    (panelY+panelHeight-font.getHeight()-rowsY-4)/7));
             for(int i=0;i<7;i++) {
                 int y=rowsY+i*rowHeight;
                 g.setColor(i==avatarColorSelection?0xF5C542:0x263B50);
@@ -4689,6 +4708,12 @@ public final class main extends MIDlet {
                 repaint();return;
             }
             if (paused) {
+                if(configMode&&avatarEditorMode&&(k==LEFT||k==RIGHT)) {
+                    avatarRotateLeftHeld=k==LEFT;
+                    avatarRotateRightHeld=k==RIGHT;
+                    repaint();
+                    return;
+                }
                 handlePauseInput(keyCode, k);
                 repaint();
                 return;
@@ -4749,6 +4774,11 @@ public final class main extends MIDlet {
         }
         protected void keyReleased(int keyCode) {
             int k = getGameAction(keyCode);
+            if(paused&&configMode&&avatarEditorMode&&(k==LEFT||k==RIGHT)) {
+                if(k==LEFT)avatarRotateLeftHeld=false;
+                if(k==RIGHT)avatarRotateRightHeld=false;
+                return;
+            }
             if (keyCode == mappedControls[CONTROL_FORWARD]) forward = false;
             else if (keyCode == mappedControls[CONTROL_BACK]) back = false;
             else if (keyCode == mappedControls[CONTROL_LEFT]) left = false;
