@@ -4750,8 +4750,20 @@ public final class main extends MIDlet {
             if (paused) {
                 if(configMode&&avatarEditorMode&&
                         (k==LEFT||k==RIGHT||keyCode==KEY_NUM4||keyCode==KEY_NUM6)) {
-                    avatarRotateLeftHeld=(k==LEFT||keyCode==KEY_NUM4);
-                    avatarRotateRightHeld=(k==RIGHT||keyCode==KEY_NUM6);
+                    // Apply rotation on key-down: some MIDP devices/emulators do not
+                    // deliver reliable keyReleased events for numeric keypad keys.
+                    if(k==LEFT||keyCode==KEY_NUM4) {
+                        avatarPreviewYaw-=15.0f;
+                        if(avatarPreviewYaw<0.0f)avatarPreviewYaw+=360.0f;
+                    } else {
+                        avatarPreviewYaw+=15.0f;
+                        if(avatarPreviewYaw>=360.0f)avatarPreviewYaw-=360.0f;
+                    }
+                    avatarRotateLeftHeld=false;
+                    avatarRotateRightHeld=false;
+                    avatarPreviewAngularVelocity=0.0f;
+                    if(avatarPreviewModel!=null)
+                        avatarPreviewModel.setOrientation(avatarPreviewYaw,0.0f,1.0f,0.0f);
                     repaint();
                     return;
                 }
