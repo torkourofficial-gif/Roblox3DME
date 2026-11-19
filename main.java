@@ -69,6 +69,7 @@ public final class main extends MIDlet {
         private World avatarPreviewWorld;
         private Camera avatarPreviewCamera;
         private Group avatarPreviewModel;
+        private float avatarPreviewYaw;
         private int[] lanAvatarSkins = {-1,-1,-1,-1,-1};
         private int[] lanAvatarShirts = {-1,-1,-1,-1,-1};
         private int[] lanAvatarLegs = {-1,-1,-1,-1,-1};
@@ -3962,8 +3963,12 @@ public final class main extends MIDlet {
             }
             if(up)avatarColorSelection=(avatarColorSelection+6)%7;
             else if(down)avatarColorSelection=(avatarColorSelection+1)%7;
-            else if(leftKey||rightKey||fire) {
-                int direction=rightKey||fire?1:-1;
+            else if(leftKey||rightKey) {
+                avatarPreviewYaw += rightKey ? 15.0f : -15.0f;
+                if(avatarPreviewYaw>=360.0f)avatarPreviewYaw-=360.0f;
+                if(avatarPreviewYaw<0.0f)avatarPreviewYaw+=360.0f;
+            } else if(fire) {
+                int direction=1;
                 if(avatarColorSelection==0||avatarColorSelection==1||avatarColorSelection==2) {
                     int[] palette=avatarColorSelection==0?AVATAR_SKIN_PALETTE:AVATAR_CLOTHING_PALETTE;
                     int current=avatarColorSelection==0?avatarSkinColor:
@@ -4020,10 +4025,21 @@ public final class main extends MIDlet {
                 avatarPreviewWorld=new World();
                 installClassicLighting(avatarPreviewWorld);
                 Background background=new Background();
-                background.setColor(0x243B50);
+                background.setColor(0x7898B5);
                 background.setColorClearEnable(true);
                 background.setDepthClearEnable(true);
                 avatarPreviewWorld.setBackground(background);
+                // Small static showroom: floor, rear wall and two low side pillars.
+                avatarPreviewWorld.addChild(makeBox(0.0f,-0.13f,0.0f,
+                        8.0f,0.25f,7.0f,0x657D58));
+                avatarPreviewWorld.addChild(makeBox(0.0f,2.0f,-3.15f,
+                        8.0f,4.0f,0.18f,0x9AAFC0));
+                avatarPreviewWorld.addChild(makeBox(-3.1f,0.45f,-1.0f,
+                        0.45f,0.9f,0.45f,0xC6A66A));
+                avatarPreviewWorld.addChild(makeBox(3.1f,0.45f,-1.0f,
+                        0.45f,0.9f,0.45f,0xC6A66A));
+                avatarPreviewWorld.addChild(makeBox(0.0f,0.015f,0.0f,
+                        2.4f,0.03f,2.4f,0x879B68));
                 avatarPreviewCamera=new Camera();
                 avatarPreviewCamera.setPerspective(32.0f,0.75f,0.1f,20.0f);
                 avatarPreviewCamera.setTranslation(0.0f,1.25f,5.0f);
@@ -4062,9 +4078,8 @@ public final class main extends MIDlet {
                 // software upscaling, or intermediate pixel buffers.
                 avatarPreviewCamera.setPerspective(32.0f,
                         (float)width/(float)height,0.1f,20.0f);
-                long previewNow=System.currentTimeMillis();
-                float previewAngle=(float)((previewNow/200L)%360L);
-                avatarPreviewModel.setOrientation(previewAngle,0.0f,1.0f,0.0f);
+                // Keep the avatar facing the camera until the user rotates it.
+                avatarPreviewModel.setOrientation(avatarPreviewYaw,0.0f,1.0f,0.0f);
                 g3d.bindTarget(g,true,0);
                 bound=true;
                 g3d.setViewport(x,y,width,height);
@@ -4132,7 +4147,7 @@ public final class main extends MIDlet {
                 }
             }
             g.setColor(0xFFFFFF);
-            g.drawString("UP/DOWN select   LEFT/RIGHT change",
+            g.drawString("UP/DOWN select  LEFT/RIGHT rotate",
                     width/2,panelY+panelHeight-font.getHeight()-2,
                     Graphics.TOP|Graphics.HCENTER);
         }
