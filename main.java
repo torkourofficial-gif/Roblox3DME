@@ -3978,11 +3978,12 @@ public final class main extends MIDlet {
 
         private void keepAvatarSelectionVisible() {
             int panelHeight=Math.min(getHeight()-8,Math.max(120,getHeight()*4/5));
+            int fontHeight=Font.getDefaultFont().getHeight();
             int previewHeight=Math.max(48,Math.min(panelHeight/2,
-                    panelHeight-4*getFont().getHeight()-40));
+                    panelHeight-4*fontHeight-40));
             int rowsY=(getHeight()-panelHeight)/2+20+previewHeight+5;
-            int footerY=(getHeight()-panelHeight)/2+panelHeight-getFont().getHeight()-2;
-            int rowHeight=Math.max(18,getFont().getHeight()+4);
+            int footerY=(getHeight()-panelHeight)/2+panelHeight-fontHeight-2;
+            int rowHeight=Math.max(18,fontHeight+4);
             int visibleRows=Math.max(1,(footerY-rowsY-3)/rowHeight);
             if(avatarColorSelection<avatarListScroll)
                 avatarListScroll=avatarColorSelection;
