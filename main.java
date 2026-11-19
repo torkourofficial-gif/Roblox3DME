@@ -3960,18 +3960,9 @@ public final class main extends MIDlet {
 
         private void updateAvatarPreviewRotation(int dt) {
             if(!avatarEditorMode)return;
-            if(avatarRotateLeftHeld!=avatarRotateRightHeld) {
-                float acceleration=avatarRotateRightHeld?1050.0f:-1050.0f;
-                avatarPreviewAngularVelocity+=acceleration*(float)dt/1000.0f;
-                if(avatarPreviewAngularVelocity>240.0f)avatarPreviewAngularVelocity=240.0f;
-                if(avatarPreviewAngularVelocity< -240.0f)avatarPreviewAngularVelocity=-240.0f;
-            } else {
-                float damping=1.0f/(1.0f+(float)dt*0.009f);
-                avatarPreviewAngularVelocity*=damping;
-                if(avatarPreviewAngularVelocity<0.5f&&avatarPreviewAngularVelocity> -0.5f)
-                    avatarPreviewAngularVelocity=0.0f;
-            }
-            avatarPreviewYaw+=avatarPreviewAngularVelocity*(float)dt/1000.0f;
+            // Always rotate the preview. This avoids relying on keypad repeat,
+            // keyReleased, or device-specific game-action mappings.
+            avatarPreviewYaw+=60.0f*(float)dt/1000.0f;
             if(avatarPreviewYaw>=360.0f)avatarPreviewYaw-=360.0f;
             if(avatarPreviewYaw<0.0f)avatarPreviewYaw+=360.0f;
         }
