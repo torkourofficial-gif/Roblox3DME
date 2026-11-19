@@ -4302,6 +4302,8 @@ public final class main extends MIDlet {
                     settingsMessage="";
                 } else if(configSelection==4) {
                     avatarEditorMode=true;
+                    avatarRotateLeftHeld=false;avatarRotateRightHeld=false;
+                    avatarPreviewAngularVelocity=0.0f;
                     avatarColorSelection=0;
                     settingsMessage="";
                     ensureAvatarPreview();
@@ -4704,6 +4706,8 @@ public final class main extends MIDlet {
             if (isRightSoftkey(keyCode, k)) {
                 if (paused && configMode) {
                     configMode=false;avatarEditorMode=false;controlMapMode=false;awaitingControlKey=false;
+                    avatarRotateLeftHeld=false;avatarRotateRightHeld=false;
+                    avatarPreviewAngularVelocity=0.0f;
                 } else if(paused)paused=false;else openPauseMenu();
                 repaint();return;
             }
