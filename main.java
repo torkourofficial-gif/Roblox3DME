@@ -202,7 +202,8 @@ public final class main extends MIDlet {
                 {0x8B6B45, 0x6BAA55, 0xE32636, 0x6688C7, 0x35B6C8, 0xD2A84B};
         private long swordAttackUntil, nextWaveAt;
         private int zombieWave;
-        private Group swordVisual, shovelVisual, heldBombVisual;\n        private long itemAttackUntil;
+        private Group swordVisual, shovelVisual, heldBombVisual;
+        private long itemAttackUntil;
         private Image logoSource, titleBackgroundSource, skySource;
         private Texture2D cachedPlayerFaceTexture, cachedZombieFaceTexture;
         private Texture2D[] cachedAvatarFaceTextures = new Texture2D[4];
@@ -4642,7 +4643,9 @@ public final class main extends MIDlet {
             if(sitting){
                 leftArm.setOrientation(-22.0f,1,0,0);rightArm.setOrientation(-22.0f,1,0,0);
                 leftLeg.setOrientation(82.0f,1,0,0);rightLeg.setOrientation(82.0f,1,0,0);
-                if(swordVisual!=null)swordVisual.setRenderingEnable(false);\n                if(shovelVisual!=null)shovelVisual.setRenderingEnable(false);\n                if(heldBombVisual!=null)heldBombVisual.setRenderingEnable(false);
+                if(swordVisual!=null)swordVisual.setRenderingEnable(false);
+                if(shovelVisual!=null)shovelVisual.setRenderingEnable(false);
+                if(heldBombVisual!=null)heldBombVisual.setRenderingEnable(false);
                 return;
             }
             float swing = 0.0f;
