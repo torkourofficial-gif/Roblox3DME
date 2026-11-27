@@ -2961,7 +2961,7 @@ public final class main extends MIDlet {
             }
             updateLanPlayers();
             gameClock += dt;
-            if(modeBlockGridDirty&&currentGame>=4)buildCustomCollisionGrid();
+            if(modeBlockGridDirty&&currentGame>=4&&!(currentGame==15&&customMapBuilding))buildCustomCollisionGrid();
             if(currentGame==15&&customMapBuilding){
                 if(customMapBuildCursor<customMapBlocks.length)updateCustomMapBuildChunk();
                 else if(customMapPostProcessing&&customMapPostReady){
