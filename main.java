@@ -242,8 +242,8 @@ public final class main extends MIDlet {
         private WorldObject[] worldObjects = new WorldObject[80];
         private int worldObjectScanLimit;
         // Reusable spatial buckets for nearby physics objects (no per-frame allocations).
-        private static final int WORLD_OBJECT_GRID_SIZE=16;
-        private static final float WORLD_OBJECT_GRID_CELL=16.0f;
+        private static final int WORLD_OBJECT_GRID_SIZE=32;
+        private static final float WORLD_OBJECT_GRID_CELL=8.0f;
         private static final float WORLD_OBJECT_GRID_ORIGIN=-128.0f;
         private int[] worldObjectGridHeads=new int[WORLD_OBJECT_GRID_SIZE*WORLD_OBJECT_GRID_SIZE];
         private int[] worldObjectGridNext=new int[80];
