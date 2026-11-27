@@ -3250,13 +3250,6 @@ public final class main extends MIDlet {
                     float[] b = ZOMBIE_BLOCKS[i];
                     resolvePieceAgainstBox(p,b[0],b[1],b[2],b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
                 }
-                for (int i = 0; i < worldObjectScanLimit; i++) {
-                    WorldObject o = worldObjects[i];
-                    if (o != null && o.active && !o.bomb && o.body != p) {
-                        PhysicsPiece b = o.body;
-                        resolvePieceAgainstBox(p,b.x,b.y,b.z,b.extentX,b.extentY,b.extentZ);
-                    }
-                }
             } else if (currentGame == 3) {
                 for (int i=0; i<studioObjectCount; i++) {
                     StudioObject object = studioObjects[i];
