@@ -2609,7 +2609,7 @@ public final class main extends MIDlet {
         }
         private Group makeBombModel(){
             Group bomb=new Group();
-            bomb.addChild(makeRoundedCylinderHead(0xE52B2B));
+            bomb.addChild(makeRoundedCylinderHead(0x111111));
             bomb.addChild(makeBox(0,0.25f,0,0.12f,0.10f,0.12f,0x303030));
             bomb.addChild(makeBox(0.04f,0.32f,0,0.08f,0.05f,0.08f,0xFFAA33));
             return bomb;
