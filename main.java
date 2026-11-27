@@ -240,6 +240,14 @@ public final class main extends MIDlet {
         private int projectedScreenX,projectedScreenY;
         private WorldObject[] worldObjects = new WorldObject[80];
         private int worldObjectScanLimit;
+        // Reusable spatial buckets for nearby physics objects (no per-frame allocations).
+        private static final int WORLD_OBJECT_GRID_SIZE=16;
+        private static final float WORLD_OBJECT_GRID_CELL=16.0f;
+        private static final float WORLD_OBJECT_GRID_ORIGIN=-128.0f;
+        private int[] worldObjectGridHeads=new int[WORLD_OBJECT_GRID_SIZE*WORLD_OBJECT_GRID_SIZE];
+        private int[] worldObjectGridNext=new int[80];
+        private int[] worldObjectGridX=new int[80],worldObjectGridZ=new int[80];
+        private boolean[] worldObjectGridOverflow=new boolean[80];
         private MeteorBurst[] meteorBursts = new MeteorBurst[4];
         private Group protectionAura;
         private Material protectionAuraMaterial;
@@ -971,6 +979,7 @@ public final class main extends MIDlet {
                     pendingSceneBuildBlocks==null||pendingSceneBuildCursor>=pendingSceneBuildBlocks.length;
             if(complete){
                 if(game>=4&&game!=15){
+                    buildCustomCollisionGrid();
                     if(game==4){lavaNode=makeBox(0,lavaHeight-0.12f,0,24,0.24f,24,0xF04B25);world.addChild(lavaNode);}
                     else if(game==8){for(int i=0;i<12;i++){float x=-9.0f+(i%4)*6.0f,z=-8.0f+(i/4)*7.5f;addToken(x,0.55f,z);}modeGoal=tokenCount;}
                     resetPlayerSpawn();if(game==13){px=TYCOON_PLAYER_X;pz=TYCOON_PLAYER_Z;jumpY=0;}
@@ -1023,6 +1032,7 @@ public final class main extends MIDlet {
         }
 
         private void buildCustomCollisionGrid(){
+            customCollisionGrid=null;customLargeCollisionBlocks=null;
             if(modeBlockCount==0)return;
             float minX=Float.MAX_VALUE,maxX=-Float.MAX_VALUE,minZ=Float.MAX_VALUE,maxZ=-Float.MAX_VALUE;
             for(int i=0;i<modeBlockCount;i++){float[] b=modeBlocks[i];minX=Math.min(minX,b[0]-b[3]*0.5f);maxX=Math.max(maxX,b[0]+b[3]*0.5f);minZ=Math.min(minZ,b[2]-b[5]*0.5f);maxZ=Math.max(maxZ,b[2]+b[5]*0.5f);}
@@ -1054,6 +1064,20 @@ public final class main extends MIDlet {
         private boolean modeBlockListCollision(java.util.Vector indices,float x,float z,float bottom,float height){
             if(indices==null)return false;
             for(int i=0;i<indices.size();i++)if(modeBlockCollision(((Integer)indices.elementAt(i)).intValue(),x,z,bottom,height))return true;
+            return false;
+        }
+        private boolean modeBlockGridCollision(float x,float z,float bottom,float height){
+            if(customCollisionGrid==null)return false;
+            int width=customCollisionGrid.length,depth=customCollisionGrid[0].length;
+            int x0=gridX(x-0.31f),x1=gridX(x+0.31f);
+            int z0=gridZ(z-0.31f),z1=gridZ(z+0.31f);
+            if(x0<0||z0<0||x1>=width||z1>=depth){
+                for(int i=0;i<modeBlockCount;i++)if(modeBlockCollision(i,x,z,bottom,height))return true;
+                return false;
+            }
+            if(modeBlockListCollision(customLargeCollisionBlocks,x,z,bottom,height))return true;
+            for(int gx=x0;gx<=x1;gx++)for(int gz=z0;gz<=z1;gz++)
+                if(modeBlockListCollision(customCollisionGrid[gx][gz],x,z,bottom,height))return true;
             return false;
         }
         private float customLandingFrom(java.util.Vector indices,float previousY,float top){
@@ -2180,7 +2204,9 @@ public final class main extends MIDlet {
                 if(cellX>=0&&cellX<customCollisionGrid.length&&cellZ>=0&&cellZ<customCollisionGrid[0].length&&
                         modeBlockListCollision(customCollisionGrid[cellX][cellZ],x,z,bottom,height))return true;
             }else if (currentGame >= 4) {
-                for (int i=0;i<modeBlockCount;i++) {
+                if(customCollisionGrid!=null){
+                    if(modeBlockGridCollision(x,z,bottom,height))return true;
+                }else for (int i=0;i<modeBlockCount;i++) {
                     if(modeBlockCollision(i,x,z,bottom,height))return true;
                 }
             }
@@ -2229,17 +2255,34 @@ public final class main extends MIDlet {
                     removeWorldObject(o);
                     spawnMeteorBurst(impactX,0.45f,impactZ);
                     damageAtMeteorImpact(impactX,impactZ);
-                    continue;
                 }
-                resolvePieceEnvironment(p);
+            }
+            buildWorldObjectGrid();
+            for (int i = 0; i < worldObjectScanLimit; i++) {
+                WorldObject o = worldObjects[i];
+                if (o != null && o.active) resolvePieceEnvironment(o.body,true);
             }
             for (int i = 0; i < worldObjectScanLimit; i++) {
                 WorldObject a = worldObjects[i];
                 if (a == null || !a.active) continue;
-                for (int j = i + 1; j < worldObjectScanLimit; j++) {
-                    WorldObject b = worldObjects[j];
-                    if (b != null && b.active) resolvePiecePair(a.body, b.body);
+                if(worldObjectGridOverflow[i]){
+                    for(int j=i+1;j<worldObjectScanLimit;j++){
+                        WorldObject b=worldObjects[j];
+                        if(b!=null&&b.active)resolvePiecePair(a.body,b.body);
+                    }
+                    continue;
                 }
+                int cx=worldObjectGridX[i],cz=worldObjectGridZ[i];
+                for(int gx=Math.max(0,cx-1);gx<=Math.min(WORLD_OBJECT_GRID_SIZE-1,cx+1);gx++)
+                    for(int gz=Math.max(0,cz-1);gz<=Math.min(WORLD_OBJECT_GRID_SIZE-1,cz+1);gz++)
+                        for(int j=worldObjectGridHeads[gx*WORLD_OBJECT_GRID_SIZE+gz];j>=0;j=worldObjectGridNext[j]){
+                            if(j<=i)continue;
+                            WorldObject b=worldObjects[j];
+                            if(b!=null&&b.active)resolvePiecePair(a.body,b.body);
+                        }
+                for(int j=i+1;j<worldObjectScanLimit;j++)
+                    if(worldObjectGridOverflow[j]&&worldObjects[j]!=null&&worldObjects[j].active)
+                        resolvePiecePair(a.body,worldObjects[j].body);
             }
             for (int i = 0; i < worldObjectScanLimit; i++) {
                 WorldObject o = worldObjects[i];
@@ -2254,6 +2297,30 @@ public final class main extends MIDlet {
                     if (gameClock >= o.explodeAt) explodeBomb(o);
                 }
             }
+        }
+        private void buildWorldObjectGrid(){
+            for(int i=0;i<worldObjectGridHeads.length;i++)worldObjectGridHeads[i]=-1;
+            for(int i=0;i<worldObjectScanLimit;i++){
+                worldObjectGridNext[i]=-1;worldObjectGridOverflow[i]=false;
+                WorldObject o=worldObjects[i];if(o==null||!o.active)continue;
+                PhysicsPiece p=o.body;
+                if(p.extentX>=WORLD_OBJECT_GRID_CELL*0.5f||p.extentZ>=WORLD_OBJECT_GRID_CELL*0.5f){
+                    worldObjectGridOverflow[i]=true;continue;
+                }
+                int x=(int)Math.floor((p.x-WORLD_OBJECT_GRID_ORIGIN)/WORLD_OBJECT_GRID_CELL);
+                int z=(int)Math.floor((p.z-WORLD_OBJECT_GRID_ORIGIN)/WORLD_OBJECT_GRID_CELL);
+                if(x<0||z<0||x>=WORLD_OBJECT_GRID_SIZE||z>=WORLD_OBJECT_GRID_SIZE){
+                    worldObjectGridOverflow[i]=true;continue;
+                }
+                worldObjectGridX[i]=x;worldObjectGridZ[i]=z;
+                int cell=x*WORLD_OBJECT_GRID_SIZE+z;
+                worldObjectGridNext[i]=worldObjectGridHeads[cell];
+                worldObjectGridHeads[cell]=i;
+            }
+        }
+        private boolean worldObjectNearCell(int index,int x,int z){
+            return index>=0&&index<worldObjectScanLimit&&!worldObjectGridOverflow[index]&&
+                    worldObjectGridX[index]==x&&worldObjectGridZ[index]==z;
         }
 
         private WorldObject addWorldObject(Node node, float x, float y, float z,
@@ -3238,6 +3305,9 @@ public final class main extends MIDlet {
         }
 
         private void resolvePieceEnvironment(PhysicsPiece p) {
+            resolvePieceEnvironment(p,false);
+        }
+        private void resolvePieceEnvironment(PhysicsPiece p,boolean useObjectGrid) {
             if (currentGame == 0) {
                 for (int i = 0; i < OBBY_BLOCKS.length; i++) {
                     float[] b = OBBY_BLOCKS[i];
@@ -3258,13 +3328,46 @@ public final class main extends MIDlet {
                                 object.sx*0.5f,object.sy*0.5f,object.sz*0.5f);
                 }
             } else if (modeBlockCount > 0) {
-                for (int i=0; i<modeBlockCount; i++) {
+                if(customCollisionGrid!=null)modeBlockGridCollision(p.x,p.z,p.y-p.extentY,p.extentY*2.0f);
+                else for (int i=0; i<modeBlockCount; i++) {
                     float[] b=modeBlocks[i];
                     if(b!=null&&modeBlockCollidable[i])resolvePieceAgainstBox(p,b[0],b[1],b[2],
                             b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
                 }
             }
-            for(int i=0;i<worldObjectScanLimit;i++) {
+            if(useObjectGrid&&worldObjectGridHeads!=null){
+                int cx=(int)Math.floor((p.x-WORLD_OBJECT_GRID_ORIGIN)/WORLD_OBJECT_GRID_CELL);
+                int cz=(int)Math.floor((p.z-WORLD_OBJECT_GRID_ORIGIN)/WORLD_OBJECT_GRID_CELL);
+                if(cx>=0&&cz>=0&&cx<WORLD_OBJECT_GRID_SIZE&&cz<WORLD_OBJECT_GRID_SIZE){
+                    for(int gx=Math.max(0,cx-1);gx<=Math.min(WORLD_OBJECT_GRID_SIZE-1,cx+1);gx++)
+                        for(int gz=Math.max(0,cz-1);gz<=Math.min(WORLD_OBJECT_GRID_SIZE-1,cz+1);gz++)
+                            for(int j=worldObjectGridHeads[gx*WORLD_OBJECT_GRID_SIZE+gz];j>=0;j=worldObjectGridNext[j]){
+                                WorldObject object=worldObjects[j];
+                                if(object!=null&&object.active&&!object.bomb&&object.body!=p){
+                                    PhysicsPiece other=object.body;
+                                    if(Math.abs(p.x-other.x)<p.extentX+other.extentX&&
+                                            Math.abs(p.y-other.y)<p.extentY+other.extentY&&
+                                            Math.abs(p.z-other.z)<p.extentZ+other.extentZ)
+                                        resolvePieceAgainstBox(p,other.x,other.y,other.z,other.extentX,other.extentY,other.extentZ);
+                                }
+                            }
+                    for(int j=0;j<worldObjectScanLimit;j++)if(worldObjectGridOverflow[j]){
+                        WorldObject object=worldObjects[j];
+                        if(object!=null&&object.active&&!object.bomb&&object.body!=p){
+                            PhysicsPiece other=object.body;
+                            resolvePieceAgainstBox(p,other.x,other.y,other.z,other.extentX,other.extentY,other.extentZ);
+                        }
+                    }
+                }else{
+                    for(int j=0;j<worldObjectScanLimit;j++){
+                        WorldObject object=worldObjects[j];
+                        if(object!=null&&object.active&&!object.bomb&&object.body!=p){
+                            PhysicsPiece other=object.body;
+                            resolvePieceAgainstBox(p,other.x,other.y,other.z,other.extentX,other.extentY,other.extentZ);
+                        }
+                    }
+                }
+            }else for(int i=0;i<worldObjectScanLimit;i++) {
                 WorldObject object=worldObjects[i];
                 if(object!=null&&object.active&&!object.bomb&&object.body!=p) {
                     PhysicsPiece other=object.body;
