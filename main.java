@@ -202,7 +202,7 @@ public final class main extends MIDlet {
                 {0x8B6B45, 0x6BAA55, 0xE32636, 0x6688C7, 0x35B6C8, 0xD2A84B};
         private long swordAttackUntil, nextWaveAt;
         private int zombieWave;
-        private Group swordVisual;
+        private Group swordVisual, shovelVisual, heldBombVisual;\n        private long itemAttackUntil;
         private Image logoSource, titleBackgroundSource, skySource;
         private Texture2D cachedPlayerFaceTexture, cachedZombieFaceTexture;
         private Texture2D[] cachedAvatarFaceTextures = new Texture2D[4];
@@ -2544,7 +2544,7 @@ public final class main extends MIDlet {
             if(dead||(currentGame!=2&&currentGame!=10&&currentGame!=14))return;
             int itemCount=currentGame==2?3:2;if(inventorySelection>=itemCount)inventorySelection=0;
             if(inventorySelection==0){
-                if(gameClock<swordAttackUntil)return;swordAttackUntil=gameClock+600;
+                if(gameClock<swordAttackUntil)return;swordAttackUntil=gameClock+600;itemAttackUntil=gameClock+420;
                 float fx=(float)Math.sin(yaw),fz=-(float)Math.cos(yaw);
                 int target=-1;float closest=2.55f*2.55f;
                 for(int i=0;i<zombies.length;i++){Zombie z=zombies[i];if(z==null||!z.alive)continue;
@@ -2574,17 +2574,37 @@ public final class main extends MIDlet {
             }
         }
         private Group makeBombModel(){
-            Group bomb=new Group();bomb.addChild(makeBox(0,0,0,0.34f,0.34f,0.34f,0xE52B2B));
-            bomb.addChild(makeBox(0,0.21f,0,0.12f,0.10f,0.12f,0x303030));return bomb;
+            Group bomb=new Group();
+            bomb.addChild(makeRoundedCylinderHead(0xE52B2B));
+            bomb.addChild(makeBox(0,0.25f,0,0.12f,0.10f,0.12f,0x303030));
+            bomb.addChild(makeBox(0.04f,0.32f,0,0.08f,0.05f,0.08f,0xFFAA33));
+            return bomb;
         }
 
         private Group makeSwordVisual() {
             Group sword = new Group();
-            sword.addChild(makeBox(0, 0.47f, 0, 0.13f, 0.78f, 0.06f, 0xDCE9F2));
-            sword.addChild(makeBox(0, 0.05f, 0, 0.38f, 0.08f, 0.12f, 0xB68A42));
-            sword.addChild(makeBox(0, -0.12f, 0, 0.10f, 0.30f, 0.10f, 0x654321));
-            sword.setTranslation(0.56f, 1.02f, -0.08f);
+            sword.addChild(makeBox(0, 0.42f, 0, 0.12f, 0.76f, 0.055f, 0xDCE9F2));
+            sword.addChild(makeBox(0, 0.02f, 0, 0.36f, 0.08f, 0.12f, 0xB68A42));
+            sword.addChild(makeBox(0, -0.13f, 0, 0.10f, 0.30f, 0.10f, 0x654321));
+            sword.setTranslation(0.02f,-0.82f,-0.12f);
             return sword;
+        }
+        private Group makeShovelVisual(){
+            Group shovel=new Group();
+            shovel.addChild(makeBox(0,0.20f,0,0.09f,0.65f,0.09f,0x79502D));
+            shovel.addChild(makeBox(0,0.53f,0,0.10f,0.12f,0.12f,0x79502D));
+            Group blade=new Group();
+            blade.addChild(makeBox(0,0,0,0.22f,0.28f,0.06f,0xBFC9D1));
+            blade.setTranslation(0,0.68f,-0.01f);shovel.addChild(blade);
+            shovel.setTranslation(0.02f,-0.82f,-0.12f);
+            return shovel;
+        }
+        private Group makeHeldBombVisual(){
+            Group bomb=new Group();bomb.addChild(makeRoundedCylinderHead(0xE52B2B));
+            bomb.addChild(makeBox(0,0.22f,0,0.12f,0.10f,0.12f,0x303030));
+            bomb.addChild(makeBox(0.035f,0.28f,0,0.08f,0.05f,0.08f,0xFFAA33));
+            bomb.setTranslation(0.02f,-0.78f,-0.12f);
+            return bomb;
         }
 
         private void updateSkyCrop() {
@@ -4167,8 +4187,14 @@ public final class main extends MIDlet {
                 leftArm = modelLeftArm; rightArm = modelRightArm;
                 leftLeg = modelLeftLeg; rightLeg = modelRightLeg;
                 swordVisual = makeSwordVisual();
+                shovelVisual = makeShovelVisual();
+                heldBombVisual = makeHeldBombVisual();
                 swordVisual.setRenderingEnable(false);
-                model.addChild(swordVisual);
+                shovelVisual.setRenderingEnable(false);
+                heldBombVisual.setRenderingEnable(false);
+                modelRightArm.addChild(swordVisual);
+                modelRightArm.addChild(shovelVisual);
+                modelRightArm.addChild(heldBombVisual);
             }
             return model;
         }
@@ -4616,19 +4642,22 @@ public final class main extends MIDlet {
             if(sitting){
                 leftArm.setOrientation(-22.0f,1,0,0);rightArm.setOrientation(-22.0f,1,0,0);
                 leftLeg.setOrientation(82.0f,1,0,0);rightLeg.setOrientation(82.0f,1,0,0);
-                if(swordVisual!=null)swordVisual.setRenderingEnable(false);
+                if(swordVisual!=null)swordVisual.setRenderingEnable(false);\n                if(shovelVisual!=null)shovelVisual.setRenderingEnable(false);\n                if(heldBombVisual!=null)heldBombVisual.setRenderingEnable(false);
                 return;
             }
             float swing = 0.0f;
             if (animation == 1) swing = (float)Math.sin(animTime * 0.012f) * 32.0f;
             else if (animation == 2) swing = -18.0f;
-            boolean swingingSword = (currentGame == 2 || currentGame == 10 || currentGame == 14) &&
-                    gameClock < swordAttackUntil;
-            leftArm.setOrientation(swing, 1, 0, 0);
-            rightArm.setOrientation(swingingSword ? -35.0f : -swing, 1, 0, 0);
-            leftLeg.setOrientation(-swing, 1, 0, 0);
-            rightLeg.setOrientation(swingingSword ? 34.0f : swing, 1, 0, 0);
-            if (swordVisual != null) swordVisual.setRenderingEnable(swingingSword);
+            boolean itemMode=(currentGame==2||currentGame==10||currentGame==14);
+            boolean attacking=itemMode&&gameClock<itemAttackUntil;
+            int selected=itemMode?inventorySelection:0;
+            leftArm.setOrientation(swing,1,0,0);
+            rightArm.setOrientation(attacking?-72.0f:(selected==1?-12.0f:selected==2?18.0f:-swing),1,0,0);
+            leftLeg.setOrientation(-swing,1,0,0);
+            rightLeg.setOrientation(attacking?18.0f:swing,1,0,0);
+            if(swordVisual!=null)swordVisual.setRenderingEnable(itemMode&&selected==0);
+            if(shovelVisual!=null)shovelVisual.setRenderingEnable(itemMode&&currentGame==2&&selected==2);
+            if(heldBombVisual!=null)heldBombVisual.setRenderingEnable(itemMode&&selected==1);
         }
 
         private VertexArray getSharedBoxNormals() {
