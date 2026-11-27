@@ -874,6 +874,8 @@ public final class main extends MIDlet {
             modeCash=25; tycoonLevel=0; simonTarget=0; simonRound=0;
             defenseLeaked=0; lavaHeight=-1.0f; lavaNode=null;
             modeStartAt=0; modeEventAt=0; modeScoreAt=0;
+            // Reclaim previous scene leftovers during this transition, outside the frame loop.
+            try{System.gc();}catch(Throwable ignored){}
             world = new World();
             installClassicLighting(world);
             sceneBackground = new Background();
@@ -2927,15 +2929,18 @@ public final class main extends MIDlet {
             if(currentGame==15){updateCustomMapVisibility();return;}
             if(currentGame==0&&obbyNodes!=null)for(int i=0;i<obbyNodes.length;i++){
                 Node node=obbyNodes[i];if(node==null)continue;float[] b=OBBY_BLOCKS[i];
-                node.setRenderingEnable(isMapBoxVisible(b[0],b[1],b[2],b[3],b[4],b[5]));
+                boolean visible=isMapBoxVisible(b[0],b[1],b[2],b[3],b[4],b[5]);
+                if(node.isRenderingEnabled()!=visible)node.setRenderingEnable(visible);
             }
             if(currentGame==2&&zombieMapNodes!=null)for(int i=0;i<zombieMapNodes.length;i++){
                 Node node=zombieMapNodes[i];if(node==null)continue;float[] b=ZOMBIE_BLOCKS[i];
-                node.setRenderingEnable(isMapBoxVisible(b[0],b[1],b[2],b[3],b[4],b[5]));
+                boolean visible=isMapBoxVisible(b[0],b[1],b[2],b[3],b[4],b[5]);
+                if(node.isRenderingEnabled()!=visible)node.setRenderingEnable(visible);
             }
             for(int i=0;i<modeBlockCount;i++){
                 Node node=modeBlockNodes[i];if(node==null)continue;float[] b=modeBlocks[i];
-                node.setRenderingEnable(isMapBoxVisible(b[0],b[1],b[2],b[3],b[4],b[5]));
+                boolean visible=isMapBoxVisible(b[0],b[1],b[2],b[3],b[4],b[5]);
+                if(node.isRenderingEnabled()!=visible)node.setRenderingEnable(visible);
             }
         }
 
