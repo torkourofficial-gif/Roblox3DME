@@ -183,6 +183,7 @@ public final class main extends MIDlet {
         private long[] modeBlockFallAt = new long[MAX_MODE_BLOCKS];
         private float[] modeBlockFallVelocity = new float[MAX_MODE_BLOCKS];
         private int modeBlockCount;
+        private boolean modeBlockGridDirty;
         private Node lavaNode;
         private float lavaHeight;
         private long modeStartAt, modeEventAt, modeScoreAt;
@@ -1017,6 +1018,7 @@ public final class main extends MIDlet {
             modeBlockNodes[i] = makeModeBlockVisual(x,y,z,sx,sy,sz,color);
             modeBlockActive[i] = true;
             modeBlockCollidable[i] = true;
+            modeBlockGridDirty=true;
             world.addChild(modeBlockNodes[i]);
             return i;
         }
@@ -1028,11 +1030,12 @@ public final class main extends MIDlet {
             modeBlockNodes[i]=null;
             modeBlockActive[i]=true;
             modeBlockCollidable[i]=collidable;
+            modeBlockGridDirty=true;
             return i;
         }
 
         private void buildCustomCollisionGrid(){
-            customCollisionGrid=null;customLargeCollisionBlocks=null;
+            customCollisionGrid=null;customLargeCollisionBlocks=null;modeBlockGridDirty=false;
             if(modeBlockCount==0)return;
             float minX=Float.MAX_VALUE,maxX=-Float.MAX_VALUE,minZ=Float.MAX_VALUE,maxZ=-Float.MAX_VALUE;
             for(int i=0;i<modeBlockCount;i++){float[] b=modeBlocks[i];minX=Math.min(minX,b[0]-b[3]*0.5f);maxX=Math.max(maxX,b[0]+b[3]*0.5f);minZ=Math.min(minZ,b[2]-b[5]*0.5f);maxZ=Math.max(maxZ,b[2]+b[5]*0.5f);}
@@ -2958,6 +2961,7 @@ public final class main extends MIDlet {
             }
             updateLanPlayers();
             gameClock += dt;
+            if(modeBlockGridDirty&&currentGame>=4)buildCustomCollisionGrid();
             if(currentGame==15&&customMapBuilding){
                 if(customMapBuildCursor<customMapBlocks.length)updateCustomMapBuildChunk();
                 else if(customMapPostProcessing&&customMapPostReady){
