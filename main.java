@@ -2561,10 +2561,12 @@ public final class main extends MIDlet {
                     killPlayerBot(bot);modeScore++;if(currentGame!=2)modeStatus("Enemy down: "+modeScore);break;}
                 animateNoob();if(currentGame==2)updateHordeStatus();
             }else if(inventorySelection==1){
+                itemAttackUntil=gameClock+280;animateNoob();
                 float fx=(float)Math.sin(yaw),fz=-(float)Math.cos(yaw);
                 addWorldObject(makeBombModel(),px+fx*0.85f,jumpY+0.45f,pz+fz*0.85f,
                         fx*0.0018f,0,fz*0.0018f,0.34f,0.44f,0.34f,0,true,2600);
             }else if(currentGame==2){
+                itemAttackUntil=gameClock+400;animateNoob();
                 float fx=(float)Math.sin(yaw),fz=-(float)Math.cos(yaw);
                 float rx=(float)Math.cos(yaw),rz=(float)Math.sin(yaw);
                 float cx=px+fx*1.75f,cz=pz+fz*1.75f;
