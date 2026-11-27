@@ -1,0 +1,5504 @@
+package meblox;
+
+import javax.microedition.midlet.*;
+import javax.microedition.lcdui.*;
+import javax.microedition.m3g.*;
+import javax.microedition.media.Manager;
+import javax.microedition.media.Player;
+import javax.microedition.rms.RecordStore;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import javax.microedition.lcdui.TextBox;
+import javax.microedition.lcdui.TextField;
+import javax.microedition.lcdui.Command;
+import javax.microedition.lcdui.CommandListener;
+import javax.microedition.io.Connector;
+import javax.microedition.io.file.FileConnection;
+import javax.microedition.io.file.FileSystemRegistry;
+import java.util.Enumeration;
+
+/**
+ * Roblox3DME: minimal JSR-184 playground/controller.
+ * The character is generated in Java; put face.png and Face1.png-Face3.png in /meblox/ (or the JAR root).
+ * Intended for MIDP 2.0 + JSR-184 (M3G) devices.
+ */
+public final class main extends MIDlet {
+    private Game game;
+    protected void startApp() {
+        if (game == null) game = new Game(this);
+        Display.getDisplay(this).setCurrent(game);
+        game.start();
+    }
+    protected void pauseApp() { if (game != null) game.stop(); }
+    protected void destroyApp(boolean unconditional) {
+        if (game != null) game.stop();
+    }
+    void quit() { destroyApp(true); notifyDestroyed(); }
+
+    private static final class Game extends Canvas implements Runnable, CommandListener {
+        private static final long FRAME_INTERVAL_MS=50L;
+        private final main midlet;
+        private Thread thread;
+        private Player musicPlayer;
+        private java.io.InputStream musicInput;
+        private int musicTrack=-1;
+        private int[] gameMusicOrder = {1,2,3};
+        private int gameMusicIndex=3, lastGameMusicTrack;
+        private boolean running;
+        private Graphics3D g3d = Graphics3D.getInstance();
+        private VertexArray sharedBoxNormals;
+        private String renderError = "";
+        private World world;
+        private Camera camera;
+        private Group avatar;
+        private Group activeModel;
+        private Group leftArm, rightArm, leftLeg, rightLeg;
+        private int animation = 0; // 0 idle, 1 run, 2 jump
+        private float px = 0, pz = 0, yaw = 0;
+        private float camYaw = 0, camPitch = 0.22f;
+        private float camDistance = 5.0f;
+        private float cameraSensitivity = 0.0025f;
+        private int sensitivityLevel = 1;
+        private boolean invertCamera;
+        // 0 = random 3-5, 1-5 = exact count, 6 = no bots.
+        private int botCountSetting;
+        private static final int BOT_COUNT_RANDOM=0, BOT_COUNT_OFF=6;
+        private static final String SETTINGS_STORE="Roblox3DMESettings";
+        private int avatarSkinColor=0xF5C542, avatarShirtColor=0x1769AA,
+                avatarLegColor=0x2E9E45;
+        private boolean avatarEditorMode;
+        private int avatarColorSelection;
+        private int avatarListScroll;
+        private int avatarShirtStyle, avatarPantsStyle, avatarHatStyle, avatarFaceStyle;
+        private World avatarPreviewWorld;
+        private Camera avatarPreviewCamera;
+        private Group avatarPreviewModel;
+        private float avatarPreviewYaw;
+        private float avatarPreviewAngularVelocity;
+        private boolean avatarRotateLeftHeld, avatarRotateRightHeld;
+        private int[] lanAvatarSkins = {-1,-1,-1,-1,-1};
+        private int[] lanAvatarShirts = {-1,-1,-1,-1,-1};
+        private int[] lanAvatarLegs = {-1,-1,-1,-1,-1};
+        private int[] lanAvatarShirtStyles = {-1,-1,-1,-1,-1};
+        private int[] lanAvatarPantsStyles = {-1,-1,-1,-1,-1};
+        private int[] lanAvatarHatStyles = {-1,-1,-1,-1,-1};
+        private int[] lanAvatarFaceStyles = {-1,-1,-1,-1,-1};
+        private int currentGame;
+        private boolean paused, configMode;
+        private int pauseSelection, configSelection;
+        private boolean menuSettings, controlMapMode, awaitingControlKey;
+        private boolean lanMenu;
+        private int lanMenuSelection;
+        private String lanMessage="";
+        private LanSession lanSession;
+        private volatile LanSession pendingLanSession;
+        private volatile int pendingLanGame=-1;
+        private volatile String pendingLanError;
+        private LanSession.PlayerState[] lanPlayers;
+        private Group[] lanAvatars = new Group[5];
+        private TextBox lanCodeBox;
+        private List mapPicker;
+        private String mapFolder="";
+        private java.util.Vector mapUris=new java.util.Vector();
+        private java.util.Vector mapRoots=new java.util.Vector();
+        private volatile boolean mapScanLoading,mapScanReady;
+        private volatile String[] pendingMapUris,pendingMapLabels,pendingMapRoots;
+        private volatile String pendingMapScanError;
+        private float[][] customMapBlocks;
+        private float[][] customMapVisualBlocks;
+        private float[] customMapSpawn;
+        private volatile boolean customMapLoading,customMapLoadReady;
+        private volatile float[][] pendingCustomMapBlocks,pendingCustomMapVisualBlocks;
+        private volatile float[] pendingCustomMapSpawn;
+        private volatile String pendingCustomMapError;
+        private boolean customMapBuilding;
+        private boolean customMapPostProcessing;
+        private volatile boolean customMapPostReady;
+        private volatile String customMapPostError;
+        private int customMapBuildCursor,customVisualCreateBudget;
+        private int pendingSceneBuildGame=-1,pendingSceneBuildKind,pendingSceneBuildCursor;
+        private float[][] pendingSceneBuildBlocks;
+        private static final int SCENE_BLOCKS_PER_FRAME=12;
+        private static final int MAX_MODE_BLOCKS=10000;
+        private static final float MAP_COLLISION_CELL=16.0f;
+        private static final float MAP_RENDER_CELL=32.0f, MAP_RENDER_DISTANCE=240.0f;
+        private static final float PLAYER_COLLISION_HEIGHT=2.45f;
+        private static final float COLLISION_STEP=0.10f;
+        private int[] modeBlockScriptEffects=new int[MAX_MODE_BLOCKS];
+        private int[] customEffectBlocks=new int[MAX_MODE_BLOCKS];
+        private int customEffectBlockCount;
+        private java.util.Vector[][] customCollisionGrid;
+        private java.util.Vector customLargeCollisionBlocks;
+        private float customGridOriginX,customGridOriginZ;
+        private Node[] customMapVisualNodes;
+        private boolean[] customVisualAttached;
+        private int[] customVisibleVisuals,customNextVisibleVisuals,customVisualStamps,customCandidateStamps;
+        private int customVisibleCount,customNextVisibleCount,customVisualStamp;
+        private java.util.Vector[][] customRenderGrid;
+        private java.util.Vector customLargeRenderBlocks;
+        private java.util.Vector customRenderChunks;
+        private int customChunkCreateBudget;
+        private float customRenderOriginX,customRenderOriginZ;
+        private float cullCameraX,cullCameraY,cullCameraZ,cullForwardX,cullForwardY,cullForwardZ;
+        private float cullRightX,cullRightZ,cullUpX,cullUpY,cullUpZ,cullPixelScale;
+        private final Command lanConnectCommand=new Command("Connect",Command.OK,1);
+        private final Command lanCancelCommand=new Command("Cancel",Command.CANCEL,2);
+        private final Command mapBackCommand=new Command("Back",Command.BACK,2);
+        private final Command mapSearchCommand=new Command("Search again",Command.SCREEN,1);
+        private int controlSelection;
+        private String settingsMessage = "";
+        private static final int CONTROL_FORWARD=0, CONTROL_BACK=1, CONTROL_LEFT=2,
+                CONTROL_RIGHT=3, CONTROL_JUMP=4, CONTROL_USE=5, CONTROL_PREVIOUS=6,
+                CONTROL_NEXT=7;
+        private static final String[] CONTROL_NAMES = {
+            "Move forward", "Move back", "Move left", "Move right",
+            "Jump", "Use item / build", "Previous item", "Next item"
+        };
+        private int[] mappedControls = {
+            KEY_NUM2, KEY_NUM8, KEY_NUM4, KEY_NUM6, KEY_NUM5,
+            KEY_NUM3, KEY_NUM7, KEY_NUM9
+        };
+        private float jumpY = 0;
+        private long lastTime;
+        private int animTime;
+        private boolean forward, back, left, right, camLeft, camRight, camUp, camDown, jumping, sitting;
+        private boolean loaded;
+        private boolean menuMode = true;
+        private int playerBotUpdateAccumulator;
+        private int selectedGame;
+        private int menuCursor;
+        private int inventorySelection;
+        private StudioObject[] studioObjects = new StudioObject[40];
+        private int studioObjectCount, studioSelected = -1, studioPalette, studioProperty;
+        private boolean studioTesting;
+        private static final String[] GAME_NAMES = LevelCatalog.names();
+        private float[][] modeBlocks = new float[MAX_MODE_BLOCKS][];
+        private Node[] modeBlockNodes = new Node[MAX_MODE_BLOCKS];
+        private boolean[] modeBlockActive = new boolean[MAX_MODE_BLOCKS];
+        private boolean[] modeBlockCollidable = new boolean[MAX_MODE_BLOCKS];
+        private boolean[] modeBlockFalling = new boolean[MAX_MODE_BLOCKS];
+        private long[] modeBlockFallAt = new long[MAX_MODE_BLOCKS];
+        private float[] modeBlockFallVelocity = new float[MAX_MODE_BLOCKS];
+        private int modeBlockCount;
+        private Node lavaNode;
+        private float lavaHeight;
+        private long modeStartAt, modeEventAt, modeScoreAt;
+        private int modeScore, modeLives, modeCash, tycoonLevel, simonTarget, simonRound;
+        private int modeCollected, modeGoal;
+        private Node[] tokenNodes = new Node[20];
+        private float[][] tokenPositions = new float[20][3];
+        private boolean[] tokenActive = new boolean[20];
+        private int tokenCount;
+        private int defenseLeaked;
+        private static final String[] STUDIO_TYPE_NAMES =
+                {"Block", "Platform", "Hazard", "Pillar", "Spawn Pad"};
+        private static final String[] STUDIO_PROPERTY_NAMES =
+                {"X", "Y", "Z", "Size X", "Size Y", "Size Z", "Color"};
+        private static final int[] STUDIO_COLORS =
+                {0x8B6B45, 0x6BAA55, 0xE32636, 0x6688C7, 0x35B6C8, 0xD2A84B};
+        private long swordAttackUntil, nextWaveAt;
+        private int zombieWave;
+        private Group swordVisual;
+        private Image logoSource, titleBackgroundSource, skySource;
+        private Texture2D cachedPlayerFaceTexture, cachedZombieFaceTexture;
+        private Texture2D[] cachedAvatarFaceTextures = new Texture2D[4];
+        private Texture2D cachedStudsTexture;
+        private Texture2D[] shirtTextures = new Texture2D[6];
+        private Texture2D[] pantsTextures = new Texture2D[5];
+        private Image scaledLogo;
+        private int[] menuPanPixels;
+        private float menuPanScale;
+        private float menuPanWidth;
+        private Image2D skyBackgroundImage;
+        private Background sceneBackground;
+        private int cachedMenuWidth = -1, cachedMenuHeight = -1;
+        private int[] pauseOverlayPixels;
+        private int pauseOverlayWidth = -1, pauseOverlayHeight = -1;
+        private long menuPanTime;
+        private float playerVelocityY;
+        private int playerHealth=100;
+        private String playerUsername="Player";
+        private boolean playerListOpen;
+        private String[] chatLines=new String[5];
+        private int chatLineCount;
+        private int[] seenChatSequence=new int[5];
+        private TextBox chatBox;
+        private final Command chatSendCommand=new Command("Send",Command.OK,1);
+        private final Command chatCancelCommand=new Command("Close",Command.CANCEL,2);
+        private boolean grounded = true, dead, lobbyMode;
+        private long gameClock, respawnAt, invulnerableUntil;
+        private PhysicsPiece[] deathPieces;
+        private Zombie[] zombies = new Zombie[12];
+        private PlayerBot[] playerBots = new PlayerBot[5];
+        private int playerBotCount, randomState;
+        private String botDialogue="";
+        private long botDialogueUntil,nextBotDialogueAt;
+        private int talkingBot=-1;
+        private int projectedScreenX,projectedScreenY;
+        private WorldObject[] worldObjects = new WorldObject[80];
+        private int worldObjectScanLimit;
+        private MeteorBurst[] meteorBursts = new MeteorBurst[4];
+        private Group protectionAura;
+        private Material protectionAuraMaterial;
+        private String modelStatus = "Select a game";
+        private String modelError = "";
+        private String initError = "";
+
+        private static final int OBBY_PLATFORM_COUNT = 81;
+        private static final float[][] OBBY_BLOCKS = new ObbyLevel().blocks();
+        private Node[] obbyNodes = new Node[OBBY_BLOCKS.length];
+        private Node[] zombieMapNodes;
+
+        private static final float[][] ZOMBIE_BLOCKS = new ZombieHordeLevel().blocks();
+
+        private static final class PhysicsPiece {
+            Node node;
+            float x, y, z, vx, vy, vz, rotation, spin, spinX, spinY, spinZ;
+            float halfX, halfY, halfZ, extentX, extentY, extentZ;
+            PhysicsPiece(Node n, float px, float py, float pz,
+                    float velX, float velY, float velZ, float spinRate,
+                    float axisX, float axisY, float axisZ,
+                    float sizeX, float sizeY, float sizeZ) {
+                node = n; x = px; y = py; z = pz;
+                vx = velX; vy = velY; vz = velZ; spin = spinRate;
+                spinX = axisX; spinY = axisY; spinZ = axisZ;
+                halfX = sizeX; halfY = sizeY; halfZ = sizeZ;
+            }
+        }
+
+        private static final class Zombie {
+            Group model;
+            float x, z;
+            long attackAt;
+            boolean alive = true, hidden, fleeing;
+            Zombie(Group model, float x, float z) {
+                this.model = model; this.x = x; this.z = z;
+            }
+        }
+
+        private static final class CustomRenderChunk {
+            java.util.Vector blocks=new java.util.Vector();
+            int cellX,cellY,cellZ;
+            float minY=Float.MAX_VALUE,maxY=-Float.MAX_VALUE;
+            float minX=Float.MAX_VALUE,maxX=-Float.MAX_VALUE,minZ=Float.MAX_VALUE,maxZ=-Float.MAX_VALUE;
+            Node node;
+            boolean attached;
+            int seenStamp;
+            CustomRenderChunk(int x,int y,int z){cellX=x;cellY=y;cellZ=z;}
+            void add(float[] b){
+                blocks.addElement(b);
+                minX=Math.min(minX,b[0]-b[3]*0.5f);maxX=Math.max(maxX,b[0]+b[3]*0.5f);
+                minY=Math.min(minY,b[1]-b[4]*0.5f);maxY=Math.max(maxY,b[1]+b[4]*0.5f);
+                minZ=Math.min(minZ,b[2]-b[5]*0.5f);maxZ=Math.max(maxZ,b[2]+b[5]*0.5f);
+            }
+        }
+
+        private static final String[] BOT_DIALOGUES = {
+            "Vamos por aqui.",
+            "Buena partida!",
+            "Creo que vi un zombie.",
+            "Necesito una espada.",
+            "Salta, puedes hacerlo!",
+            "Por aqui parece seguro.",
+            "Uy, casi me caigo!",
+            "A defender la base!",
+            "Te cubro!",
+            "Voy por ese enemigo.",
+            "Esa bomba va a explotar!",
+            "Mejor sigamos moviendonos.",
+            "El obby esta larguisimo.",
+            "Creo que encontre un camino.",
+            "Eso estuvo cerca!",
+            "Ya reapareci, listo!",
+            "Vamos equipo!",
+            "Nos vemos en la meta.",
+            "Alguien vio mi pala?",
+            "No voy a caer otra vez!"
+        };
+        private static final float[] HIDE_FLEE_COS={1.0f,0.707107f,0.707107f,0.0f,0.0f,-0.707107f,-0.707107f,-1.0f};
+        private static final float[] HIDE_FLEE_SIN={0.0f,0.707107f,-0.707107f,1.0f,-1.0f,0.707107f,-0.707107f,0.0f};
+        private static final float[] HIDE_SPAWN_X={-15.65f,15.65f,-15.65f,15.65f,-1.25f};
+        private static final float[] HIDE_SPAWN_Z={-13.15f,-13.15f,14.35f,14.35f,-17.15f};
+        private static final float TYCOON_PLAYER_X=0.0f,TYCOON_PLAYER_Z=-7.0f;
+        private static final float[] TYCOON_BOT_X={-7.0f,0.0f,7.0f};
+        private static final float[] TYCOON_BOT_Z={6.0f,7.0f,6.0f};
+        private static final float[] SIMON_PAD_X={-4.0f,4.0f,-4.0f,4.0f};
+        private static final float[] SIMON_PAD_Z={-4.0f,-4.0f,4.0f,4.0f};
+        private static final int[] AVATAR_SKIN_PALETTE = {0xF5C542,0xF1C27D,0xFFDBAC,0xE0AC69,0xC68642,0x8D5524,0x5C3317,0xFFE0BD,0xD9A066,0xB87333,0xFFFFFF,0xD8D8D8,0x888888,0x333333};
+        private static final int[] AVATAR_CLOTHING_PALETTE = {0x1769AA,0x2E9E45,0xC43C35,0x7F58A5,0x2C8C65,0x303F9F,0xD87C22,0x365E9D,0x6D4635,0x6B3E76,0xB8A23A,0xFFFFFF,0xC0C0C0,0x808080,0x333333,0x000000,0xF44336,0xB71C1C,0xFF9800,0xFFC107,0xFFEB3B,0x8BC34A,0x4CAF50,0x006400,0x00BCD4,0x03A9F4,0x1565C0,0x3F51B5,0x673AB7,0x9C27B0,0xE91E63,0x795548,0xD7CCC8,0x607D8B,0x1A237E,0x004D40,0xF8BBD0,0xB2DFDB,0xCFD8DC};
+        private static final int[] BOT_SKIN_COLORS =
+                {0xF5C542,0xC68642,0xF1C27D,0x8D5524,0xE0AC69,0xD9A066};
+        private static final int[] BOT_SHIRT_COLORS =
+                {0x1769AA,0xC43C35,0x7F58A5,0x2C8C65,0x303F9F,0xD87C22,0x444444};
+        private static final int[] BOT_LEG_COLORS =
+                {0x2E9E45,0x333333,0x365E9D,0x6D4635,0x6B3E76,0xB8A23A};
+        private static final String[] BOT_NAMES =
+                {"Kubo","Zeta","Milo","Byte","Luma"};
+
+        private static final class PlayerBot {
+            Group model, aura;
+            float x,y,z,spawnX,spawnZ,targetX,targetZ,velocityY,yaw;
+            PhysicsPiece[] deathPieces;
+            long nextThink,nextJump,nextAttack,respawnAt,invulnerableUntil,auraUntil;
+            int skinColor, shirtColor, legColor, shirtStyle, pantsStyle, hatStyle, faceStyle;
+            int health=100, simonRoundSeen;
+            int tycoonLevel,tycoonCash;
+            long simonMoveAt,tycoonAt,tycoonIncomeAt;
+            boolean simonMoving,alive=true,grounded=true;
+            Group swordArm, leftArm, rightArm, leftLeg, rightLeg;
+            Group sword;
+            boolean modelAttached;
+            long attackUntil;
+            long nextVisibilityCheck;
+            boolean modelVisible = true;
+            PlayerBot(float x,float z) {
+                this.x=x; this.z=z; spawnX=x; spawnZ=z; targetX=x; targetZ=z;
+            }
+        }
+
+        private static final class WorldObject {
+            PhysicsPiece body;
+            boolean bomb, botOwned, meteor, active = true;
+            Group fireTrail;
+            long explodeAt, removeAt;
+            WorldObject(PhysicsPiece body, boolean bomb, long explodeAt, long removeAt) {
+                this.body = body; this.bomb = bomb;
+                this.explodeAt = explodeAt; this.removeAt = removeAt;
+            }
+        }
+
+        private static final class MeteorBurst {
+            Group model;
+            Mesh outer, inner;
+            long removeAt;
+            MeteorBurst(Group model,Mesh outer,Mesh inner,long removeAt) {
+                this.model=model;this.outer=outer;this.inner=inner;this.removeAt=removeAt;
+            }
+        }
+
+        private static final class StudioObject {
+            int type, color;
+            float x, y, z, sx, sy, sz;
+            Node node;
+            StudioObject(int type, float x, float y, float z,
+                    float sx, float sy, float sz, int color) {
+                this.type=type; this.x=x; this.y=y; this.z=z;
+                this.sx=sx; this.sy=sy; this.sz=sz; this.color=color;
+            }
+        }
+
+        Game(main m) {
+            midlet = m;
+            loadSettings();
+            setFullScreenMode(true);
+        }
+
+        private void loadSettings() {
+            RecordStore store=null;
+            DataInputStream input=null;
+            try {
+                store=RecordStore.openRecordStore(SETTINGS_STORE,true);
+                if(store.getNumRecords()<1)return;
+                byte[] data=store.getRecord(1);
+                input=new DataInputStream(new ByteArrayInputStream(data));
+                int version=input.readInt();
+                if(version<1||version>5)return;
+                int loadedSensitivity=input.readInt();
+                boolean loadedInvert=input.readBoolean();
+                float loadedDistance=input.readFloat();
+                int loadedBots=input.readInt();
+                int loadedSkin=avatarSkinColor, loadedShirt=avatarShirtColor,
+                        loadedLegs=avatarLegColor;
+                int loadedShirtStyle=0, loadedPantsStyle=0, loadedHatStyle=0, loadedFaceStyle=0;
+                if(version>=2) {
+                    loadedSkin=input.readInt();
+                    loadedShirt=input.readInt();
+                    loadedLegs=input.readInt();
+                }
+                if(version>=3) {
+                    loadedShirtStyle=input.readInt();
+                    loadedPantsStyle=input.readInt();
+                }
+                if(version>=4)loadedHatStyle=input.readInt();
+                if(version>=5)loadedFaceStyle=input.readInt();
+                int controlCount=input.readInt();
+                if(loadedSensitivity<0||loadedSensitivity>2||
+                        loadedDistance<2.0f||loadedDistance>9.0f||
+                        loadedBots<BOT_COUNT_RANDOM||loadedBots>BOT_COUNT_OFF||
+                        controlCount!=mappedControls.length||
+                        !isAvatarColor(AVATAR_SKIN_PALETTE,loadedSkin)||
+                        !isAvatarColor(AVATAR_CLOTHING_PALETTE,loadedShirt)||
+                        !isAvatarColor(AVATAR_CLOTHING_PALETTE,loadedLegs)||
+                        loadedShirtStyle<0||loadedShirtStyle>6||
+                        loadedPantsStyle<0||loadedPantsStyle>5||
+                        loadedHatStyle<0||loadedHatStyle>5||loadedFaceStyle<0||loadedFaceStyle>3)return;
+                int[] loadedControls=new int[controlCount];
+                for(int i=0;i<controlCount;i++)loadedControls[i]=input.readInt();
+                for(int i=0;i<loadedControls.length;i++) {
+                    if(loadedControls[i]<KEY_NUM1||loadedControls[i]>KEY_NUM9)return;
+                    for(int j=0;j<i;j++)if(loadedControls[i]==loadedControls[j])return;
+                }
+                sensitivityLevel=loadedSensitivity;
+                cameraSensitivity=sensitivityLevel==0?0.0015f:
+                        (sensitivityLevel==1?0.0025f:0.0040f);
+                invertCamera=loadedInvert;
+                camDistance=loadedDistance;
+                botCountSetting=loadedBots;
+                avatarSkinColor=loadedSkin;
+                avatarShirtColor=loadedShirt;
+                avatarLegColor=loadedLegs;
+                avatarShirtStyle=loadedShirtStyle;
+                avatarPantsStyle=loadedPantsStyle;
+                avatarHatStyle=loadedHatStyle;
+                avatarFaceStyle=loadedFaceStyle;
+                for(int i=0;i<mappedControls.length;i++)mappedControls[i]=loadedControls[i];
+            } catch(Throwable ignored) {
+                // Keep safe defaults when RMS is unavailable or the record is corrupt.
+            } finally {
+                if(input!=null)try{input.close();}catch(Throwable ignored){}
+                if(store!=null)try{store.closeRecordStore();}catch(Throwable ignored){}
+            }
+        }
+
+        private boolean isAvatarColor(int[] palette,int color) {
+            for(int i=0;i<palette.length;i++)if(palette[i]==color)return true;
+            return false;
+        }
+
+        private boolean saveSettings() {
+            RecordStore store=null;
+            ByteArrayOutputStream bytes=null;
+            DataOutputStream output=null;
+            try {
+                bytes=new ByteArrayOutputStream();
+                output=new DataOutputStream(bytes);
+                output.writeInt(5);
+                output.writeInt(sensitivityLevel);
+                output.writeBoolean(invertCamera);
+                output.writeFloat(camDistance);
+                output.writeInt(botCountSetting);
+                output.writeInt(avatarSkinColor);
+                output.writeInt(avatarShirtColor);
+                output.writeInt(avatarLegColor);
+                output.writeInt(avatarShirtStyle);
+                output.writeInt(avatarPantsStyle);
+                output.writeInt(avatarHatStyle);
+                output.writeInt(avatarFaceStyle);
+                output.writeInt(mappedControls.length);
+                for(int i=0;i<mappedControls.length;i++)output.writeInt(mappedControls[i]);
+                output.flush();
+                byte[] data=bytes.toByteArray();
+                store=RecordStore.openRecordStore(SETTINGS_STORE,true);
+                if(store.getNumRecords()<1)store.addRecord(data,0,data.length);
+                else store.setRecord(1,data,0,data.length);
+                return true;
+            } catch(Throwable t) {
+                settingsMessage="Settings could not be saved";
+                return false;
+            } finally {
+                if(output!=null)try{output.close();}catch(Throwable ignored){}
+                if(bytes!=null)try{bytes.close();}catch(Throwable ignored){}
+                if(store!=null)try{store.closeRecordStore();}catch(Throwable ignored){}
+            }
+        }
+
+        public void commandAction(Command command, Displayable displayable) {
+            if(displayable==mapPicker){
+                if(command==mapBackCommand){
+                    Display.getDisplay(midlet).setCurrent(this);repaint();return;
+                }
+                if(command==mapSearchCommand){showMapPicker();return;}
+                if(command==List.SELECT_COMMAND){
+                    int selected=mapPicker.getSelectedIndex();
+                    if(selected>=0&&selected<mapUris.size()){
+                        String uri=(String)mapUris.elementAt(selected);
+                        if(uri.endsWith("/"))showMapFolder(uri);else loadCustomMap(uri);
+                    }
+                    return;
+                }
+            }
+            if(command==chatCancelCommand){Display.getDisplay(midlet).setCurrent(this);repaint();return;}
+            if(command==chatSendCommand&&chatBox!=null){
+                String message=chatBox.getString();Display.getDisplay(midlet).setCurrent(this);
+                if(lanSession!=null&&lanSession.isConnected())lanSession.sendChat(message);
+                else addChatLine("System: LAN chat requires a connection");
+                repaint();return;
+            }
+            if (command == lanCancelCommand) {
+                Display.getDisplay(midlet).setCurrent(this);
+                lanMenu = true;
+                repaint();
+                return;
+            }
+            if (command == lanConnectCommand && lanCodeBox != null) {
+                final String code = lanCodeBox.getString();
+                Display.getDisplay(midlet).setCurrent(this);
+                lanMenu = false;
+                lanMessage = "Searching for LAN ID " + code + "...";
+                final Game self = this;
+                Thread connect = new Thread(new Runnable() {
+                    public void run() {
+                        try {
+                            LanSession session = LanSession.join(code);
+                            pendingLanSession = session;
+                            pendingLanGame = session.getGameId();
+                        } catch (Throwable t) {
+                            pendingLanError = "LAN: " + t.toString();
+                        }
+                        self.repaint();
+                    }
+                });
+                connect.start();
+            }
+        }
+
+        private void showMapPicker(){
+            mapScanLoading=true;mapScanReady=false;pendingMapScanError=null;
+            pendingMapUris=null;pendingMapLabels=null;pendingMapRoots=null;
+            Display.getDisplay(midlet).setCurrent(this);repaint();
+            final Game self=this;
+            Thread scanner=new Thread(new Runnable(){public void run(){
+                java.util.Vector roots=new java.util.Vector(),uris=new java.util.Vector(),labels=new java.util.Vector();
+                try{searchMapFiles(roots,uris,labels);}catch(Throwable t){pendingMapScanError="Storage search: "+t.toString();}
+                pendingMapUris=toStringArray(uris);pendingMapLabels=toStringArray(labels);pendingMapRoots=toStringArray(roots);
+                mapScanReady=true;self.repaint();
+            }});
+            try{scanner.setPriority(Thread.MIN_PRIORITY);}catch(Throwable ignored){}
+            scanner.start();
+        }
+
+        private void searchMapFiles(java.util.Vector roots,java.util.Vector uris,java.util.Vector labels){
+            final int maxDirectories=3000,maxEntries=20000,maxMaps=256,maxDepth=12;
+            java.util.Vector pending=new java.util.Vector();int visitedDirectories=0,visitedEntries=0;
+            Enumeration listedRoots=FileSystemRegistry.listRoots();
+            while(listedRoots.hasMoreElements()){
+                String root=(String)listedRoots.nextElement();String uri=root.startsWith("file://")?root:"file:///"+root;
+                if(!uri.endsWith("/"))uri+="/";roots.addElement(uri);pending.addElement(new Object[]{uri,new Integer(0)});
+            }
+            while(pending.size()>0&&visitedDirectories<maxDirectories&&visitedEntries<maxEntries&&uris.size()<maxMaps){
+                Object[] entry=(Object[])pending.elementAt(pending.size()-1);pending.removeElementAt(pending.size()-1);
+                String folder=(String)entry[0];int depth=((Integer)entry[1]).intValue();FileConnection directory=null;
+                try{
+                    directory=(FileConnection)Connector.open(folder,Connector.READ);
+                    if(!directory.exists()||!directory.isDirectory())continue;
+                    visitedDirectories++;Enumeration items=directory.list();
+                    while(items.hasMoreElements()&&visitedEntries++<maxEntries&&uris.size()<maxMaps){
+                        String name=(String)items.nextElement();String child=mapUriChild(folder,name);
+                        if(name.endsWith("/")){if(depth<maxDepth)pending.addElement(new Object[]{child,new Integer(depth+1)});}
+                        else{
+                            String lower=name.toLowerCase();
+                            if(lower.endsWith(".rbxl")||lower.endsWith(".rbxlx")){
+                                uris.addElement(child);labels.addElement(mapSearchLabel(folder,name));
+                            }
+                        }
+                    }
+                }catch(Throwable ignored){}
+                finally{if(directory!=null)try{directory.close();}catch(Throwable ignored){}}
+            }
+        }
+
+        private String[] toStringArray(java.util.Vector values){String[] result=new String[values.size()];for(int i=0;i<result.length;i++)result[i]=(String)values.elementAt(i);return result;}
+        private String mapUriChild(String folder,String name){
+            boolean directory=name.endsWith("/");String part=directory?name.substring(0,name.length()-1):name;StringBuffer encoded=new StringBuffer(part.length()+8);
+            for(int i=0;i<part.length();i++){char c=part.charAt(i);if(c==' ')encoded.append("%20");else if(c=='%')encoded.append("%25");else if(c=='#')encoded.append("%23");else if(c=='?')encoded.append("%3F");else encoded.append(c);}
+            if(directory)encoded.append('/');return folder+encoded.toString();
+        }
+        private String mapSearchLabel(String folder,String name){
+            String parent=folder;while(parent.endsWith("/")&&parent.length()>1)parent=parent.substring(0,parent.length()-1);
+            int slash=parent.lastIndexOf('/');String parentName=slash>=0?parent.substring(slash+1):parent;
+            return name+"  ["+parentName+"]";
+        }
+
+        private void showMapSearchResults(){
+            mapScanReady=false;mapScanLoading=false;mapPicker=new List("Custom Map - found maps",List.IMPLICIT);
+            mapUris.removeAllElements();mapRoots.removeAllElements();
+            String[] roots=pendingMapRoots,uris=pendingMapUris,labels=pendingMapLabels;
+            if(roots!=null)for(int i=0;i<roots.length;i++)mapRoots.addElement(roots[i]);
+            if(uris!=null&&uris.length>0){
+                for(int i=0;i<uris.length;i++){mapUris.addElement(uris[i]);mapPicker.append(labels!=null&&i<labels.length?labels[i]:uris[i],null);}
+            }else if(roots==null||roots.length==0)mapPicker.append("No accessible storage found",null);
+            if(roots!=null&&roots.length>0){
+                if(uris==null||uris.length==0)mapPicker.setTitle("No maps found - browse storage");
+                for(int i=0;i<roots.length;i++){mapUris.addElement(roots[i]);mapPicker.append("Browse storage: "+roots[i],null);}
+            }
+            pendingMapUris=null;pendingMapLabels=null;pendingMapRoots=null;
+            if(pendingMapScanError!=null){initError=pendingMapScanError;pendingMapScanError=null;}
+            mapPicker.addCommand(mapBackCommand);mapPicker.addCommand(mapSearchCommand);mapPicker.setCommandListener(this);
+            Display.getDisplay(midlet).setCurrent(mapPicker);
+        }
+        private void showMapFolder(String folder){
+            FileConnection directory=null;
+            try{
+                mapFolder=folder;mapPicker=new List("Custom Map",List.IMPLICIT);mapUris.removeAllElements();
+                if(!isMapRoot(folder)){mapUris.addElement(parentMapFolder(folder));mapPicker.append("../",null);}
+                directory=(FileConnection)Connector.open(folder,Connector.READ);
+                Enumeration files=directory.list();
+                while(files.hasMoreElements()){
+                    String name=(String)files.nextElement();String lower=name.toLowerCase();
+                    if(name.endsWith("/")||lower.endsWith(".rbxl")||lower.endsWith(".rbxlx")){String uri=mapUriChild(folder,name);mapUris.addElement(uri);mapPicker.append(name,null);}
+                }
+                mapPicker.addCommand(mapBackCommand);mapPicker.setCommandListener(this);Display.getDisplay(midlet).setCurrent(mapPicker);
+            }catch(Throwable t){initError="Cannot open folder: "+t.toString();Display.getDisplay(midlet).setCurrent(this);repaint();}
+            finally{if(directory!=null)try{directory.close();}catch(Throwable ignored){}}
+        }
+        private boolean isMapRoot(String folder){for(int i=0;i<mapRoots.size();i++)if(folder.equals(mapRoots.elementAt(i)))return true;return false;}
+        private String parentMapFolder(String folder){int end=folder.length()-1;while(end>0&&folder.charAt(end-1)!='/')end--;return folder.substring(0,Math.max(1,end));}
+        private void loadCustomMap(String uri){
+            customMapLoading=true;customMapLoadReady=false;pendingCustomMapError=null;
+            pendingCustomMapBlocks=null;pendingCustomMapVisualBlocks=null;pendingCustomMapSpawn=null;
+            initError="";Display.getDisplay(midlet).setCurrent(this);repaint();
+            final String selectedUri=uri;final Game self=this;
+            Thread importer=new Thread(new Runnable(){public void run(){
+                FileConnection file=null;java.io.InputStream input=null;
+                try{
+                    file=(FileConnection)Connector.open(selectedUri,Connector.READ);input=file.openInputStream();
+                    float[][] blocks=RobloxMapImporter.load(input);
+                    pendingCustomMapBlocks=blocks;pendingCustomMapVisualBlocks=RobloxMapImporter.greedyBlocks();pendingCustomMapSpawn=RobloxMapImporter.spawnPoint();
+                }catch(Throwable t){pendingCustomMapError="Custom Map: "+t.toString();}
+                finally{
+                    if(input!=null)try{input.close();}catch(Throwable ignored){}
+                    if(file!=null)try{file.close();}catch(Throwable ignored){}
+                    customMapLoadReady=true;self.repaint();
+                }
+            }});
+            try{importer.setPriority(Thread.MIN_PRIORITY);}catch(Throwable ignored){}
+            importer.start();
+        }
+        synchronized void start() {
+            if (running) return;
+            running = true;
+            thread = new Thread(this);
+            thread.start();
+        }
+        synchronized void stop() {
+            running = false;
+            thread = null;
+            if (lanSession != null) {
+                lanSession.close();
+                lanSession = null;
+            }
+            if (pendingLanSession != null) {
+                pendingLanSession.close();
+                pendingLanSession = null;
+            }
+            pendingLanGame = -1;
+            stopMusic();
+        }
+
+        public void run() {
+            try { init3D(); } catch (Throwable t) {
+                loaded = false;
+                initError = "Init: " + t.toString();
+            }
+            lastTime = System.currentTimeMillis();
+            while (running) {
+                long frameStart = System.currentTimeMillis();
+                int dt = (int)(frameStart - lastTime);
+                if (dt < 1) dt = 1;
+                if (dt > 100) dt = 100;
+                lastTime = frameStart;
+                try{update(dt);}catch(Throwable t){
+                    initError="";
+                    menuMode=true;loaded=false;paused=false;customMapBuilding=false;
+                    pendingSceneBuildGame=-1;pendingSceneBuildKind=0;pendingSceneBuildBlocks=null;
+                    if(lanSession!=null){lanSession.close();lanSession=null;}
+                }
+                try{repaint();}catch(Throwable ignored){}
+                long remaining=FRAME_INTERVAL_MS-(System.currentTimeMillis()-frameStart);
+                if(remaining>0)try { Thread.sleep(remaining); } catch (InterruptedException e) {}
+            }
+        }
+
+        private void init3D() throws Exception {
+            logoSource = loadImageResource("/logoR.png", "/meblox/logoR.png");
+            titleBackgroundSource = loadImageResource("/bgtitle.png", "/meblox/bgtitle.png");
+            skySource = loadImageResource("/skyboxR.png", "/meblox/skyboxR.png");
+            loadStudsTexture();
+            if (skySource != null) {
+                try {
+                    // The file is JPEG data despite its .png name.
+                    skyBackgroundImage = new Image2D(Image2D.RGB, skySource);
+                } catch (Throwable t) {
+                    skyBackgroundImage = null;
+                }
+            }
+            menuMode = true;
+            loaded = false;
+            playMusic(3);
+        }
+
+        private synchronized void playMusic(int track) {
+            if(track<1||track>3)return;
+            if(musicTrack==track&&musicPlayer!=null)return;
+            stopMusic();
+            java.io.InputStream in=null;
+            try {
+                String resource="/meblox/R"+track+".mid";
+                in=getClass().getResourceAsStream(resource);
+                if(in==null)in=midlet.getClass().getResourceAsStream(resource);
+                if(in==null) {
+                    resource="/R"+track+".mid";
+                    in=getClass().getResourceAsStream(resource);
+                    if(in==null)in=midlet.getClass().getResourceAsStream(resource);
+                }
+                if(in==null)throw new java.io.IOException("Missing /meblox/R"+track+
+                        ".mid and /R"+track+".mid");
+                Player next=Manager.createPlayer(in,"audio/midi");
+                next.realize();
+                next.setLoopCount(-1);
+                next.prefetch();
+                next.start();
+                musicInput=in;
+                musicPlayer=next;
+                musicTrack=track;
+            } catch(Throwable t) {
+                if(in!=null)try{in.close();}catch(Throwable ignored){}
+                musicPlayer=null;
+                musicInput=null;
+                musicTrack=-1;
+                modelError="Music R"+track+": "+t.toString();
+            }
+        }
+
+        private void loadStudsTexture() {
+            try {
+                Image image = loadImageResource("/studs.png", "/meblox/studs.png");
+                if (image == null) return;
+                // studs.png is a 64x64 atlas: each individual stud tile is 16x16.
+                // Extract one complete tile so WRAP_REPEAT repeats that tile,
+                // rather than wrapping across the full 4x4 atlas.
+                if (image.getWidth() < 16 || image.getHeight() < 16)
+                    throw new IllegalArgumentException("studs.png must be at least 16x16");
+                int[] tilePixels = new int[16 * 16];
+                image.getRGB(tilePixels, 0, 16, 0, 0, 16, 16);
+                Image textureImage = Image.createRGBImage(tilePixels, 16, 16, true);
+                cachedStudsTexture = new Texture2D(new Image2D(Image2D.RGBA, textureImage));
+                cachedStudsTexture.setFiltering(Texture2D.FILTER_NEAREST, Texture2D.FILTER_NEAREST);
+                cachedStudsTexture.setWrapping(Texture2D.WRAP_REPEAT, Texture2D.WRAP_REPEAT);
+                cachedStudsTexture.setBlending(Texture2D.FUNC_MODULATE);
+            } catch (Throwable t) {
+                cachedStudsTexture = null;
+            }
+        }
+        private synchronized void stopMusic() {
+            Player old=musicPlayer;
+            musicPlayer=null;
+            if(old!=null) {
+                try{old.stop();}catch(Throwable ignored){}
+                try{old.close();}catch(Throwable ignored){}
+            }
+            java.io.InputStream in=musicInput;
+            musicInput=null;
+            if(in!=null)try{in.close();}catch(Throwable ignored){}
+            musicTrack=-1;
+        }
+
+        private Image loadImageResource(String primary, String secondary) {
+            java.io.InputStream in = null;
+            try {
+                in = getClass().getResourceAsStream(primary);
+                if (in == null) in = midlet.getClass().getResourceAsStream(primary);
+                if (in == null) in = getClass().getResourceAsStream(secondary);
+                if (in == null) in = midlet.getClass().getResourceAsStream(secondary);
+                if (in == null) return null;
+                return Image.createImage(in);
+            } catch (Throwable t) {
+                return null;
+            } finally {
+                if (in != null) try { in.close(); } catch (Throwable ignored) {}
+            }
+        }
+
+        private void startGame(int game) throws Exception {
+            lanMenu = false;
+            currentGame = game;
+            customMapBuilding=false;customMapBuildCursor=0;
+            customMapPostProcessing=false;customMapPostReady=false;customMapPostError=null;
+            pendingSceneBuildGame=-1;pendingSceneBuildKind=0;pendingSceneBuildCursor=0;pendingSceneBuildBlocks=null;
+            obbyNodes = null;
+            zombieMapNodes = null;
+            if (game == 3) studioTesting = false;
+            menuMode = false;
+            paused = false;
+            configMode = false;
+            menuSettings = false;
+            avatarEditorMode = false;
+            controlMapMode = false;
+            awaitingControlKey = false;
+            loaded = false;
+            resetPlayerSpawn();
+            yaw = 0;
+            jumping = false;
+            sitting = false;
+            forward = back = left = right = false;
+            playerVelocityY = 0;
+            inventorySelection = 0;
+            swordAttackUntil = 0;
+            zombieWave = 0;
+            nextWaveAt = 0;
+            zombies = new Zombie[12];
+            playerBots = new PlayerBot[5]; playerBotCount = 0; playerBotUpdateAccumulator=0;
+            randomState = (int)(System.currentTimeMillis() ^ (game * 7919L));
+            worldObjects = new WorldObject[80];
+            worldObjectScanLimit = 0;
+            grounded = true;
+            dead = false;
+            playerHealth=100;
+            lobbyMode = game == 1;
+            gameClock = 0;
+            invulnerableUntil = 0;
+            deathPieces = null;
+
+            int previousModeBlockCount=modeBlockCount;
+            modeBlockCount = 0;
+            customEffectBlockCount=0;customCollisionGrid=null;customLargeCollisionBlocks=null;
+            customRenderGrid=null;customLargeRenderBlocks=null;customRenderChunks=null;customMapVisualNodes=null;customVisualAttached=null;
+            customVisibleVisuals=null;customNextVisibleVisuals=null;customVisualStamps=null;customCandidateStamps=null;customVisibleCount=0;
+            for (int i=0; i<previousModeBlockCount; i++) {
+                modeBlockActive[i]=false;
+                modeBlockCollidable[i]=false;
+                modeBlockScriptEffects[i]=0;
+                modeBlockFalling[i]=false;
+                modeBlockFallAt[i]=0;
+                modeBlockFallVelocity[i]=0;
+                modeBlockNodes[i]=null;
+            }
+            for (int i=0; i<tokenActive.length; i++) {
+                tokenActive[i]=false;
+                tokenNodes[i]=null;
+            }
+            tokenCount=0; modeCollected=0; modeGoal=0; modeScore=0; modeLives=3;
+            modeCash=25; tycoonLevel=0; simonTarget=0; simonRound=0;
+            defenseLeaked=0; lavaHeight=-1.0f; lavaNode=null;
+            modeStartAt=0; modeEventAt=0; modeScoreAt=0;
+            world = new World();
+            installClassicLighting(world);
+            sceneBackground = new Background();
+            sceneBackground.setColor(0x78BCE8);
+            sceneBackground.setDepthClearEnable(true);
+            sceneBackground.setColorClearEnable(true);
+            if (skyBackgroundImage != null) {
+                sceneBackground.setImage(skyBackgroundImage);
+                sceneBackground.setImageMode(Background.REPEAT, Background.BORDER);
+                updateSkyCrop();
+            }
+            world.setBackground(sceneBackground);
+
+            camera = new Camera();
+            camera.setPerspective(65.0f, 1.0f, 0.1f, 240.0f);
+            world.addChild(camera);
+            world.setActiveCamera(camera);
+
+            // Every mode uses a compact procedural scene; Lava Rise replaces the floor with lava.
+            // Obby, falling tiles, and their time trial course should float over the void.
+            if (game != 0 && game != 4 && game != 6 && game != 7)
+                world.addChild(makeStuddedBox(0, -0.25f, 0,
+                        game == 11 ? 44 : 24, 0.5f, game == 11 ? 44 : 24, 0x54A64B));
+            meteorBursts = new MeteorBurst[4];
+            if (game == 0) {
+                obbyNodes = new Node[OBBY_BLOCKS.length];
+                pendingSceneBuildBlocks=OBBY_BLOCKS;pendingSceneBuildKind=1;
+            } else if (game == 1) {
+                // Red touch-to-die test block in the baseplate lobby.
+                float[] hazard=new BaseplateLevel().blocks()[0];
+                world.addChild(makeStuddedBox(hazard[0],hazard[1],hazard[2],hazard[3],hazard[4],hazard[5],(int)hazard[6]));
+            } else if (game == 2) {
+                zombieMapNodes = new Node[ZOMBIE_BLOCKS.length];
+                pendingSceneBuildBlocks=ZOMBIE_BLOCKS;pendingSceneBuildKind=2;
+            } else if (game == 3) {
+                pendingSceneBuildKind=3;pendingSceneBuildCursor=0;
+            } else if (game >= 4) {
+                if(game==15)buildExtraGame(game);
+                else{pendingSceneBuildBlocks=LevelCatalog.get(game).blocks();pendingSceneBuildKind=4;}
+            }
+            if(pendingSceneBuildKind!=0){
+                pendingSceneBuildGame=game;loaded=true;modelStatus="Loading "+(game==15?"custom map":GAME_NAMES[game]);
+                return;
+            }
+            finishGameStart();
+        }
+
+        private void finishGameStart() throws Exception {
+            int game=currentGame;
+            avatar = new Group();
+            activeModel = buildNoob();
+            avatar.addChild(activeModel);
+            world.addChild(avatar);
+            protectionAura = makeProtectionAura();
+            avatar.addChild(protectionAura);
+            invulnerableUntil = gameClock + 4000;
+            animation = 0;
+            animateNoob();
+            updateCamera();
+            modelStatus = game==15?"Custom Map":GAME_NAMES[game];
+            loaded = true;
+            modeStartAt = gameClock;
+            modeEventAt = game == 12 ? gameClock + 4000 : gameClock + 900;
+            modeScoreAt = gameClock + 1000;
+            if (game == 2 || game == 10) spawnZombieWave();
+            if (game == 9) spawnKingBots();
+            if (game == 11) spawnSeekBots();
+            if (game == 14) spawnDefenseWave();
+            spawnPlayerBots();
+            playMusic(chooseGameMusicTrack());
+        }
+
+        private void updateSceneBuildChunk() throws Exception {
+            int game=pendingSceneBuildGame;
+            if(pendingSceneBuildKind==3){
+                int built=0;
+                while(pendingSceneBuildCursor<studioObjectCount&&built<SCENE_BLOCKS_PER_FRAME){
+                    StudioObject object=studioObjects[pendingSceneBuildCursor++];if(object==null)continue;
+                    object.node=makeStuddedBox(object.x,object.y,object.z,object.sx,object.sy,object.sz,object.color);
+                    world.addChild(object.node);built++;
+                }
+            }else if(pendingSceneBuildBlocks!=null){
+                int end=Math.min(pendingSceneBuildBlocks.length,pendingSceneBuildCursor+SCENE_BLOCKS_PER_FRAME);
+                for(;pendingSceneBuildCursor<end;pendingSceneBuildCursor++){
+                    float[] b=pendingSceneBuildBlocks[pendingSceneBuildCursor];Node node;
+                    if(pendingSceneBuildKind==1){node=makeStuddedBox(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]);obbyNodes[pendingSceneBuildCursor]=node;}
+                    else if(pendingSceneBuildKind==2){node=makeStuddedBox(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]);zombieMapNodes[pendingSceneBuildCursor]=node;}
+                    else{addModeBlock(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]);continue;}
+                    world.addChild(node);
+                }
+            }
+            boolean complete=pendingSceneBuildKind==3?pendingSceneBuildCursor>=studioObjectCount:
+                    pendingSceneBuildBlocks==null||pendingSceneBuildCursor>=pendingSceneBuildBlocks.length;
+            if(complete){
+                if(game>=4&&game!=15){
+                    if(game==4){lavaNode=makeBox(0,lavaHeight-0.12f,0,24,0.24f,24,0xF04B25);world.addChild(lavaNode);}
+                    else if(game==8){for(int i=0;i<12;i++){float x=-9.0f+(i%4)*6.0f,z=-8.0f+(i/4)*7.5f;addToken(x,0.55f,z);}modeGoal=tokenCount;}
+                    resetPlayerSpawn();if(game==13){px=TYCOON_PLAYER_X;pz=TYCOON_PLAYER_Z;jumpY=0;}
+                }
+                pendingSceneBuildGame=-1;pendingSceneBuildKind=0;pendingSceneBuildCursor=0;pendingSceneBuildBlocks=null;
+                finishGameStart();
+            }else modelStatus="Loading "+GAME_NAMES[game]+" "+(pendingSceneBuildCursor*100/Math.max(1,pendingSceneBuildBlocks==null?studioObjectCount:pendingSceneBuildBlocks.length))+"%";
+        }
+
+        private int chooseGameMusicTrack() {
+            if (gameMusicIndex >= gameMusicOrder.length) {
+                for (int i = 0; i < gameMusicOrder.length; i++) gameMusicOrder[i] = i + 1;
+                for (int i = gameMusicOrder.length - 1; i > 0; i--) {
+                    int j = nextRandom(i + 1);
+                    int swap = gameMusicOrder[i];
+                    gameMusicOrder[i] = gameMusicOrder[j];
+                    gameMusicOrder[j] = swap;
+                }
+                if (gameMusicOrder[0] == lastGameMusicTrack) {
+                    int swap = gameMusicOrder[0];
+                    gameMusicOrder[0] = gameMusicOrder[1];
+                    gameMusicOrder[1] = swap;
+                }
+                gameMusicIndex = 0;
+            }
+            lastGameMusicTrack = gameMusicOrder[gameMusicIndex++];
+            return lastGameMusicTrack;
+        }
+
+        private int addModeBlock(float x, float y, float z, float sx, float sy,
+                float sz, int color) {
+            if (modeBlockCount >= modeBlocks.length) return -1;
+            int i = modeBlockCount++;
+            modeBlocks[i] = new float[] {x,y,z,sx,sy,sz,color};
+            modeBlockNodes[i] = makeModeBlockVisual(x,y,z,sx,sy,sz,color);
+            modeBlockActive[i] = true;
+            modeBlockCollidable[i] = true;
+            world.addChild(modeBlockNodes[i]);
+            return i;
+        }
+
+        private int addModeCollisionBlock(float[] block,boolean collidable) {
+            if(modeBlockCount>=modeBlocks.length)return -1;
+            int i=modeBlockCount++;
+            modeBlocks[i]=block;
+            modeBlockNodes[i]=null;
+            modeBlockActive[i]=true;
+            modeBlockCollidable[i]=collidable;
+            return i;
+        }
+
+        private void buildCustomCollisionGrid(){
+            if(modeBlockCount==0)return;
+            float minX=Float.MAX_VALUE,maxX=-Float.MAX_VALUE,minZ=Float.MAX_VALUE,maxZ=-Float.MAX_VALUE;
+            for(int i=0;i<modeBlockCount;i++){float[] b=modeBlocks[i];minX=Math.min(minX,b[0]-b[3]*0.5f);maxX=Math.max(maxX,b[0]+b[3]*0.5f);minZ=Math.min(minZ,b[2]-b[5]*0.5f);maxZ=Math.max(maxZ,b[2]+b[5]*0.5f);}
+            customGridOriginX=minX-MAP_COLLISION_CELL;customGridOriginZ=minZ-MAP_COLLISION_CELL;
+            int width=(int)((maxX-minX)/MAP_COLLISION_CELL)+3,height=(int)((maxZ-minZ)/MAP_COLLISION_CELL)+3;
+            if(width<1||height<1||width>128||height>128)return;
+            customCollisionGrid=new java.util.Vector[width][height];customLargeCollisionBlocks=new java.util.Vector();
+            for(int i=0;i<modeBlockCount;i++){
+                float[] b=modeBlocks[i];
+                int x0=gridX(b[0]-b[3]*0.5f-0.31f),x1=gridX(b[0]+b[3]*0.5f+0.31f);
+                int z0=gridZ(b[2]-b[5]*0.5f-0.31f),z1=gridZ(b[2]+b[5]*0.5f+0.31f);
+                x0=clampGrid(x0,width);x1=clampGrid(x1,width);z0=clampGrid(z0,height);z1=clampGrid(z1,height);
+                if((x1-x0+1)*(z1-z0+1)>256){customLargeCollisionBlocks.addElement(new Integer(i));continue;}
+                for(int x=x0;x<=x1;x++)for(int z=z0;z<=z1;z++){
+                    if(customCollisionGrid[x][z]==null)customCollisionGrid[x][z]=new java.util.Vector();
+                    customCollisionGrid[x][z].addElement(new Integer(i));
+                }
+            }
+        }
+        private int gridX(float x){return (int)Math.floor((x-customGridOriginX)/MAP_COLLISION_CELL);}
+        private int gridZ(float z){return (int)Math.floor((z-customGridOriginZ)/MAP_COLLISION_CELL);}
+        private int clampGrid(int value,int size){if(value<0)return 0;if(value>=size)return size-1;return value;}
+        private boolean modeBlockCollision(int i,float x,float z,float bottom,float height){
+            if(i<0||i>=modeBlockCount||!modeBlockActive[i]||!modeBlockCollidable[i])return false;
+            float[] b=modeBlocks[i];
+            if(currentGame==13&&b[4]<=0.20f&&b[1]+b[4]*0.5f<=0.05f)return false;
+            return overlapsBlock(x,z,bottom,height,b[0],b[1],b[2],b[3]*0.5f,b[4]*0.5f,b[5]*0.5f,0.30f);
+        }
+        private boolean modeBlockListCollision(java.util.Vector indices,float x,float z,float bottom,float height){
+            if(indices==null)return false;
+            for(int i=0;i<indices.size();i++)if(modeBlockCollision(((Integer)indices.elementAt(i)).intValue(),x,z,bottom,height))return true;
+            return false;
+        }
+        private float customLandingFrom(java.util.Vector indices,float previousY,float top){
+            if(indices==null)return top;
+            for(int i=0;i<indices.size();i++){
+                int index=((Integer)indices.elementAt(i)).intValue();if(!modeBlockActive[index]||!modeBlockCollidable[index])continue;
+                float[] b=modeBlocks[index];float platformTop=b[1]+b[4]*0.5f;
+                if(onPlatform(b[0],b[2],b[3]*0.5f,b[5]*0.5f)&&platformCanSupport(previousY,platformTop))top=Math.max(top,platformTop);
+            }
+            return top;
+        }
+
+        private void prepareCustomMapRendering(){
+            if(customMapVisualBlocks==null)return;
+            int count=customMapVisualBlocks.length;
+            customMapVisualNodes=new Node[count];customVisualAttached=new boolean[count];customVisibleVisuals=new int[count];customNextVisibleVisuals=new int[count];customVisualStamps=new int[count];customCandidateStamps=new int[count];
+            customVisibleCount=0;customVisualStamp=0;
+            customRenderChunks=new java.util.Vector();customLargeRenderBlocks=new java.util.Vector();
+            if(count==0)return;
+            float minX=Float.MAX_VALUE,maxX=-Float.MAX_VALUE,minZ=Float.MAX_VALUE,maxZ=-Float.MAX_VALUE;
+            for(int i=0;i<count;i++){float[] b=customMapVisualBlocks[i];minX=Math.min(minX,b[0]-b[3]*0.5f);maxX=Math.max(maxX,b[0]+b[3]*0.5f);minZ=Math.min(minZ,b[2]-b[5]*0.5f);maxZ=Math.max(maxZ,b[2]+b[5]*0.5f);}
+            customRenderOriginX=minX-MAP_RENDER_CELL;customRenderOriginZ=minZ-MAP_RENDER_CELL;
+            int width=(int)((maxX-minX)/MAP_RENDER_CELL)+3,height=(int)((maxZ-minZ)/MAP_RENDER_CELL)+3;
+            if(width<1||height<1||width>256||height>256){customRenderGrid=null;for(int i=0;i<count;i++)customLargeRenderBlocks.addElement(new Integer(i));return;}
+            customRenderGrid=new java.util.Vector[width][height];
+            for(int i=0;i<count;i++){
+                float[] b=customMapVisualBlocks[i];
+                // Keep each grouped box within signed-short local vertex limits.
+                // Oversized parts retain the regular visual path.
+                if((int)b[7]!=1||b[3]>MAP_RENDER_CELL*0.75f||b[4]>24.0f||b[5]>MAP_RENDER_CELL*0.75f){customLargeRenderBlocks.addElement(new Integer(i));continue;}
+                int cellX=clampGrid(renderGridX(b[0]),width),cellZ=clampGrid(renderGridZ(b[2]),height);
+                int cellY=(int)Math.floor(b[1]/16.0f);
+                java.util.Vector bucket=customRenderGrid[cellX][cellZ];
+                if(bucket==null){bucket=new java.util.Vector();customRenderGrid[cellX][cellZ]=bucket;}
+                CustomRenderChunk chunk=null;
+                for(int c=bucket.size()-1;c>=0;c--){CustomRenderChunk candidate=(CustomRenderChunk)bucket.elementAt(c);if(candidate.cellY==cellY&&candidate.blocks.size()<128){chunk=candidate;break;}}
+                if(chunk==null){chunk=new CustomRenderChunk(cellX,cellY,cellZ);bucket.addElement(chunk);customRenderChunks.addElement(chunk);}
+                chunk.add(b);
+            }
+        }
+        private int renderGridX(float x){return (int)Math.floor((x-customRenderOriginX)/MAP_RENDER_CELL);}
+        private int renderGridZ(float z){return (int)Math.floor((z-customRenderOriginZ)/MAP_RENDER_CELL);}
+
+        private Node makeModeBlockVisual(float x,float y,float z,float sx,float sy,float sz,int color) {
+            return makeModeBlockVisual(x,y,z,sx,sy,sz,color,1);
+        }
+
+        private Node makeModeBlockVisual(float x,float y,float z,float sx,float sy,float sz,int color,int shape) {
+            if(shape==2){
+                float radius=Math.max(0.01f,Math.max(sy,sz)*0.5f);
+                Group cylinder=makeHatCylinder(0,0,0,radius,Math.max(0.01f,sx),color,12);
+                cylinder.setTranslation(x,y,z);
+                cylinder.setOrientation(90,0,0,1);
+                return cylinder;
+            }
+            if(shape==0){
+                Node ball=makeRoundedCylinderHead(color);
+                ball.setScale(sx/0.56f,sy/0.5f,sz/0.56f);
+                ball.setTranslation(x,y,z);
+                return ball;
+            }
+            if(sx<=28.0f&&sy<=28.0f&&sz<=28.0f)return makeStuddedBox(x,y,z,sx,sy,sz,color);
+            Node visual=makeBox(0,0,0,1,1,1,color);
+            visual.setScale(sx,sy,sz);
+            visual.setTranslation(x,y,z);
+            return visual;
+        }
+
+        private Node makeCustomChunkVisual(CustomRenderChunk chunk){
+            int boxes=chunk.blocks.size(),vertices=boxes*24;
+            short[] positions=new short[vertices*3];byte[] colors=new byte[vertices*3];int[] stripLengths=new int[boxes*6];
+            int[] faceOrder={0,2,1,3,4,5,6,7,0,1,4,5,0,4,2,6,1,3,5,7,2,6,3,7};
+            float originX=customRenderOriginX+chunk.cellX*MAP_RENDER_CELL+MAP_RENDER_CELL*0.5f;
+            float originZ=customRenderOriginZ+chunk.cellZ*MAP_RENDER_CELL+MAP_RENDER_CELL*0.5f;
+            float originY=chunk.cellY*16.0f+8.0f;int out=0;
+            for(int i=0;i<boxes;i++){
+                float[] b=(float[])chunk.blocks.elementAt(i);float hx=b[3]*0.5f,hy=b[4]*0.5f,hz=b[5]*0.5f;
+                for(int face=0;face<6;face++)stripLengths[i*6+face]=4;
+                int red=((int)b[6]>>16)&255,green=((int)b[6]>>8)&255,blue=(int)b[6]&255;
+                for(int v=0;v<24;v++){
+                    int corner=faceOrder[v];positions[out]=(short)((b[0]-originX+((corner&1)==0?-hx:hx))*1000.0f);
+                    positions[out+1]=(short)((b[1]-originY+((corner&2)==0?-hy:hy))*1000.0f);
+                    positions[out+2]=(short)((b[2]-originZ+((corner&4)==0?-hz:hz))*1000.0f);
+                    colors[out]=(byte)red;colors[out+1]=(byte)green;colors[out+2]=(byte)blue;out+=3;
+                }
+            }
+            VertexArray positionArray=new VertexArray(vertices,3,2);positionArray.set(0,vertices,positions);
+            VertexArray colorArray=new VertexArray(vertices,3,1);colorArray.set(0,vertices,colors);
+            VertexBuffer vb=new VertexBuffer();vb.setPositions(positionArray,0.001f,null);vb.setColors(colorArray);
+            Appearance appearance=new Appearance();PolygonMode polygonMode=new PolygonMode();polygonMode.setCulling(PolygonMode.CULL_NONE);appearance.setPolygonMode(polygonMode);
+            Mesh mesh=new Mesh(vb,new IndexBuffer[]{new TriangleStripArray(0,stripLengths)},new Appearance[]{appearance});
+            mesh.setTranslation(originX,originY,originZ);return mesh;
+        }
+
+        private void addToken(float x, float y, float z) {
+            if (tokenCount >= tokenNodes.length) return;
+            int i=tokenCount++;
+            tokenPositions[i][0]=x; tokenPositions[i][1]=y; tokenPositions[i][2]=z;
+            tokenNodes[i]=makeBox(x,y,z,0.28f,0.28f,0.28f,0xFFD633);
+            tokenActive[i]=true;
+            world.addChild(tokenNodes[i]);
+        }
+
+        private void buildExtraGame(int game) {
+            if(game==15){
+                if(customMapBlocks==null||customMapBlocks.length==0)throw new IllegalStateException("Choose a map first");
+                customMapBuilding=true;customMapBuildCursor=0;customEffectBlockCount=0;
+                return;
+            }
+            GameLevel level = LevelCatalog.get(game);
+            float[][] blocks = level.blocks();
+            for (int i = 0; i < blocks.length; i++) {
+                float[] b = blocks[i];
+                addModeBlock(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6]);
+            }
+            if (game == 4) {
+                lavaNode=makeBox(0,lavaHeight-0.12f,0,24,0.24f,24,0xF04B25);
+                world.addChild(lavaNode);
+            } else if (game == 8) {
+                for (int i=0;i<12;i++) {
+                    float x=-9.0f+(i%4)*6.0f, z=-8.0f+(i/4)*7.5f;
+                    addToken(x,0.55f,z);
+                }
+                modeGoal=tokenCount;
+            }
+        }
+
+        private void updateCustomMapBuildChunk(){
+            final int blocksPerFrame=96;
+            int end=Math.min(customMapBlocks.length,customMapBuildCursor+blocksPerFrame);
+            for(;customMapBuildCursor<end;customMapBuildCursor++){
+                float[] b=customMapBlocks[customMapBuildCursor];
+                int index=addModeCollisionBlock(b,b.length<=8||b[8]!=0);
+                if(index>=0&&b.length>7&&b[7]!=0&&customEffectBlockCount<customEffectBlocks.length){
+                    modeBlockScriptEffects[index]=(int)b[7];customEffectBlocks[customEffectBlockCount++]=index;
+                }
+            }
+            if(customMapBuildCursor>=customMapBlocks.length){
+                customMapPostProcessing=true;customMapPostReady=false;customMapPostError=null;
+                final Game self=this;
+                Thread prepare=new Thread(new Runnable(){public void run(){
+                    try{buildCustomCollisionGrid();prepareCustomMapRendering();}
+                    catch(Throwable t){customMapPostError=t.toString();}
+                    finally{customMapPostReady=true;self.repaint();}
+                }});
+                try{prepare.setPriority(Thread.MIN_PRIORITY);}catch(Throwable ignored){}
+                prepare.start();modelStatus="Preparing map collision/render data...";
+            }else modelStatus="Loading map "+(customMapBuildCursor*100/customMapBlocks.length)+"%";
+        }
+
+        private int nextRandom(int limit) {
+            randomState=randomState*1103515245+12345;
+            return limit<=0?0:((randomState>>>8)&0x7fffffff)%limit;
+        }
+        private int configuredBotCount(int maximum) {
+            if(botCountSetting==BOT_COUNT_OFF)return 0;
+            if(botCountSetting==BOT_COUNT_RANDOM)
+                return Math.min(maximum,3+nextRandom(3));
+            return Math.min(maximum,botCountSetting);
+        }
+        private void spawnPlayerBots() {
+            if(currentGame==11){playerBotCount=0;return;}
+            playerBotCount=configuredBotCount(currentGame==13?3:5);
+            botDialogue="";
+            talkingBot=-1;
+            botDialogueUntil=0;
+            nextBotDialogueAt=gameClock+1400+nextRandom(2400);
+            int skinStart=nextRandom(BOT_SKIN_COLORS.length);
+            int shirtStart=nextRandom(BOT_SHIRT_COLORS.length);
+            int legStart=nextRandom(BOT_LEG_COLORS.length);
+            int shirtStyleStart=nextRandom(7),pantsStyleStart=nextRandom(6);
+            int hatStyleStart=nextRandom(6),faceStyleStart=nextRandom(4);
+            for(int i=0;i<playerBotCount;i++) {
+                float x,z;
+                if(currentGame==13){
+                    x=TYCOON_BOT_X[i];z=TYCOON_BOT_Z[i];
+                }else if((currentGame==0||currentGame==7)&&OBBY_BLOCKS.length>0){
+                    x=OBBY_BLOCKS[0][0]+(i-2)*0.48f;z=OBBY_BLOCKS[0][2]+1.0f;
+                }else if((currentGame==4||currentGame==6)&&modeBlockCount>0){
+                    x=modeBlocks[0][0]+(i-2)*0.42f;z=modeBlocks[0][2]+0.85f;
+                }else{x=(i-2)*1.25f;z=2.0f+(i%2);}
+                PlayerBot bot=new PlayerBot(x,z);
+                bot.skinColor=BOT_SKIN_COLORS[(i+skinStart)%BOT_SKIN_COLORS.length];
+                bot.shirtColor=BOT_SHIRT_COLORS[(i+shirtStart)%BOT_SHIRT_COLORS.length];
+                bot.legColor=BOT_LEG_COLORS[(i+legStart)%BOT_LEG_COLORS.length];
+                bot.shirtStyle=(shirtStyleStart+i*3)%7;
+                bot.pantsStyle=(pantsStyleStart+i*5)%6;
+                bot.hatStyle=(hatStyleStart+i*5)%6;
+                bot.faceStyle=(faceStyleStart+i)%4;
+                bot.y=botGroundTop(x,z);
+                if(currentGame==13){
+                    bot.tycoonCash=12;
+                    bot.tycoonAt=gameClock+4000+nextRandom(3000);
+                    bot.tycoonIncomeAt=gameClock+2200;
+                    bot.nextThink=gameClock+500+nextRandom(1000);
+                }
+                playerBots[i]=bot;addPlayerBotModel(bot,true);
+            }
+        }
+        private void addPlayerBotModel(PlayerBot bot,boolean protectedSpawn) {
+            try{
+                if(bot.model==null){
+                    Group l=leftArm,r=rightArm,ll=leftLeg,rl=rightLeg;Group sword=swordVisual;
+                    try{
+                        bot.model=buildBotNoob(bot);
+                        bot.leftArm=leftArm;bot.rightArm=rightArm;bot.leftLeg=leftLeg;bot.rightLeg=rightLeg;
+                        bot.swordArm=rightArm;bot.sword=swordVisual;
+                    }finally{
+                        leftArm=l;rightArm=r;leftLeg=ll;rightLeg=rl;swordVisual=sword;
+                    }
+                }
+                bot.leftArm.setOrientation(0,1,0,0);bot.rightArm.setOrientation(0,1,0,0);
+                bot.leftLeg.setOrientation(0,1,0,0);bot.rightLeg.setOrientation(0,1,0,0);
+                bot.model.setScale(1,1,1);
+                if(bot.sword!=null)bot.sword.setRenderingEnable(false);
+                bot.model.setOrientation(bot.yaw*57.29578f,0,1,0);
+                bot.model.setTranslation(bot.x,bot.y,bot.z);
+                bot.model.setRenderingEnable(true);
+                bot.modelVisible=true;
+                bot.nextVisibilityCheck=0;
+                if(!bot.modelAttached){world.addChild(bot.model);bot.modelAttached=true;}
+                bot.alive=true;
+                if(protectedSpawn){bot.health=100;if(bot.aura==null){bot.aura=makeBotAura();bot.model.addChild(bot.aura);}
+                    bot.aura.setScale(1,1,1);bot.aura.setRenderingEnable(true);
+                    bot.invulnerableUntil=gameClock+4000;bot.auraUntil=bot.invulnerableUntil;}
+                else if(bot.aura!=null)bot.aura.setRenderingEnable(false);
+            }catch(Throwable t){
+                bot.alive=false;bot.respawnAt=gameClock+10000;
+                initError="Player bot: "+t.toString();
+            }
+        }
+        private Group buildBotNoob(PlayerBot bot) {
+            try{return buildNoob(false,bot.skinColor,bot.shirtColor,bot.legColor,
+                    bot.shirtStyle,bot.pantsStyle,bot.hatStyle,bot.faceStyle);}
+            catch(Exception e){throw new RuntimeException(e.toString());}
+        }
+        private void killPlayerBot(PlayerBot bot) {
+            if(bot==null||!bot.alive||gameClock<bot.invulnerableUntil)return;
+            bot.health-=35;
+            if(bot.health>0){bot.invulnerableUntil=gameClock+850;return;}
+            bot.health=0;
+            bot.alive=false;bot.grounded=false;bot.respawnAt=gameClock+2600;
+            if(talkingBot>=0&&talkingBot<playerBotCount&&playerBots[talkingBot]==bot){
+                botDialogue="";talkingBot=-1;botDialogueUntil=0;
+            }
+            if(bot.model!=null){
+                bot.model.setRenderingEnable(false);bot.modelVisible=false;
+                spawnBotDeathPieces(bot);
+            }
+        }
+        private void spawnBotDeathPieces(PlayerBot bot) {
+            bot.deathPieces=new PhysicsPiece[6];
+            float c=(float)Math.cos(bot.yaw),sn=(float)Math.sin(bot.yaw);
+            addBotDeathPiece(bot,0,makeRoundedCylinderHead(bot.skinColor),0,2.19f,0,0.28f,0.25f,0.28f,c,sn);
+            addBotDeathPiece(bot,1,makeBox(0,0,0,0.78f,0.95f,0.40f,bot.shirtColor),0,1.45f,0,0.39f,0.475f,0.20f,c,sn);
+            addBotDeathPiece(bot,2,makeStuddedBox(0,0,0,0.30f,0.88f,0.40f,bot.skinColor),-0.54f,1.48f,0,0.15f,0.44f,0.20f,c,sn);
+            addBotDeathPiece(bot,3,makeStuddedBox(0,0,0,0.30f,0.88f,0.40f,bot.skinColor),0.54f,1.48f,0,0.15f,0.44f,0.20f,c,sn);
+            addBotDeathPiece(bot,4,makeBox(0,0,0,0.36f,0.78f,0.40f,bot.legColor),-0.20f,0.52f,0,0.18f,0.39f,0.20f,c,sn);
+            addBotDeathPiece(bot,5,makeBox(0,0,0,0.36f,0.78f,0.40f,bot.legColor),0.20f,0.52f,0,0.18f,0.39f,0.20f,c,sn);
+        }
+        private void addBotDeathPiece(PlayerBot bot,int index,Node node,float ox,float oy,float oz,
+                float halfX,float halfY,float halfZ,float c,float sn) {
+            addDeathPieceTo(bot.deathPieces,index,node,bot.x,bot.y,bot.z,
+                    ox,oy,oz,halfX,halfY,halfZ,c,sn);
+        }
+        private void clearBotDeathPieces(PlayerBot bot) {
+            if(bot==null||bot.deathPieces==null)return;
+            for(int i=0;i<bot.deathPieces.length;i++){
+                PhysicsPiece p=bot.deathPieces[i];
+                if(p!=null)try{world.removeChild(p.node);}catch(Throwable ignored){}
+            }
+            bot.deathPieces=null;
+        }
+        private void updateTycoonBot(PlayerBot bot,int dt,int baseIndex){
+            float baseX=TYCOON_BOT_X[baseIndex],baseZ=TYCOON_BOT_Z[baseIndex];
+            if(gameClock>=bot.tycoonIncomeAt){
+                bot.tycoonCash+=2;
+                bot.tycoonIncomeAt=gameClock+2200;
+            }
+            if(bot.tycoonLevel<9&&gameClock>=bot.tycoonAt){
+                int cost=5+bot.tycoonLevel*3;
+                if(bot.tycoonCash>=cost){
+                    bot.tycoonCash-=cost;
+                    int level=++bot.tycoonLevel;
+                    int column=(level-1)%3,row=(level-1)/3;
+                    float x=baseX+(column-1)*1.5f;
+                    float z=baseZ+(row-1)*1.5f;
+                    float sy=0.48f+row*0.16f;
+                    int color=BOT_SHIRT_COLORS[baseIndex%BOT_SHIRT_COLORS.length];
+                    addModeBlock(x,sy*0.5f+0.035f,z,0.70f,sy,0.70f,color);
+                    modeStatus("Tycoon bot "+(baseIndex+1)+" upgraded to "+level);
+                }
+                bot.tycoonAt=gameClock+4500+nextRandom(2200);
+            }
+            if(gameClock>=bot.nextThink){
+                bot.nextThink=gameClock+1100+nextRandom(1100);
+                bot.targetX=baseX+(nextRandom(49)-24)*0.055f;
+                bot.targetZ=baseZ+(nextRandom(49)-24)*0.055f;
+            }
+            float dx=bot.targetX-bot.x,dz=bot.targetZ-bot.z;
+            float distance=(float)Math.sqrt(dx*dx+dz*dz);
+            if(distance>0.08f){
+                float step=Math.min(dt*0.0008f,distance);
+                float moveX=dx/distance*step,moveZ=dz/distance*step;
+                float nx=bot.x+moveX,nz=bot.z+moveZ;
+                if(!isWorldBlocked(nx,bot.z,bot.y,1.9f))bot.x=nx;
+                if(!isWorldBlocked(bot.x,nz,bot.y,1.9f))bot.z=nz;
+                if(moveX!=0||moveZ!=0){
+                    bot.yaw=fastAtan2(-moveX,-moveZ);
+                    if(bot.model!=null)bot.model.setOrientation(bot.yaw*57.29578f,0,1,0);
+                }
+            }
+            if(bot.model!=null)bot.model.setTranslation(bot.x,bot.y,bot.z);
+        }
+
+        private void updatePlayerBots(int dt) {
+            if(playerBots==null||world==null)return;
+            updateBotDialogue();
+            for(int i=0;i<playerBotCount;i++){
+                PlayerBot bot=playerBots[i];if(bot==null)continue;
+                if(!bot.alive){
+                    updateBotDeathPieces(bot,dt);
+                    if(gameClock>=bot.respawnAt){
+                        clearBotDeathPieces(bot);
+                        bot.x=bot.spawnX;bot.z=bot.spawnZ;
+                        bot.y=botGroundTop(bot.x,bot.z);bot.velocityY=0;bot.grounded=true;bot.yaw=0;
+                        addPlayerBotModel(bot,true);
+                    }
+                    continue;
+                }
+                // Visibility is checked once, after simulation, in syncBotModelVisibility().
+                // Avoid projecting every bot twice per frame on low-end M3G devices.
+                if(bot.attackUntil>0&&gameClock>=bot.attackUntil){
+                    if(bot.swordArm!=null)bot.swordArm.setOrientation(0,1,0,0);
+                    if(bot.sword!=null)bot.sword.setRenderingEnable(false);
+                    if(bot.model!=null)bot.model.setScale(1,1,1);
+                    bot.attackUntil=0;
+                }
+                if(bot.aura!=null&&gameClock<bot.auraUntil){
+                    float pulse=1.0f+(float)Math.sin(gameClock*0.012f)*0.045f;
+                    bot.aura.setScale(pulse,pulse,pulse);
+                }else if(bot.aura!=null)bot.aura.setRenderingEnable(false);
+
+                if(currentGame==13){
+                    updateTycoonBot(bot,dt,i);
+                    syncBotModelVisibility(bot);
+                    continue;
+                }
+                boolean simonActive=currentGame==12&&simonRound>0&&simonRound<=12;
+                if(simonActive&&bot.simonRoundSeen!=simonRound){
+                    bot.simonRoundSeen=simonRound;
+                    bot.simonMoveAt=gameClock+700+nextRandom(2300);
+                    bot.simonMoving=false;
+                    bot.targetX=bot.x;bot.targetZ=bot.z;
+                }
+                boolean attackPlayer=currentGame==10;
+                boolean attackZombies=currentGame==2||currentGame==14;
+                int targetZombie=attackZombies?nearestLivingZombie(bot.x,bot.z):-1;
+                float targetX=attackPlayer?px:(targetZombie>=0?zombies[targetZombie].x:bot.spawnX);
+                float targetZ=attackPlayer?pz:(targetZombie>=0?zombies[targetZombie].z:bot.spawnZ);
+                float dx=targetX-bot.x,dz=targetZ-bot.z,d=(float)Math.sqrt(dx*dx+dz*dz);
+                boolean armed=attackPlayer||(attackZombies&&targetZombie>=0);
+                if(armed&&d<4.2f&&gameClock>=bot.nextAttack&&gameClock>=bot.invulnerableUntil){
+                    bot.nextAttack=gameClock+2300+nextRandom(1200);
+                    if(d<2.3f){
+                        bot.yaw=fastAtan2(-dx,-dz);
+                        if(bot.model!=null)bot.model.setOrientation(bot.yaw*57.29578f,0,1,0);
+                        animatePlayerBotWeapon(bot);
+                        if(attackPlayer){
+                            if(!dead&&gameClock>=invulnerableUntil)damagePlayer(35);
+                        }else if(targetZombie>=0&&zombies[targetZombie]!=null&&zombies[targetZombie].alive){
+                            Zombie target=zombies[targetZombie];
+                            target.alive=false;
+                            try{world.removeChild(target.model);}catch(Throwable ignored){}
+                            if(currentGame!=2){modeScore++;modeStatus("Enemy down: "+modeScore);}
+                            if(currentGame==2)updateHordeStatus();
+                        }
+                    }else if(nextRandom(2)==0){
+                        float inv=1.0f/d;
+                        Node bomb=makeBombModel();
+                        addWorldObject(bomb,bot.x+dx*inv*0.8f,bot.y+0.45f,
+                                bot.z+dz*inv*0.8f,dx*inv*0.0015f,0,dz*inv*0.0015f,
+                                0.34f,0.44f,0.34f,0,true,2600);
+                        for(int q=0;q<worldObjectScanLimit;q++)
+                            if(worldObjects[q]!=null&&worldObjects[q].active&&worldObjects[q].body.node==bomb)
+                                worldObjects[q].botOwned=true;
+                        animatePlayerBotWeapon(bot);
+                    }
+                }
+                if(simonActive&&!bot.simonMoving&&gameClock>=bot.simonMoveAt){
+                    bot.simonMoving=true;
+                    bot.targetX=SIMON_PAD_X[simonTarget]+(i-2)*0.10f;
+                    bot.targetZ=SIMON_PAD_Z[simonTarget]+((i%2==0)?-0.10f:0.10f);
+                }
+                if(gameClock>=bot.nextThink||(armed&&d>3.0f)){
+                    bot.nextThink=gameClock+900+nextRandom(1400);
+                    if(simonActive){
+                        if(bot.simonMoving){
+                            bot.targetX=SIMON_PAD_X[simonTarget]+(i-2)*0.10f;
+                            bot.targetZ=SIMON_PAD_Z[simonTarget]+((i%2==0)?-0.10f:0.10f);
+                        }else{bot.targetX=bot.x;bot.targetZ=bot.z;}
+                    }else if(armed){bot.targetX=targetX;bot.targetZ=targetZ;}
+                    else{bot.targetX=bot.spawnX+(nextRandom(160)-80)*0.1f;
+                        bot.targetZ=bot.spawnZ+(nextRandom(160)-80)*0.1f;}
+                    if(bot.grounded&&gameClock>=bot.nextJump&&
+                            (nextRandom(4)==0||currentGame==0||currentGame==7)){
+                        bot.velocityY=0.0068f;bot.grounded=false;
+                        bot.nextJump=gameClock+1300+nextRandom(1000);}
+                }
+                float tx=bot.targetX-bot.x,tz=bot.targetZ-bot.z;
+                float dest=(float)Math.sqrt(tx*tx+tz*tz),mx=0,mz=0;
+                if(dest>0.18f){
+                    float move=Math.min(dt*0.00115f,dest);mx=tx/dest*move;mz=tz/dest*move;
+                    float nx=bot.x+mx,nz=bot.z+mz;
+                    if(!isWorldBlocked(nx,bot.z,bot.y,1.9f))bot.x=nx;
+                    else if(bot.grounded&&gameClock>=bot.nextJump){
+                        bot.velocityY=0.0075f;bot.grounded=false;bot.nextJump=gameClock+900;}
+                    if(!isWorldBlocked(bot.x,nz,bot.y,1.9f))bot.z=nz;
+                    if(mx!=0||mz!=0){
+                        bot.yaw=fastAtan2(-mx,-mz);
+                        if(bot.model!=null)bot.model.setOrientation(bot.yaw*57.29578f,0,1,0);
+                    }
+                }
+
+                float previousY=bot.y;
+                if(!bot.grounded){
+                    bot.y+=bot.velocityY*dt;bot.velocityY-=0.000018f*dt;
+                }
+                botResolveLanding(bot,previousY);
+                if(bot.y < -8.0f ||
+                        (currentGame==4&&bot.y<lavaHeight+0.85f&&Math.abs(bot.x)<12.0f&&Math.abs(bot.z)<12.0f) ||
+                        (currentGame==3&&studioTesting&&botTouchesStudioHazard(bot)) ||
+                        (currentGame==1&&gameClock>=bot.invulnerableUntil&&bot.y<1.1f&&
+                                Math.abs(bot.x-3.0f)<0.95f&&Math.abs(bot.z+3.0f)<0.95f)){
+                    killPlayerBot(bot);continue;
+                }
+                if(bot.leftArm!=null&&dest>0.18f&&gameClock>=bot.attackUntil){
+                    float gait=(float)Math.sin(gameClock*0.016f)*24.0f;
+                    bot.leftArm.setOrientation(gait,1,0,0);bot.rightArm.setOrientation(-gait,1,0,0);
+                    bot.leftLeg.setOrientation(-gait,1,0,0);bot.rightLeg.setOrientation(gait,1,0,0);
+                }
+                if(bot.model!=null)bot.model.setTranslation(bot.x,bot.y,bot.z);
+                syncBotModelVisibility(bot);
+            }
+        }
+
+        private void tickPlayerBots(int dt) {
+            if(playerBotCount<=0)return;
+            playerBotUpdateAccumulator+=dt;
+            if(playerBotUpdateAccumulator>=50){
+                int elapsed=playerBotUpdateAccumulator-(playerBotUpdateAccumulator%50);
+                playerBotUpdateAccumulator%=50;
+                updatePlayerBots(elapsed);
+            }
+        }
+
+        private void syncBotModelVisibility(PlayerBot bot) {
+            if(bot==null||!bot.alive)return;
+            if(bot.model==null){
+                addPlayerBotModel(bot,false);
+                if(bot.model==null)return;
+                bot.modelVisible=true;
+                bot.nextVisibilityCheck=0;
+            }
+            // Keep the M3G model allocated: rebuilding its meshes/materials every
+            // time a bot crosses the screen edge creates avoidable GC spikes.
+            // Projection is also throttled because it is only a visibility hint.
+            if(gameClock>=bot.nextVisibilityCheck){
+                bot.nextVisibilityCheck=gameClock+150;
+                boolean visible=isBotInView(bot);
+                if(visible!=bot.modelVisible){
+                    if(visible)bot.model.setTranslation(bot.x,bot.y,bot.z);
+                    bot.model.setRenderingEnable(visible);
+                    bot.modelVisible=visible;
+                }
+            }
+        }
+
+        private boolean isBotInView(PlayerBot bot) {
+            if(bot==null||getWidth()<=0||getHeight()<=0)return false;
+            if(!projectWorldToScreen(bot.x,bot.y+1.15f,bot.z))return false;
+            return projectedScreenX>=-8&&projectedScreenX<=getWidth()+8&&
+                    projectedScreenY>=-12&&projectedScreenY<=getHeight()+12;
+        }
+
+        private void despawnBotModel(PlayerBot bot) {
+            if(bot==null||bot.model==null)return;
+            try{world.removeChild(bot.model);}catch(Throwable ignored){}
+            bot.modelAttached=false;
+            bot.model=null;bot.aura=null;
+            bot.leftArm=bot.rightArm=bot.leftLeg=bot.rightLeg=null;
+            bot.swordArm=null;bot.sword=null;
+        }
+
+        private int nearestLivingZombie(float x,float z) {
+            int target=-1;float best=Float.MAX_VALUE;
+            if(zombies==null)return -1;
+            for(int i=0;i<zombies.length;i++){
+                Zombie enemy=zombies[i];if(enemy==null||!enemy.alive)continue;
+                float dx=enemy.x-x,dz=enemy.z-z,dist=dx*dx+dz*dz;
+                if(dist<best){best=dist;target=i;}
+            }
+            return target;
+        }
+        private boolean botOnPlatform(float x,float z,float bx,float bz,float halfX,float halfZ) {
+            return Math.abs(x-bx)<=halfX+0.22f&&Math.abs(z-bz)<=halfZ+0.22f;
+        }
+        private void botResolveLanding(PlayerBot bot,float previousY) {
+            float top=Float.NEGATIVE_INFINITY;
+            if(currentGame!=4&&currentGame!=0&&currentGame!=6&&currentGame!=7&&
+                    Math.abs(bot.x)<11.5f&&Math.abs(bot.z)<11.5f)top=0.0f;
+            if(currentGame>=4){
+                for(int i=0;i<modeBlockCount;i++){
+                    if(!modeBlockActive[i]||!modeBlockCollidable[i])continue;
+                    float[] b=modeBlocks[i];float platformTop=b[1]+b[4]*0.5f;
+                    if(botOnPlatform(bot.x,bot.z,b[0],b[2],b[3]*0.5f,b[5]*0.5f)&&
+                            ((bot.grounded&&bot.y>=platformTop-0.05f)||
+                            (!bot.grounded&&bot.velocityY<=0&&previousY>=platformTop&&bot.y<=platformTop)))
+                        top=Math.max(top,platformTop);
+                }
+            }
+            if(currentGame==3&&studioTesting){
+                for(int i=0;i<studioObjectCount;i++){
+                    StudioObject o=studioObjects[i];if(o==null||o.type==2)continue;
+                    float platformTop=o.y+o.sy*0.5f;
+                    if(botOnPlatform(bot.x,bot.z,o.x,o.z,o.sx*0.5f,o.sz*0.5f)&&
+                            ((bot.grounded&&bot.y>=platformTop-0.05f)||
+                            (!bot.grounded&&bot.velocityY<=0&&previousY>=platformTop&&bot.y<=platformTop)))
+                        top=Math.max(top,platformTop);
+                }
+            }
+            if(currentGame==0||currentGame==2){
+                float[][] platforms=currentGame==0?OBBY_BLOCKS:ZOMBIE_BLOCKS;
+                for(int i=0;i<platforms.length;i++){
+                    float[] b=platforms[i];float platformTop=b[1]+b[4]*0.5f;
+                    if(botOnPlatform(bot.x,bot.z,b[0],b[2],b[3]*0.5f,b[5]*0.5f)&&
+                            ((bot.grounded&&bot.y>=platformTop-0.05f)||
+                            (!bot.grounded&&bot.velocityY<=0&&previousY>=platformTop&&bot.y<=platformTop)))
+                        top=Math.max(top,platformTop);
+                }
+            }
+            if(!bot.grounded&&bot.velocityY<=0&&top!=Float.NEGATIVE_INFINITY&&
+                    previousY>=top&&bot.y<=top){
+                bot.y=top;bot.velocityY=0;bot.grounded=true;
+            }else if(bot.grounded){
+                if(top!=Float.NEGATIVE_INFINITY&&bot.y<=top+0.05f){bot.y=top;bot.velocityY=0;}
+                else bot.grounded=false;
+            }
+        }
+        private boolean botTouchesStudioHazard(PlayerBot bot) {
+            for(int i=0;i<studioObjectCount;i++){
+                StudioObject o=studioObjects[i];if(o==null||o.type!=2)continue;
+                boolean vertical=bot.y<=o.y+o.sy*0.5f+0.03f&&bot.y+1.9f>o.y-o.sy*0.5f;
+                if(vertical&&Math.abs(bot.x-o.x)<o.sx*0.5f+0.25f&&Math.abs(bot.z-o.z)<o.sz*0.5f+0.25f)return true;
+            }
+            return false;
+        }
+        private void updateBotDialogue() {
+            if(botDialogue.length()>0&&gameClock<botDialogueUntil&&talkingBot>=0&&
+                    talkingBot<playerBotCount&&playerBots[talkingBot]!=null&&playerBots[talkingBot].alive)return;
+            botDialogue="";
+            talkingBot=-1;
+            if(gameClock<nextBotDialogueAt||playerBotCount<=0)return;
+            int first=nextRandom(playerBotCount);
+            for(int offset=0;offset<playerBotCount;offset++){
+                int index=(first+offset)%playerBotCount;
+                PlayerBot bot=playerBots[index];
+                if(bot==null||!bot.alive)continue;
+                talkingBot=index;
+                botDialogue=BOT_DIALOGUES[nextRandom(BOT_DIALOGUES.length)];
+                botDialogueUntil=gameClock+3000;
+                nextBotDialogueAt=botDialogueUntil+2400+nextRandom(4600);
+                return;
+            }
+            nextBotDialogueAt=gameClock+1000;
+        }
+
+        private void animatePlayerBotWeapon(PlayerBot bot) {
+            bot.attackUntil=gameClock+450;
+            if(bot.swordArm!=null)bot.swordArm.setOrientation(-42,1,0,0);
+            if(bot.sword!=null)bot.sword.setRenderingEnable(true);
+        }
+
+        private float botGroundTop(float x,float z) {
+            float top=currentGame==4?-20.0f:0.0f;
+            if(currentGame==0||currentGame==7)for(int i=0;i<OBBY_BLOCKS.length;i++){
+                float[] b=OBBY_BLOCKS[i];
+                if(Math.abs(x-b[0])<b[3]*0.5f+0.2f&&Math.abs(z-b[2])<b[5]*0.5f+0.2f)
+                    if(b[1]+b[4]*0.5f>top)top=b[1]+b[4]*0.5f;}
+            for(int i=0;i<modeBlockCount;i++)if(modeBlockActive[i]&&modeBlockCollidable[i]){
+                float[] b=modeBlocks[i];
+                if(Math.abs(x-b[0])<b[3]*0.5f+0.2f&&Math.abs(z-b[2])<b[5]*0.5f+0.2f)
+                    if(b[1]+b[4]*0.5f>top)top=b[1]+b[4]*0.5f;}
+            return top;
+        }
+        private Group makeBotAura() {
+            Group aura=new Group();aura.addChild(makeAuraMesh(0x503399FF));
+            aura.setTranslation(0,1.35f,0);return aura;
+        }
+        private Mesh makeAuraMesh(int color) {
+            final int rings=8,segments=16;int[] strips=new int[rings];
+            for(int i=0;i<rings;i++)strips[i]=(segments+1)*2;
+            short[] shell=new short[rings*(segments+1)*2*3];int out=0;
+            for(int r=0;r<rings;r++){
+                double a0=-1.57079632679+3.14159265359*r/rings;
+                double a1=-1.57079632679+3.14159265359*(r+1)/rings;
+                for(int q=0;q<=segments;q++){
+                    double lon=6.28318530718*q/segments;
+                    shell[out++]=(short)(Math.cos(a0)*Math.sin(lon)*1350);
+                    shell[out++]=(short)(Math.sin(a0)*1350);
+                    shell[out++]=(short)(Math.cos(a0)*Math.cos(lon)*1350);
+                    shell[out++]=(short)(Math.cos(a1)*Math.sin(lon)*1350);
+                    shell[out++]=(short)(Math.sin(a1)*1350);
+                    shell[out++]=(short)(Math.cos(a1)*Math.cos(lon)*1350);}
+            }
+            VertexArray va=new VertexArray(rings*(segments+1)*2,3,2);
+            va.set(0,rings*(segments+1)*2,shell);
+            VertexBuffer vb=new VertexBuffer();vb.setPositions(va,0.001f,null);
+            TriangleStripArray tris=new TriangleStripArray(0,strips);
+            Appearance ap=new Appearance();Material mat=new Material();
+            mat.setColor(Material.AMBIENT,color);mat.setColor(Material.DIFFUSE,color);
+            mat.setColor(Material.EMISSIVE,color);ap.setMaterial(mat);
+            CompositingMode cm=new CompositingMode();cm.setBlending(CompositingMode.ALPHA);
+            ap.setCompositingMode(cm);PolygonMode pm=new PolygonMode();
+            pm.setCulling(PolygonMode.CULL_NONE);ap.setPolygonMode(pm);
+            return new Mesh(vb,new IndexBuffer[]{tris},new Appearance[]{ap});
+        }
+
+        private void spawnSimpleBot(int slot, float x, float z) {
+            if (slot<0 || slot>=zombies.length) return;
+            try {
+                Group model=buildNoob(true);
+                model.setTranslation(x,0,z);
+                world.addChild(model);
+                zombies[slot]=new Zombie(model,x,z);
+            } catch (Throwable t) {
+                initError="NPC: "+t.toString();
+            }
+        }
+
+        private void spawnKingBots() {
+            zombies=new Zombie[4];
+            int count=configuredBotCount(3);
+            if(count>0)spawnSimpleBot(0,-8,-8);
+            if(count>1)spawnSimpleBot(1,8,-8);
+            if(count>2)spawnSimpleBot(2,0,9);
+        }
+
+        private void spawnHideBot(int slot,float x,float z) {
+            if(slot<0||slot>=zombies.length)return;
+            try {
+                Group model=buildNoob(false);
+                model.setTranslation(x,0,z);
+                model.setRenderingEnable(true);
+                world.addChild(model);
+                zombies[slot]=new Zombie(model,x,z);
+            } catch(Throwable t) {
+                initError="Hide bot: "+t.toString();
+            }
+        }
+
+        private void spawnSeekBots() {
+            zombies=new Zombie[6];
+            int count=configuredBotCount(5);
+            int[] order={0,1,2,3,4};
+            for(int i=order.length-1;i>0;i--){
+                int j=nextRandom(i+1),swap=order[i];
+                order[i]=order[j];order[j]=swap;
+            }
+            for(int i=0;i<count;i++)
+                spawnHideBot(i,HIDE_SPAWN_X[order[i]],HIDE_SPAWN_Z[order[i]]);
+            for(int i=0;i<count;i++) if(zombies[i]!=null) {
+                zombies[i].hidden=true;
+                zombies[i].fleeing=false;
+                try{world.removeChild(zombies[i].model);}catch(Throwable ignored){}
+            }
+            modeGoal=count;
+            modeStartAt=gameClock;
+            modeEventAt=gameClock+20000;
+            modeStatus("HIDE THE BOTS - 20s");
+        }
+
+        private void spawnDefenseWave() {
+            zombies=new Zombie[12];
+            int count=Math.min(3+(int)(modeStartAt/12000),zombies.length);
+            for(int i=0;i<count;i++)
+                spawnSimpleBot(i,(i%3-1)*2.2f,-10.0f-(i/3)*1.4f);
+            modeStatus("Wave "+(1+modeScore/3)+" - stop the enemies");
+        }
+
+        private void modeStatus(String message) {
+            modelStatus=message;
+        }
+
+        private void updateExtraGame(int dt) {
+            if (currentGame==4) {
+                lavaHeight+=dt*0.00004f;
+                if (lavaNode!=null) lavaNode.setTranslation(0,lavaHeight-0.12f,0);
+                if (jumpY<lavaHeight+0.85f && Math.abs(px)<11.5f && Math.abs(pz)<11.5f) {
+                    damagePlayer(35); return;
+                }
+                if (jumpY>8.0f) modeStatus("Lava escaped!");
+            } else if (currentGame==5) {
+                if (gameClock>=modeEventAt) {
+                    modeEventAt=gameClock+850;
+                    long seed=gameClock/850L+modeScore*17L;
+                    float x=(float)((seed*37L)%190L)/10.0f-9.5f;
+                    float z=(float)((seed*61L)%190L)/10.0f-9.5f;
+                    spawnMeteor(x,z);
+                }
+                for(int i=0;i<worldObjectScanLimit;i++) {
+                    WorldObject o=worldObjects[i];
+                    if(o==null||!o.active) continue;
+                    float dx=o.body.x-px,dz=o.body.z-pz;
+                    if(gameClock>=invulnerableUntil&&o.body.y<jumpY+1.6f&&
+                            o.body.y>jumpY-0.5f&&dx*dx+dz*dz<1.0f) {
+                        removeWorldObject(o); damagePlayer(35); return;
+                    }
+                }
+                if(gameClock-modeStartAt>=30000) modeStatus("Meteor shower survived!");
+            } else if (currentGame==6) {
+                updateFallingTiles(dt);
+                if(pz < -12.0f) modeStatus("You crossed the collapsing tiles!");
+            } else if (currentGame==7) {
+                if(gameClock-modeStartAt>0&&modelStatus.indexOf("complete")>=0) {
+                    modeScore=(int)((gameClock-modeStartAt)/1000);
+                }
+            } else if (currentGame==8) {
+                updateTokens(dt);
+                if(modeCollected>=modeGoal) modeStatus("All coins collected!");
+                else if(gameClock-modeStartAt>60000) modeStatus("Time up - coins "+modeCollected+"/"+modeGoal);
+            } else if (currentGame==9) {
+                updateKingHill(dt);
+            } else if (currentGame==11) {
+                updateSeekGame(dt);
+            } else if (currentGame==12) {
+                updateSimonGame();
+            } else if (currentGame==13) {
+                if(gameClock>=modeEventAt) {
+                    modeEventAt=gameClock+4000;
+                    modeCash+=2+tycoonLevel;
+                    modeStatus("Tycoon cash: "+modeCash+" - press 3 to build");
+                }
+            } else if (currentGame==14) {
+                updateDefenseGame(dt);
+            }
+        }
+
+        private void updateFallingTiles(int dt) {
+            for(int i=0;i<modeBlockCount;i++) {
+                if(!modeBlockActive[i]||!modeBlockCollidable[i]) continue;
+                float[] b=modeBlocks[i];
+                if(!modeBlockFalling[i] && onPlatform(b[0],b[2],b[3]*0.5f,b[5]*0.5f) &&
+                        grounded && jumpY>=b[1]+b[4]*0.5f-0.08f) {
+                    if(modeBlockFallAt[i]==0) modeBlockFallAt[i]=gameClock+650;
+                    if(gameClock>=modeBlockFallAt[i]) modeBlockFalling[i]=true;
+                }
+                if(modeBlockFalling[i]) {
+                    modeBlockFallVelocity[i]-=0.000018f*dt;
+                    b[1]+=modeBlockFallVelocity[i]*dt;
+                    modeBlockNodes[i].setTranslation(b[0],b[1],b[2]);
+                    if(b[1]<-3.0f) {
+                        modeBlockActive[i]=false;
+                        try { world.removeChild(modeBlockNodes[i]); } catch(Throwable ignored) {}
+                    }
+                }
+            }
+        }
+
+        private void updateTokens(int dt) {
+            for(int i=0;i<tokenCount;i++) {
+                if(!tokenActive[i]) continue;
+                Node node=tokenNodes[i];
+                node.setOrientation((float)((gameClock*0.12f)%360L),0,1,0);
+                float dx=tokenPositions[i][0]-px,dz=tokenPositions[i][2]-pz;
+                if(dx*dx+dz*dz<0.55f*0.55f&&Math.abs(jumpY-tokenPositions[i][1])<1.2f) {
+                    tokenActive[i]=false; modeCollected++;
+                    try { world.removeChild(node); } catch(Throwable ignored) {}
+                    modeStatus("Coins "+modeCollected+"/"+modeGoal);
+                }
+            }
+        }
+
+        private void updateKingHill(int dt) {
+            for(int i=0;i<zombies.length;i++) {
+                Zombie z=zombies[i]; if(z==null||!z.alive) continue;
+                float dx=px-z.x,dz=pz-z.z;
+                float d=(float)Math.sqrt(dx*dx+dz*dz);
+                if(d>1.0f) {
+                    float step=dt*0.0008f;
+                    z.x+=dx/d*step; z.z+=dz/d*step;
+                    z.model.setTranslation(z.x,0,z.z);
+                } else if(gameClock>=z.attackAt) {
+                    z.attackAt=gameClock+1400;
+                    if(d>0.01f) { px+=dx/d*1.2f; pz+=dz/d*1.2f; }
+                    playerVelocityY=0.0028f; grounded=false;
+                }
+            }
+            boolean onHill=Math.abs(px)<2.35f&&Math.abs(pz)<2.35f&&jumpY>=0.68f;
+            if(onHill&&gameClock>=modeScoreAt) {
+                modeScore++; modeScoreAt=gameClock+1000;
+                modeStatus("Hill held: "+modeScore+" / 20 sec");
+            } else if(!onHill) modeScore=0;
+            if(modeScore>=20) modeStatus("Hill captured!");
+        }
+
+        private void updateSeekGame(int dt) {
+            if(modeEventAt>0&&gameClock<modeEventAt)return;
+            if(modeEventAt>0){
+                for(int i=0;i<zombies.length;i++){
+                    Zombie bot=zombies[i];
+                    if(bot==null||!bot.alive)continue;
+                    bot.hidden=false;
+                    bot.model.setRenderingEnable(true);
+                    try{world.addChild(bot.model);}catch(Throwable ignored){}
+                }
+                modeEventAt=0;
+                modeStatus("Find the bots! Turn the camera to spot them.");
+            }
+            for(int i=0;i<zombies.length;i++) {
+                Zombie z=zombies[i];
+                if(z==null||!z.alive)continue;
+                float dx=px-z.x,dz=pz-z.z;
+                float distanceSquared=dx*dx+dz*dz;
+                if(!z.fleeing&&gameClock>=z.attackAt){
+                    z.attackAt=gameClock+180;
+                    if(isBotVisibleInCamera(z)){
+                        z.fleeing=true;
+                        modeStatus("Spotted! Chase the bot!");
+                    }
+                }
+                if(z.fleeing){
+                    float awayX=z.x-px,awayZ=z.z-pz;
+                    float length=(float)Math.sqrt(awayX*awayX+awayZ*awayZ);
+                    if(length<0.01f){awayX=nextRandom(2)==0?1.0f:-1.0f;awayZ=0;length=1;}
+                    awayX/=length;awayZ/=length;
+                    float step=dt*0.0032f;
+                    float moveX=0,moveZ=0,bestDot=-2.0f;
+                    for(int d=0;d<HIDE_FLEE_COS.length;d++){
+                        float c=HIDE_FLEE_COS[d],sn=HIDE_FLEE_SIN[d];
+                        float dirX=awayX*c-awayZ*sn,dirZ=awayX*sn+awayZ*c;
+                        float nx=z.x+dirX*step,nz=z.z+dirZ*step;
+                        if(Math.abs(nx)>20.0f||Math.abs(nz)>20.0f||
+                                isWorldBlocked(nx,z.z,0.0f,1.9f)||
+                                isWorldBlocked(z.x,nz,0.0f,1.9f))continue;
+                        float dot=dirX*awayX+dirZ*awayZ;
+                        if(dot>bestDot){bestDot=dot;moveX=dirX;moveZ=dirZ;}
+                    }
+                    if(bestDot>-1.0f){
+                        z.x+=moveX*step;z.z+=moveZ*step;
+                        z.model.setTranslation(z.x,0,z.z);
+                        z.model.setOrientation(fastAtan2(-moveX,-moveZ)*57.29578f,0,1,0);
+                    }
+                    dx=px-z.x;dz=pz-z.z;distanceSquared=dx*dx+dz*dz;
+                }
+                if(distanceSquared<1.15f*1.15f){
+                    z.alive=false;
+                    try{world.removeChild(z.model);}catch(Throwable ignored){}
+                    modeStatus("Found "+(modeGoal-countZombies())+"/"+modeGoal);
+                }
+            }
+            if(modeGoal-countZombies()>=modeGoal)modeStatus("Everyone found!");
+        }
+
+        private boolean isBotVisibleInCamera(Zombie bot){
+            float cp=(float)Math.cos(camPitch),sp=(float)Math.sin(camPitch);
+            float cameraX=px-(float)Math.sin(camYaw)*cp*camDistance;
+            float cameraY=1.2f+jumpY+sp*camDistance;
+            float cameraZ=pz+(float)Math.cos(camYaw)*cp*camDistance;
+            float dx=bot.x-cameraX,dz=bot.z-cameraZ;
+            float forwardX=(float)Math.sin(camYaw),forwardZ=-(float)Math.cos(camYaw);
+            float rightX=(float)Math.cos(camYaw),rightZ=(float)Math.sin(camYaw);
+            float forward=dx*forwardX+dz*forwardZ;
+            if(forward<=0.2f)return false;
+            float aspect=(float)getWidth()/(float)Math.max(1,getHeight());
+            float halfWidth=(float)Math.tan(1.134464f*0.5f)*aspect;
+            float lateral=Math.abs(dx*rightX+dz*rightZ);
+            if(lateral>forward*halfWidth)return false;
+            float distance=(float)Math.sqrt(dx*dx+dz*dz);
+            if(distance>28.0f)return false;
+            int steps=(int)(distance*2.0f);
+            if(steps<2)steps=2;
+            if(steps>48)steps=48;
+            for(int i=2;i<steps-1;i++){
+                float t=(float)i/(float)steps;
+                float x=cameraX+dx*t,z=cameraZ+dz*t;
+                float y=cameraY+(1.1f-cameraY)*t;
+                if(isWorldBlocked(x,z,y-0.35f,0.7f))return false;
+            }
+            return true;
+        }
+
+        private void updateSimonGame() {
+            if(simonRound>12||gameClock<modeEventAt)return;
+            if(simonRound>0){
+                if(!isOnSimonPad(px,pz,simonTarget)){
+                    damagePlayer(35);
+                    if(dead)return;
+                }else modeScore++;
+                for(int i=0;i<playerBotCount;i++){
+                    PlayerBot bot=playerBots[i];
+                    if(bot!=null&&bot.alive&&!isOnSimonPad(bot.x,bot.z,simonTarget))
+                        killPlayerBot(bot);
+                }
+                if(simonRound>=12){
+                    simonRound=13;
+                    modeStatus("Simon Says complete!");
+                    return;
+                }
+            }
+            simonTarget=nextRandom(4);
+            simonRound++;
+            modeEventAt=gameClock+6200;
+            for(int i=0;i<playerBotCount;i++){
+                PlayerBot bot=playerBots[i];
+                if(bot==null||!bot.alive)continue;
+                bot.simonRoundSeen=simonRound;
+                bot.simonMoveAt=gameClock+700+nextRandom(2300);
+                bot.simonMoving=false;
+                bot.targetX=bot.x;bot.targetZ=bot.z;
+            }
+            String[] color=new String[] {"RED","BLUE","GREEN","YELLOW"};
+            modeStatus("SIMON SAYS: "+color[simonTarget]+"! Move!");
+        }
+
+        private boolean isOnSimonPad(float x,float z,int target) {
+            if(target<0||target>=SIMON_PAD_X.length)return false;
+            return Math.abs(x-SIMON_PAD_X[target])<=1.85f&&
+                    Math.abs(z-SIMON_PAD_Z[target])<=1.85f;
+        }
+
+        private void useTycoonAction() {
+            if(currentGame!=13)return;
+            if(Math.abs(px-TYCOON_PLAYER_X)>2.4f||
+                    Math.abs(pz-TYCOON_PLAYER_Z)>2.4f){
+                modeStatus("Return to your yellow base to build");
+                return;
+            }
+            if(tycoonLevel>=9){modeStatus("Your base is fully upgraded!");return;}
+            int cost=5+tycoonLevel*3;
+            if(modeCash<cost){modeStatus("Need "+cost+" cash");return;}
+            modeCash-=cost;
+            int level=++tycoonLevel;
+            int column=(level-1)%3,row=(level-1)/3;
+            float x=TYCOON_PLAYER_X+(column-1)*1.5f;
+            float z=TYCOON_PLAYER_Z+(row-1)*1.5f;
+            float sy=0.48f+row*0.16f;
+            addModeBlock(x,sy*0.5f+0.035f,z,0.70f,sy,0.70f,STUDIO_COLORS[level%STUDIO_COLORS.length]);
+            modeStatus("Your base upgraded "+level+"/9 - cash "+modeCash);
+            if(tycoonLevel>=9)modeStatus("Your base is fully upgraded!");
+        }
+
+        private void useArenaSword() {
+            if(gameClock<swordAttackUntil) return;
+            swordAttackUntil=gameClock+500;
+            float best=3.0f*3.0f; int target=-1;
+            for(int i=0;i<zombies.length;i++) {
+                Zombie z=zombies[i]; if(z==null||!z.alive) continue;
+                float dx=z.x-px,dz=z.z-pz, d=dx*dx+dz*dz;
+                if(d<best){best=d;target=i;}
+            }
+            animateNoob();
+            if(target>=0) {
+                Zombie z=zombies[target]; z.alive=false;
+                try {world.removeChild(z.model);}catch(Throwable ignored){}
+                modeScore++;
+                modeStatus("Enemy down: "+modeScore);
+            }
+        }
+
+        private void updateDefenseGame(int dt) {
+            if(defenseLeaked>=3) {
+                modeStatus("Base lost - restart from pause");
+                return;
+            }
+            if(countZombies()==0) {
+                if(gameClock>=modeEventAt) {
+                    modeStartAt=gameClock;
+                    modeEventAt=gameClock+1800;
+                    spawnDefenseWave();
+                }
+                return;
+            }
+            for(int i=0;i<zombies.length;i++) {
+                Zombie z=zombies[i]; if(z==null||!z.alive) continue;
+                float dx=-z.x,dz=-z.z;
+                float d=(float)Math.sqrt(dx*dx+dz*dz);
+                if(d<1.0f) {
+                    z.alive=false; defenseLeaked++;
+                    try {world.removeChild(z.model);}catch(Throwable ignored){}
+                    modeStatus("Base lives: "+(3-defenseLeaked));
+                    if(defenseLeaked>=3) {damagePlayer(35);return;}
+                } else {
+                    float step=dt*0.00065f;
+                    z.x+=dx/d*step; z.z+=dz/d*step;
+                    z.model.setTranslation(z.x,0,z.z);
+                }
+                if(z.alive&&gameClock>=z.attackAt){
+                    for(int b=0;b<playerBotCount;b++){
+                        PlayerBot bot=playerBots[b];
+                        if(bot==null||!bot.alive||gameClock<bot.invulnerableUntil)continue;
+                        float bx=bot.x-z.x,bz=bot.z-z.z;
+                        if(bx*bx+bz*bz<0.9f*0.9f){
+                            z.attackAt=gameClock+900;killPlayerBot(bot);break;
+                        }
+                    }
+                }
+            }
+        }
+
+        private void spawnZombieWave() {
+            if ((currentGame != 2 && currentGame != 10) || world == null) return;
+            zombieWave++;
+            nextWaveAt = 0;
+            int count = Math.min(4 + zombieWave, zombies.length);
+            for (int i = 0; i < count; i++) {
+                int slot = -1;
+                for (int j = 0; j < zombies.length; j++)
+                    if (zombies[j] == null || !zombies[j].alive) { slot = j; break; }
+                if (slot < 0) break;
+                double angle = 6.28318530718 * i / count + zombieWave * 0.31;
+                float radius = 6.0f + (i % 3) * 0.9f;
+                float x = px + (float)Math.cos(angle) * radius;
+                float z = pz + (float)Math.sin(angle) * radius;
+                try {
+                    Group model = buildNoob(true);
+                    model.setTranslation(x, 0, z);
+                    world.addChild(model);
+                    zombies[slot] = new Zombie(model, x, z);
+                } catch (Throwable t) {
+                    initError = "Zombie: " + t.toString();
+                }
+            }
+            updateHordeStatus();
+        }
+
+        private int countZombies() {
+            int count = 0;
+            if (zombies == null) return count;
+            for (int i = 0; i < zombies.length; i++)
+                if (zombies[i] != null && zombies[i].alive) count++;
+            return count;
+        }
+
+        private void updateHordeStatus() {
+            if (currentGame == 2)
+                modelStatus = "Wave " + zombieWave + " - Zombies: " + countZombies();
+        }
+
+        private void updateZombies(int dt) {
+            if ((currentGame != 2 && currentGame != 10) || zombies == null) return;
+            float speed = dt * 0.0022f;
+            for (int i = 0; i < zombies.length; i++) {
+                Zombie z = zombies[i];
+                if (z == null || !z.alive) continue;
+                float dx = px - z.x, dz = pz - z.z;
+                float distanceSquared = dx * dx + dz * dz;
+                if (distanceSquared > 0.82f * 0.82f) {
+                    float inverseDistance = 1.0f / (float)Math.sqrt(distanceSquared);
+                    float moveX = dx * inverseDistance * speed;
+                    float moveZ = dz * inverseDistance * speed;
+                    float nextX = z.x + moveX, nextZ = z.z + moveZ;
+                    if (!isWorldBlocked(nextX, z.z, 0.0f, 1.9f)) z.x = nextX;
+                    if (!isWorldBlocked(z.x, nextZ, 0.0f, 1.9f)) z.z = nextZ;
+                    dx = px - z.x; dz = pz - z.z;
+                    distanceSquared = dx * dx + dz * dz;
+                    if (moveX != 0.0f || moveZ != 0.0f)
+                        z.model.setOrientation((float)(fastAtan2(-moveX, -moveZ) * 57.29578f), 0, 1, 0);
+                }
+                z.model.setTranslation(z.x, 0, z.z);
+                if (distanceSquared < 0.9f * 0.9f && gameClock >= z.attackAt) {
+                    z.attackAt = gameClock + 900;
+                    if (gameClock >= invulnerableUntil && !dead) {
+                        damagePlayer(35);
+                        return;
+                    }
+                }
+                if(currentGame==2&&gameClock>=z.attackAt){
+                    for(int b=0;b<playerBotCount;b++){
+                        PlayerBot bot=playerBots[b];
+                        if(bot==null||!bot.alive||gameClock<bot.invulnerableUntil)continue;
+                        float bx=bot.x-z.x,bz=bot.z-z.z;
+                        if(bx*bx+bz*bz<0.9f*0.9f){
+                            z.attackAt=gameClock+900;killPlayerBot(bot);break;
+                        }
+                    }
+                }
+            }
+            if (countZombies() == 0) {
+                if (nextWaveAt == 0) nextWaveAt = gameClock + 1400;
+                else if (gameClock >= nextWaveAt) spawnZombieWave();
+            } else {
+                nextWaveAt = 0;
+            }
+        }
+
+        private boolean isPlayerBlocked(float x, float z) {
+            return isWorldBlocked(x, z, jumpY, PLAYER_COLLISION_HEIGHT);
+        }
+
+        private boolean isWorldBlocked(float x, float z, float bottom, float height) {
+            if (worldObjects != null) {
+                for (int i = 0; i < worldObjectScanLimit; i++) {
+                    WorldObject o = worldObjects[i];
+                    if (o == null || !o.active || o.bomb) continue;
+                    PhysicsPiece b = o.body;
+                    if (overlapsBlock(x, z, bottom, height,
+                            b.x, b.y, b.z, b.extentX, b.extentY, b.extentZ, 0.30f))
+                        return true;
+                }
+            }
+            if (currentGame == 3 && studioTesting) {
+                for (int i=0; i<studioObjectCount; i++) {
+                    StudioObject object = studioObjects[i];
+                    if (object == null || object.type == 2) continue;
+                    if (overlapsBlock(x,z,bottom,height,object.x,object.y,object.z,
+                            object.sx*0.5f,object.sy*0.5f,object.sz*0.5f,0.30f))
+                        return true;
+                }
+            }
+            if(currentGame==15&&customCollisionGrid!=null){
+                if(modeBlockListCollision(customLargeCollisionBlocks,x,z,bottom,height))return true;
+                int cellX=gridX(x),cellZ=gridZ(z);
+                if(cellX>=0&&cellX<customCollisionGrid.length&&cellZ>=0&&cellZ<customCollisionGrid[0].length&&
+                        modeBlockListCollision(customCollisionGrid[cellX][cellZ],x,z,bottom,height))return true;
+            }else if (currentGame >= 4) {
+                for (int i=0;i<modeBlockCount;i++) {
+                    if(modeBlockCollision(i,x,z,bottom,height))return true;
+                }
+            }
+            float[][] blocks = currentGame == 0 ? OBBY_BLOCKS :
+                    (currentGame == 2 ? ZOMBIE_BLOCKS : null);
+            if (blocks != null) {
+                for (int i = 0; i < blocks.length; i++) {
+                    float[] b = blocks[i];
+                    if (overlapsBlock(x, z, bottom, height,
+                            b[0], b[1], b[2], b[3]*0.5f, b[4]*0.5f, b[5]*0.5f, 0.30f))
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        private boolean overlapsBlock(float x, float z, float bottom, float height,
+                float bx, float by, float bz, float halfX, float halfY, float halfZ,
+                float playerRadius) {
+            boolean vertical = bottom < by + halfY && bottom + height > by - halfY;
+            return vertical && Math.abs(x - bx) < halfX + playerRadius &&
+                    Math.abs(z - bz) < halfZ + playerRadius;
+        }
+
+        private void updateWorldObjects(int dt) {
+            updateMeteorBursts();
+            if (worldObjects == null) return;
+            for (int i = 0; i < worldObjectScanLimit; i++) {
+                WorldObject o = worldObjects[i];
+                if (o == null || !o.active) continue;
+                if (!o.bomb && gameClock >= o.removeAt) {
+                    removeWorldObject(o);
+                    continue;
+                }
+                PhysicsPiece p = o.body;
+                if(o.meteor&&o.fireTrail!=null){
+                    float flicker=0.86f+(float)Math.sin(gameClock*0.028f+i*1.7f)*0.12f;
+                    o.fireTrail.setScale(flicker,1.0f+(1.0f-flicker),flicker);
+                }
+                p.vy -= 0.000018f * dt;
+                p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+                p.rotation += p.spin * dt * 0.001f;
+                updatePieceExtents(p);
+                if(o.meteor&&p.vy<0.0f&&p.y-p.extentY<=0.0f){
+                    float impactX=p.x,impactZ=p.z;
+                    removeWorldObject(o);
+                    spawnMeteorBurst(impactX,0.45f,impactZ);
+                    damageAtMeteorImpact(impactX,impactZ);
+                    continue;
+                }
+                resolvePieceEnvironment(p);
+            }
+            for (int i = 0; i < worldObjectScanLimit; i++) {
+                WorldObject a = worldObjects[i];
+                if (a == null || !a.active) continue;
+                for (int j = i + 1; j < worldObjectScanLimit; j++) {
+                    WorldObject b = worldObjects[j];
+                    if (b != null && b.active) resolvePiecePair(a.body, b.body);
+                }
+            }
+            for (int i = 0; i < worldObjectScanLimit; i++) {
+                WorldObject o = worldObjects[i];
+                if (o == null || !o.active) continue;
+                PhysicsPiece p = o.body;
+                p.node.setTranslation(p.x, p.y, p.z);
+                p.node.setOrientation(p.rotation, p.spinX, p.spinY, p.spinZ);
+                if (o.bomb) {
+                    boolean flash = gameClock >= o.explodeAt - 900 &&
+                            ((gameClock / 110L) % 2L == 0L);
+                    p.node.setRenderingEnable(gameClock < o.explodeAt - 900 || flash);
+                    if (gameClock >= o.explodeAt) explodeBomb(o);
+                }
+            }
+        }
+
+        private WorldObject addWorldObject(Node node, float x, float y, float z,
+                float vx, float vy, float vz, float sx, float sy, float sz,
+                float orientation, boolean bomb, long fuse) {
+            int slot = -1;
+            for (int i = 0; i < worldObjectScanLimit; i++)
+                if (worldObjects[i] == null || !worldObjects[i].active) { slot = i; break; }
+            if (slot < 0 && worldObjectScanLimit < worldObjects.length)
+                slot = worldObjectScanLimit;
+            if (slot < 0) {
+                // Reuse the actual oldest slot; do not overwrite an unrelated live object.
+                int oldestSlot = 0;
+                long oldestExpiry = worldObjects[0].removeAt;
+                for (int i = 1; i < worldObjectScanLimit; i++) {
+                    if (worldObjects[i].removeAt < oldestExpiry) {
+                        oldestExpiry = worldObjects[i].removeAt;
+                        oldestSlot = i;
+                    }
+                }
+                removeWorldObject(worldObjects[oldestSlot]);
+                slot = oldestSlot;
+            }
+            node.setTranslation(x, y, z);
+            node.setOrientation(orientation, 0.0f, 1.0f, 0.0f);
+            world.addChild(node);
+            PhysicsPiece body = new PhysicsPiece(node, x, y, z, vx, vy, vz,
+                    bomb ? 95.0f : 18.0f, 0.0f, 1.0f, 0.0f,
+                    sx * 0.5f, sy * 0.5f, sz * 0.5f);
+            body.rotation = orientation;
+            updatePieceExtents(body);
+            worldObjects[slot] = new WorldObject(body, bomb,
+                    bomb ? gameClock + fuse : 0, bomb ? 0 : gameClock + 45000);
+            if (slot >= worldObjectScanLimit) worldObjectScanLimit = slot + 1;
+            return worldObjects[slot];
+        }
+
+        private void spawnMeteor(float x,float z) {
+            Group model=new Group();
+            model.addChild(makeBox(0,0,0,0.72f,0.72f,0.72f,0xA94732));
+            Group flame=new Group();
+            Mesh outer=makeAuraMesh(0xDFFF5018);
+            outer.setTranslation(0,-0.45f,0);outer.setScale(0.30f,0.48f,0.30f);
+            Mesh inner=makeAuraMesh(0xEFFFCC32);
+            inner.setTranslation(0,-0.73f,0);inner.setScale(0.19f,0.36f,0.19f);
+            flame.addChild(outer);flame.addChild(inner);model.addChild(flame);
+            WorldObject meteor=addWorldObject(model,x,8.5f,z,0,0,0,
+                    0.72f,0.72f,0.72f,0,false,0);
+            if(meteor!=null){meteor.meteor=true;meteor.fireTrail=flame;}
+        }
+
+        private void spawnMeteorBurst(float x,float y,float z) {
+            int slot=-1;
+            for(int i=0;i<meteorBursts.length;i++)
+                if(meteorBursts[i]==null||gameClock>=meteorBursts[i].removeAt){slot=i;break;}
+            if(slot<0){
+                slot=0;
+                for(int i=1;i<meteorBursts.length;i++)
+                    if(meteorBursts[i].removeAt<meteorBursts[slot].removeAt)slot=i;
+                try{world.removeChild(meteorBursts[slot].model);}catch(Throwable ignored){}
+            }
+            Group burst=new Group();
+            Mesh outer=makeAuraMesh(0xCFFF5418);
+            Mesh inner=makeAuraMesh(0xDFFFC72D);
+            inner.setScale(0.52f,0.52f,0.52f);
+            burst.addChild(outer);burst.addChild(inner);
+            burst.setTranslation(x,y,z);burst.setScale(0.08f,0.08f,0.08f);
+            world.addChild(burst);
+            meteorBursts[slot]=new MeteorBurst(burst,outer,inner,gameClock+360);
+        }
+
+        private void updateMeteorBursts() {
+            if(meteorBursts==null)return;
+            for(int i=0;i<meteorBursts.length;i++){
+                MeteorBurst burst=meteorBursts[i];if(burst==null)continue;
+                if(gameClock>=burst.removeAt){
+                    try{world.removeChild(burst.model);}catch(Throwable ignored){}
+                    meteorBursts[i]=null;continue;
+                }
+                float progress=1.0f-(burst.removeAt-gameClock)/360.0f;
+                float grow=0.08f+progress*0.62f;
+                burst.outer.setScale(grow,grow,grow);
+                burst.inner.setScale(grow*0.52f,grow*0.52f,grow*0.52f);
+            }
+        }
+
+        private void damageAtMeteorImpact(float x,float z) {
+            float radiusSquared=1.55f*1.55f;
+            float dx=px-x,dz=pz-z;
+            if(!dead&&gameClock>=invulnerableUntil&&dx*dx+dz*dz<=radiusSquared)
+                damagePlayer(35);
+            for(int i=0;i<playerBotCount;i++){
+                PlayerBot bot=playerBots[i];
+                if(bot==null||!bot.alive||gameClock<bot.invulnerableUntil)continue;
+                dx=bot.x-x;dz=bot.z-z;
+                if(dx*dx+dz*dz<=radiusSquared)killPlayerBot(bot);
+            }
+        }
+
+        private void removeWorldObject(WorldObject o) {
+            if (o == null || !o.active) return;
+            o.active = false;
+            try { o.body.node.setRenderingEnable(false); } catch (Throwable ignored) {}
+            try { world.removeChild(o.body.node); } catch (Throwable ignored) {}
+            while (worldObjectScanLimit > 0 &&
+                    (worldObjects[worldObjectScanLimit - 1] == null ||
+                    !worldObjects[worldObjectScanLimit - 1].active))
+                worldObjectScanLimit--;
+        }
+
+        private void explodeBomb(WorldObject bomb) {
+            float bx = bomb.body.x, bz = bomb.body.z;
+            removeWorldObject(bomb);
+            float radius = 4.8f, radiusSquared = radius * radius;
+            for (int i = 0; i < zombies.length; i++) {
+                Zombie z = zombies[i];
+                if (z == null || !z.alive) continue;
+                float dx = z.x - bx, dz = z.z - bz;
+                if (dx * dx + dz * dz <= radiusSquared) {
+                    z.alive = false;
+                    try { world.removeChild(z.model); } catch (Throwable ignored) {}
+                }
+            }
+            for(int i=0;i<playerBotCount;i++){
+                PlayerBot bot=playerBots[i];
+                if(bot==null||!bot.alive||gameClock<bot.invulnerableUntil)continue;
+                float dx=bot.x-bx,dz=bot.z-bz;
+                if(dx*dx+dz*dz<=radiusSquared)killPlayerBot(bot);
+            }
+            float playerX = px - bx, playerZ = pz - bz;
+            if (!bomb.botOwned && !dead && gameClock >= invulnerableUntil &&
+                    playerX * playerX + playerZ * playerZ <= radiusSquared) damagePlayer(35);
+            updateHordeStatus();
+        }
+
+        private void useInventoryItem() {
+            if(dead||(currentGame!=2&&currentGame!=10&&currentGame!=14))return;
+            int itemCount=currentGame==2?3:2;if(inventorySelection>=itemCount)inventorySelection=0;
+            if(inventorySelection==0){
+                if(gameClock<swordAttackUntil)return;swordAttackUntil=gameClock+600;
+                float fx=(float)Math.sin(yaw),fz=-(float)Math.cos(yaw);
+                int target=-1;float closest=2.55f*2.55f;
+                for(int i=0;i<zombies.length;i++){Zombie z=zombies[i];if(z==null||!z.alive)continue;
+                    float dx=z.x-px,dz=z.z-pz,d=dx*dx+dz*dz;
+                    if(d>closest||dx*fx+dz*fz<0.10f)continue;target=i;closest=d;}
+                if(target>=0){zombies[target].alive=false;
+                    try{world.removeChild(zombies[target].model);}catch(Throwable ignored){}
+                    if(currentGame!=2){modeScore++;modeStatus("Enemy down: "+modeScore);}}
+                else for(int i=0;i<playerBotCount;i++){PlayerBot bot=playerBots[i];
+                    if(bot==null||!bot.alive||gameClock<bot.invulnerableUntil)continue;
+                    float dx=bot.x-px,dz=bot.z-pz,d=dx*dx+dz*dz;
+                    if(d>closest||dx*fx+dz*fz<0.10f)continue;
+                    killPlayerBot(bot);modeScore++;if(currentGame!=2)modeStatus("Enemy down: "+modeScore);break;}
+                animateNoob();if(currentGame==2)updateHordeStatus();
+            }else if(inventorySelection==1){
+                float fx=(float)Math.sin(yaw),fz=-(float)Math.cos(yaw);
+                addWorldObject(makeBombModel(),px+fx*0.85f,jumpY+0.45f,pz+fz*0.85f,
+                        fx*0.0018f,0,fz*0.0018f,0.34f,0.44f,0.34f,0,true,2600);
+            }else if(currentGame==2){
+                float fx=(float)Math.sin(yaw),fz=-(float)Math.cos(yaw);
+                float rx=(float)Math.cos(yaw),rz=(float)Math.sin(yaw);
+                float cx=px+fx*1.75f,cz=pz+fz*1.75f;
+                for(int row=0;row<2;row++)for(int col=-1;col<=1;col++){
+                    Group block=new Group();block.addChild(makeBox(0,0,0,0.88f,0.82f,0.36f,row==0?0x777777:0x969696));
+                    addWorldObject(block,cx+rx*col*0.86f,jumpY+1.5f+row*0.84f,cz+rz*col*0.86f,
+                            0,0,0,0.88f,0.82f,0.36f,yaw,false,0);}
+            }
+        }
+        private Group makeBombModel(){
+            Group bomb=new Group();bomb.addChild(makeBox(0,0,0,0.34f,0.34f,0.34f,0xE52B2B));
+            bomb.addChild(makeBox(0,0.21f,0,0.12f,0.10f,0.12f,0x303030));return bomb;
+        }
+
+        private Group makeSwordVisual() {
+            Group sword = new Group();
+            sword.addChild(makeBox(0, 0.47f, 0, 0.13f, 0.78f, 0.06f, 0xDCE9F2));
+            sword.addChild(makeBox(0, 0.05f, 0, 0.38f, 0.08f, 0.12f, 0xB68A42));
+            sword.addChild(makeBox(0, -0.12f, 0, 0.10f, 0.30f, 0.10f, 0x654321));
+            sword.setTranslation(0.56f, 1.02f, -0.08f);
+            return sword;
+        }
+
+        private void updateSkyCrop() {
+            if (sceneBackground == null || skySource == null || getWidth() <= 0 || getHeight() <= 0) return;
+            int imageWidth = skySource.getWidth();
+            int imageHeight = skySource.getHeight();
+            float verticalFov = 1.134464f; // 65 degrees
+            float aspect = (float)getWidth() / (float)getHeight();
+            float halfHorizontalTangent =
+                    (float)Math.tan(verticalFov * 0.5f) * aspect;
+            float horizontalFov = 2.0f * fastAtan2(halfHorizontalTangent, 1.0f);
+            int cropWidth = (int)(imageWidth * horizontalFov / 6.2831853f);
+            int cropHeight = (int)(imageHeight * verticalFov / 3.14159265f);
+            if (cropWidth < 1) cropWidth = 1;
+            if (cropHeight < 1) cropHeight = 1;
+
+            // As the camera turns right, the panorama scrolls left at the matching angular rate.
+            int cropX = (imageWidth - cropWidth) / 2 +
+                    (int)(camYaw * imageWidth / 6.2831853f);
+            cropX %= imageWidth;
+            if (cropX < 0) cropX += imageWidth;
+
+            float pitchPosition = (camPitch + 1.20f) / 2.40f;
+            if (pitchPosition < 0.0f) pitchPosition = 0.0f;
+            if (pitchPosition > 1.0f) pitchPosition = 1.0f;
+            int cropY = (int)((imageHeight - cropHeight) * pitchPosition);
+            sceneBackground.setCrop(cropX, cropY, cropWidth, cropHeight);
+        }
+
+        private void prepareMenuImages() {
+            int width = getWidth();
+            int height = getHeight();
+            if (width <= 0 || height <= 0) return;
+            boolean logoReady = logoSource == null || scaledLogo != null;
+            boolean backgroundReady = titleBackgroundSource == null ||
+                    (menuPanPixels != null && menuPanScale > 0.0f);
+            if (width == cachedMenuWidth && height == cachedMenuHeight &&
+                    logoReady && backgroundReady) return;
+            cachedMenuWidth = width;
+            cachedMenuHeight = height;
+            scaledLogo = scaleToFit(logoSource, width - 24, Math.max(1, height / 4));
+            menuPanPixels = new int[width * height];
+            if (titleBackgroundSource != null) {
+                menuPanScale = Math.max((float)width / titleBackgroundSource.getWidth(),
+                        (float)height / titleBackgroundSource.getHeight());
+                menuPanWidth = titleBackgroundSource.getWidth() * menuPanScale;
+            }
+        }
+
+        private Image scaleToFit(Image source, int maxWidth, int maxHeight) {
+            if (source == null || maxWidth < 1 || maxHeight < 1) return null;
+            float scale = Math.min((float)maxWidth / source.getWidth(),
+                    (float)maxHeight / source.getHeight());
+            int width = Math.max(1, (int)(source.getWidth() * scale));
+            int height = Math.max(1, (int)(source.getHeight() * scale));
+            return resizeImage(source, width, height, 0, 0,
+                    source.getWidth(), source.getHeight());
+        }
+
+        private Image scalePanorama(Image source, int width, int height) {
+            if (source == null || width < 1 || height < 1) return null;
+            float scale = Math.max((float)width / source.getWidth(),
+                    (float)height / source.getHeight());
+            int scaledWidth = Math.max(width, (int)(source.getWidth() * scale + 0.999f));
+            int scaledHeight = Math.max(height, (int)(source.getHeight() * scale + 0.999f));
+            return resizeImage(source, scaledWidth, scaledHeight, 0, 0,
+                    source.getWidth(), source.getHeight());
+        }
+
+        private Image resizeImage(Image source, int width, int height,
+                int cropX, int cropY, float cropWidth, float cropHeight) {
+            int sourceWidth = source.getWidth();
+            int[] pixels = new int[width * height];
+            int[] row = new int[sourceWidth];
+            int previousY = -1;
+            for (int y = 0; y < height; y++) {
+                int sourceY = cropY + (int)(cropHeight * y / height);
+                if (sourceY >= source.getHeight()) sourceY = source.getHeight() - 1;
+                if (sourceY != previousY) {
+                    source.getRGB(row, 0, sourceWidth, 0, sourceY, sourceWidth, 1);
+                    previousY = sourceY;
+                }
+                for (int x = 0; x < width; x++) {
+                    int sourceX = cropX + (int)(cropWidth * x / width);
+                    if (sourceX >= sourceWidth) sourceX = sourceWidth - 1;
+                    pixels[y * width + x] = row[sourceX];
+                }
+            }
+            return Image.createRGBImage(pixels, width, height, true);
+        }
+
+        private void drawMenu(Graphics g) {
+            prepareMenuImages();
+            if (lanMenu) {
+                drawLanPanel(g);
+                return;
+            }
+            if (menuSettings) {
+                drawSettingsPanel(g, false);
+                return;
+            }
+            g.setColor(0x101820);
+            g.fillRect(0, 0, getWidth(), getHeight());
+            drawMenuPanorama(g);
+
+            if (scaledLogo != null) {
+                int logoX = (getWidth() - scaledLogo.getWidth()) / 2;
+                int logoY = Math.max(8, getHeight() / 14);
+                g.drawImage(scaledLogo, logoX, logoY, Graphics.TOP | Graphics.LEFT);
+            } else {
+                g.setColor(0xFFFFFF);
+                g.drawString("ROBLOX 3DME", getWidth() / 2, getHeight() / 8,
+                        Graphics.TOP | Graphics.HCENTER);
+            }
+
+            int buttonWidth = Math.max(1, getWidth() - 32);
+            int pageSize = getHeight() < 220 ? 4 : 5;
+            int buttonHeight = Math.max(14, Math.min(24, getHeight() / 11));
+            int gap = Math.max(2, buttonHeight / 6);
+            int menuItemCount=GAME_NAMES.length+2;
+            int page = menuCursor / pageSize;
+            int pageCount = (menuItemCount + pageSize - 1) / pageSize;
+            int first = page * pageSize;
+            int count = Math.min(pageSize, menuItemCount - first);
+            int listHeight = count * buttonHeight + (count - 1) * gap;
+            int startY = Math.max(getHeight() / 3,
+                    getHeight() / 2 - listHeight / 2 + 8);
+            Font font = g.getFont();
+            for (int i = 0; i < count; i++) {
+                int gameIndex = first + i;
+                int y = startY + i * (buttonHeight + gap);
+                boolean selected=gameIndex==menuCursor;
+                g.setColor(selected ? 0xF5C542 : 0x203040);
+                g.fillRoundRect((getWidth() - buttonWidth) / 2, y,
+                        buttonWidth, buttonHeight, 10, 10);
+                g.setColor(selected ? 0x17202A : 0xFFFFFF);
+                String label=gameIndex< GAME_NAMES.length
+                        ? GAME_NAMES[gameIndex] : (gameIndex==GAME_NAMES.length?"Custom Map":"Exit game");
+                g.drawString(label, getWidth() / 2,
+                        y + (buttonHeight - font.getHeight()) / 2,
+                        Graphics.TOP | Graphics.HCENTER);
+            }
+            g.setColor(0xFFFFFF);
+            g.drawString("PAGE " + (page + 1) + "/" + pageCount +
+                    "  UP/DOWN SELECT  7/9 PAGE",
+                    getWidth() / 2, getHeight() - font.getHeight() - 8,
+                    Graphics.TOP | Graphics.HCENTER);
+            g.drawString("# LAN  * SETTINGS  5 START",
+                    getWidth() / 2, getHeight() - font.getHeight() * 2 - 10,
+                    Graphics.TOP | Graphics.HCENTER);
+            if (modelError.length() > 0)
+                g.drawString(modelError, 4, 4, Graphics.TOP | Graphics.LEFT);
+            if (initError.length() > 0)
+                g.drawString(initError, 4, g.getFont().getHeight() + 6, Graphics.TOP | Graphics.LEFT);
+        }
+
+        private void drawLanPanel(Graphics g) {
+            g.setColor(0x101820);
+            g.fillRect(0, 0, getWidth(), getHeight());
+            drawMenuPanorama(g);
+            if (scaledLogo != null)
+                g.drawImage(scaledLogo, (getWidth()-scaledLogo.getWidth())/2,
+                        Math.max(5,getHeight()/18), Graphics.TOP|Graphics.LEFT);
+            int y = getHeight()/2 - 30;
+            String[] options = {"Host selected game", "Join by 6-digit ID", "Back"};
+            for (int i = 0; i < options.length; i++) {
+                int rowY = y + i * 25;
+                g.setColor(i == lanMenuSelection ? 0xF5C542 : 0x203040);
+                g.fillRoundRect(12,rowY,getWidth()-24,21,8,8);
+                g.setColor(i == lanMenuSelection ? 0x17202A : 0xFFFFFF);
+                g.drawString(options[i],getWidth()/2,rowY+3,Graphics.TOP|Graphics.HCENTER);
+            }
+            Font font = g.getFont();
+            g.setColor(0xFFFFFF);
+            g.drawString("Selected: " + GAME_NAMES[selectedGame],getWidth()/2,
+                    y-20,Graphics.TOP|Graphics.HCENTER);
+            g.drawString("UP/DOWN SELECT  5 OK  # BACK",getWidth()/2,
+                    getHeight()-font.getHeight()-6,Graphics.TOP|Graphics.HCENTER);
+            if (lanMessage.length() > 0)
+                g.drawString(lanMessage,getWidth()/2,getHeight()-font.getHeight()*2-8,
+                        Graphics.TOP|Graphics.HCENTER);
+            if (modelError.length() > 0)
+                g.drawString(modelError,2,2,Graphics.TOP|Graphics.LEFT);
+        }
+
+        private void drawMenuPanorama(Graphics g) {
+            if (titleBackgroundSource == null || menuPanPixels == null || menuPanScale <= 0.0f) return;
+            int width = getWidth();
+            int height = getHeight();
+            int sourceWidth = titleBackgroundSource.getWidth();
+            int sourceHeight = titleBackgroundSource.getHeight();
+            int[] sourceRow = new int[sourceWidth];
+            float scaledHeight = sourceHeight * menuPanScale;
+            float verticalCrop = (scaledHeight - height) * 0.5f;
+            float offset = (float)((menuPanTime / 60L) % Math.max(1, (int)menuPanWidth));
+            for (int y = 0; y < height; y++) {
+                int sourceY = (int)((verticalCrop + y) / menuPanScale);
+                if (sourceY < 0) sourceY = 0;
+                if (sourceY >= sourceHeight) sourceY = sourceHeight - 1;
+                titleBackgroundSource.getRGB(sourceRow, 0, sourceWidth, 0, sourceY, sourceWidth, 1);
+                int row = y * width;
+                for (int x = 0; x < width; x++) {
+                    float panoramaX = (offset + x) % menuPanWidth;
+                    int sourceX = (int)(panoramaX / menuPanScale);
+                    if (sourceX >= sourceWidth) sourceX = sourceWidth - 1;
+                    menuPanPixels[row + x] = sourceRow[sourceX];
+                }
+            }
+            g.drawRGB(menuPanPixels, 0, width, 0, 0, width, height, true);
+        }
+
+        // Small atan2 approximation for older CLDC profiles lacking Math.atan2.
+        private float fastAtan2(float y, float x) {
+            if (x == 0.0f) {
+                if (y > 0.0f) return 1.5707963f;
+                if (y < 0.0f) return -1.5707963f;
+                return 0.0f;
+            }
+            float absY = y < 0.0f ? -y : y;
+            float angle;
+            if (x > 0.0f) {
+                float r = (x - absY) / (x + absY);
+                angle = 0.78539816f - 0.78539816f * r;
+            } else {
+                float r = (x + absY) / (absY - x);
+                angle = 2.35619449f - 0.78539816f * r;
+            }
+            return y < 0.0f ? -angle : angle;
+        }
+
+        private void updateLanPlayers() {
+            if (lanSession == null) return;
+            if (!lanSession.isHost() && !lanSession.isConnected()) {
+                lanSession = null;
+                lanMessage = "LAN connection lost";
+                modelStatus = lanMessage;
+                for (int i=0;i<lanAvatars.length;i++) {
+                    if (lanAvatars[i] != null && world != null) {
+                        try { world.removeChild(lanAvatars[i]); } catch (Throwable ignored) {}
+                        lanAvatars[i] = null;
+                        lanAvatarSkins[i]=lanAvatarShirts[i]=lanAvatarLegs[i]=-1;
+                        lanAvatarShirtStyles[i]=lanAvatarPantsStyles[i]=lanAvatarHatStyles[i]=-1;
+                        lanAvatarFaceStyles[i]=-1;
+                    }
+                }
+                return;
+            }
+            lanSession.publish(px, jumpY, pz, yaw, playerHealth, !dead,
+                    avatarSkinColor, avatarShirtColor, avatarLegColor,
+                    avatarShirtStyle, avatarPantsStyle, avatarHatStyle, avatarFaceStyle);
+            if (lanPlayers == null) lanPlayers = new LanSession.PlayerState[5];
+            lanSession.copySnapshot(lanPlayers);
+            for(int ci=0;ci<lanPlayers.length;ci++)if(lanPlayers[ci]!=null&&lanPlayers[ci].connected&&lanPlayers[ci].chatSequence!=seenChatSequence[ci]){
+                seenChatSequence[ci]=lanPlayers[ci].chatSequence;
+                String who=ci==lanSession.getLocalSlot()?playerUsername:"Player "+(ci+1);
+                addChatLine(who+": "+lanPlayers[ci].chatMessage);
+            }
+            LanSession.PlayerState[] states = lanPlayers;
+            int local = lanSession.getLocalSlot();
+            for (int i = 0; i < states.length; i++) {
+                if (i == local || states[i] == null || !states[i].connected || !states[i].alive) {
+                    if (lanAvatars[i] != null && world != null) {
+                        try { world.removeChild(lanAvatars[i]); } catch (Throwable ignored) {}
+                        lanAvatars[i] = null;
+                        lanAvatarSkins[i]=lanAvatarShirts[i]=lanAvatarLegs[i]=-1;
+                        lanAvatarShirtStyles[i]=lanAvatarPantsStyles[i]=lanAvatarHatStyles[i]=-1;
+                        lanAvatarFaceStyles[i]=-1;
+                    }
+                    continue;
+                }
+                boolean avatarColorsChanged=lanAvatars[i]!=null&&
+                        (lanAvatarSkins[i]!=states[i].skinColor||
+                         lanAvatarShirts[i]!=states[i].shirtColor||
+                         lanAvatarLegs[i]!=states[i].legColor||
+                         lanAvatarShirtStyles[i]!=states[i].shirtStyle||
+                         lanAvatarPantsStyles[i]!=states[i].pantsStyle||
+                         lanAvatarHatStyles[i]!=states[i].hatStyle||
+                         lanAvatarFaceStyles[i]!=states[i].faceStyle);
+                if(avatarColorsChanged&&world!=null) {
+                    try { world.removeChild(lanAvatars[i]); } catch(Throwable ignored) {}
+                    lanAvatars[i]=null;
+                }
+                if (lanAvatars[i] == null && world != null) {
+                    int oldSkin=avatarSkinColor,oldShirt=avatarShirtColor,oldLegs=avatarLegColor;
+                    int oldShirtStyle=avatarShirtStyle,oldPantsStyle=avatarPantsStyle,oldHatStyle=avatarHatStyle,oldFaceStyle=avatarFaceStyle;
+                    Group oldLeft=leftArm,oldRight=rightArm,oldLegL=leftLeg,oldLegR=rightLeg;
+                    Group oldSword=swordVisual;
+                    try {
+                        avatarSkinColor=states[i].skinColor;
+                        avatarShirtColor=states[i].shirtColor;
+                        avatarLegColor=states[i].legColor;
+                        avatarShirtStyle=states[i].shirtStyle;
+                        avatarPantsStyle=states[i].pantsStyle;
+                        avatarHatStyle=states[i].hatStyle;
+                        avatarFaceStyle=states[i].faceStyle;
+                        lanAvatars[i]=buildNoob(false);
+                    } catch (Throwable t) { continue; }
+                    finally {
+                        avatarSkinColor=oldSkin;avatarShirtColor=oldShirt;avatarLegColor=oldLegs;
+                        avatarShirtStyle=oldShirtStyle;avatarPantsStyle=oldPantsStyle;avatarHatStyle=oldHatStyle;avatarFaceStyle=oldFaceStyle;
+                        leftArm=oldLeft;rightArm=oldRight;leftLeg=oldLegL;rightLeg=oldLegR;
+                        swordVisual=oldSword;
+                    }
+                    lanAvatarSkins[i]=states[i].skinColor;
+                    lanAvatarShirts[i]=states[i].shirtColor;
+                    lanAvatarLegs[i]=states[i].legColor;
+                    lanAvatarShirtStyles[i]=states[i].shirtStyle;
+                    lanAvatarPantsStyles[i]=states[i].pantsStyle;
+                    lanAvatarHatStyles[i]=states[i].hatStyle;
+                    lanAvatarFaceStyles[i]=states[i].faceStyle;
+                    world.addChild(lanAvatars[i]);
+                }
+                if (lanAvatars[i] != null) {
+                    lanAvatars[i].setTranslation(states[i].x,states[i].y,states[i].z);
+                    lanAvatars[i].setOrientation(states[i].yaw*57.29578f,0,1,0);
+                }
+            }
+        }
+
+        private void update(int dt) {
+            updateAvatarPreviewRotation(dt);
+            if (pendingSceneBuildGame >= 0) {
+                try {
+                    updateSceneBuildChunk();
+                } catch (Exception e) {
+                    initError = "";
+                    pendingSceneBuildGame = -1;
+                    pendingSceneBuildKind = 0;
+                    pendingSceneBuildBlocks = null;
+                    menuMode = true;
+                    loaded = false;
+                }
+                return;
+            }
+            if(mapScanReady)showMapSearchResults();
+            if(customMapLoadReady){
+                customMapLoadReady=false;customMapLoading=false;
+                if(pendingCustomMapError!=null){
+                    customMapBlocks=null;customMapVisualBlocks=null;customMapSpawn=null;
+                    initError=pendingCustomMapError;pendingCustomMapError=null;menuMode=true;loaded=false;repaint();return;
+                }
+                customMapBlocks=pendingCustomMapBlocks;customMapVisualBlocks=pendingCustomMapVisualBlocks;customMapSpawn=pendingCustomMapSpawn;
+                pendingCustomMapBlocks=null;pendingCustomMapVisualBlocks=null;pendingCustomMapSpawn=null;
+                selectedGame=15;initError="";
+                try{startGame(15);}catch(Throwable t){menuMode=true;loaded=false;initError="Custom Map: "+t.toString();repaint();return;}
+            }
+            if (pendingLanError != null) {
+                lanMessage = pendingLanError;
+                modelError = "";
+                lanMenu = true;
+                lanMenuSelection = 1;
+                pendingLanError = null;
+            }
+            if (pendingLanSession != null && pendingLanGame >= 0) {
+                lanSession = pendingLanSession;
+                pendingLanSession = null;
+                int joinedGame = pendingLanGame;
+                pendingLanGame = -1;
+                try {
+                    selectedGame = joinedGame;
+                    startGame(joinedGame);
+                    lanMessage = "Connected to LAN host";
+                } catch (Throwable t) {
+                    lanSession.close(); lanSession = null;
+                    lanMessage = "LAN game: " + t.toString();
+                    modelError = lanMessage;
+                }
+            }
+            if (menuMode) {
+                menuPanTime += dt;
+                return;
+            }
+            updateLanPlayers();
+            gameClock += dt;
+            if(currentGame==15&&customMapBuilding){
+                if(customMapBuildCursor<customMapBlocks.length)updateCustomMapBuildChunk();
+                else if(customMapPostProcessing&&customMapPostReady){
+                    customMapPostProcessing=false;customMapBuilding=false;
+                    if(customMapPostError!=null)throw new RuntimeException("Custom map preparation failed: "+customMapPostError);
+                    modelStatus="Custom Map";
+                }
+                return;
+            }
+            updateMapVisibility();
+            if (dead) {
+                if (currentGame == 2 || currentGame == 10) updateZombies(dt);
+                if (currentGame == 2 || currentGame == 5 || currentGame == 10 || currentGame == 14) updateWorldObjects(dt);
+                tickPlayerBots(dt);
+                updateDeathPieces(dt);
+                if (deathPieces != null && deathPieces.length > 1 && deathPieces[1] != null) {
+                    PhysicsPiece torso = deathPieces[1];
+                    updateCameraAt(torso.x, torso.y, torso.z);
+                }
+                if (gameClock >= respawnAt) respawnPlayer();
+                return;
+            }
+            if (protectionAura != null && gameClock >= invulnerableUntil) {
+                try { avatar.removeChild(protectionAura); } catch (Throwable ignored) {}
+                protectionAura = null;
+                protectionAuraMaterial = null;
+            } else if (protectionAura != null) {
+                updateProtectionFlash();
+            }
+            if (currentGame == 2 || currentGame == 10) updateZombies(dt);
+            if (currentGame == 2 || currentGame == 5 || currentGame == 14) updateWorldObjects(dt);
+            tickPlayerBots(dt);
+            if (dead) return;
+            animTime += dt;
+            float step = dt * 0.004f;
+            float cameraTurn = dt * cameraSensitivity;
+            float cameraDirection = invertCamera ? -1.0f : 1.0f;
+            if (camLeft) camYaw -= cameraTurn * cameraDirection;
+            if (camRight) camYaw += cameraTurn * cameraDirection;
+            if (camYaw > 3.14159265f) camYaw -= 6.2831853f;
+            if (camYaw < -3.14159265f) camYaw += 6.2831853f;
+            if (camUp) camPitch += cameraTurn * cameraDirection;
+            if (camDown) camPitch -= cameraTurn * cameraDirection;
+            // Classic third-person camera: allow looking up/down, but never flip over.
+            if (camPitch > 1.20f) camPitch = 1.20f;
+            if (camPitch < -1.20f) camPitch = -1.20f;
+            float dx = 0, dz = 0;
+            if(sitting&&(forward||back||left||right))sitting=false;
+            float sin = (float)Math.sin(camYaw), cos = (float)Math.cos(camYaw);
+            if (forward) { dx += sin * step; dz -= cos * step; }
+            if (back) { dx -= sin * step; dz += cos * step; }
+            if (left) { dx -= cos * step; dz -= sin * step; }
+            if (right) { dx += cos * step; dz += sin * step; }
+            float startX=px,startZ=pz;
+            int collisionSteps=(int)(Math.max(Math.abs(dx),Math.abs(dz))/COLLISION_STEP)+1;
+            float stepX=dx/collisionSteps,stepZ=dz/collisionSteps;
+            // Sweep in short increments so fast movement cannot skip thin imported walls.
+            for(int i=0;i<collisionSteps;i++){
+                float nextX=px+stepX;
+                if(!isPlayerBlocked(nextX,pz))px=nextX;
+                float nextZ=pz+stepZ;
+                if(!isPlayerBlocked(px,nextZ))pz=nextZ;
+            }
+            dx=px-startX;dz=pz-startZ;
+            // Gravity applies continuously; landing checks cover the floor and obby platforms.
+            float previousY = jumpY;
+            if (!grounded) {
+                jumpY += playerVelocityY * dt;
+                playerVelocityY -= 0.000018f * dt;
+            }
+            resolveHideSeekCeiling(previousY);
+            resolveLanding(previousY);
+            if(currentGame==15&&updateCustomMapScripts())return;
+            if (isTouchingStudioHazard()) {
+                damagePlayer(35);
+                return;
+            }
+            if (!grounded && jumpY < -8.0f) {
+                // Falling into the void bypasses temporary spawn/damage invulnerability.
+                invulnerableUntil = 0;
+                beginDeath();
+                return;
+            }
+            if (lobbyMode && gameClock >= invulnerableUntil && jumpY < 1.1f &&
+                    Math.abs(px - 3.0f) < 0.95f && Math.abs(pz + 3.0f) < 0.95f) {
+                damagePlayer(35);
+                return;
+            }
+            if (currentGame == 0 || currentGame == 7) {
+                float[] finish = OBBY_BLOCKS[OBBY_BLOCKS.length - 1];
+                float finishTop = finish[1] + finish[4] * 0.5f;
+                if (onPlatform(finish[0], finish[2], finish[3] * 0.5f, finish[5] * 0.5f) &&
+                        jumpY >= finishTop - 0.05f)
+                    modelStatus = currentGame == 7 ? "Race complete!" : "Obby complete!";
+            }
+            // Turn only while moving, toward the world-space travel direction.
+            if (dx != 0.0f || dz != 0.0f) yaw = fastAtan2(-dx, -dz);
+            jumping = !grounded;
+            if (avatar != null) {
+                avatar.setTranslation(px, sitting?jumpY-0.45f:jumpY, pz);
+                avatar.setOrientation((float)(yaw * 57.29578f), 0, 1, 0);
+            }
+            updateCamera();
+            int wantedAnimation;
+            if(sitting)wantedAnimation=3;
+            else if (jumping) wantedAnimation = 2;
+            else if (forward || back || left || right) wantedAnimation = 1;
+            else wantedAnimation = 0;
+            animation = wantedAnimation;
+            animateNoob();
+            // All character animation is updated explicitly by animateNoob()/bot updates.
+            // This world has no AnimationTrack/KeyframeSequence objects, so world.animate()
+            // only adds a needless scene-graph traversal every frame.
+            updateExtraGame(dt);
+        }
+
+        private void updateMapVisibility() {
+            prepareMapCullCamera();
+            if(currentGame==15){updateCustomMapVisibility();return;}
+            if(currentGame==0&&obbyNodes!=null)for(int i=0;i<obbyNodes.length;i++){
+                Node node=obbyNodes[i];if(node==null)continue;float[] b=OBBY_BLOCKS[i];
+                node.setRenderingEnable(isMapBoxVisible(b[0],b[1],b[2],b[3],b[4],b[5]));
+            }
+            if(currentGame==2&&zombieMapNodes!=null)for(int i=0;i<zombieMapNodes.length;i++){
+                Node node=zombieMapNodes[i];if(node==null)continue;float[] b=ZOMBIE_BLOCKS[i];
+                node.setRenderingEnable(isMapBoxVisible(b[0],b[1],b[2],b[3],b[4],b[5]));
+            }
+            for(int i=0;i<modeBlockCount;i++){
+                Node node=modeBlockNodes[i];if(node==null)continue;float[] b=modeBlocks[i];
+                node.setRenderingEnable(isMapBoxVisible(b[0],b[1],b[2],b[3],b[4],b[5]));
+            }
+        }
+
+        private void prepareMapCullCamera(){
+            float cp=(float)Math.cos(camPitch),sp=(float)Math.sin(camPitch),sy=(float)Math.sin(camYaw),cy=(float)Math.cos(camYaw);
+            float horizontal=cp*camDistance,targetY=1.2f+jumpY;
+            cullCameraX=px-sy*horizontal;cullCameraY=targetY+sp*camDistance;cullCameraZ=pz+cy*horizontal;
+            cullForwardX=sy*cp;cullForwardY=-sp;cullForwardZ=-cy*cp;
+            cullRightX=cy;cullRightZ=sy;cullUpX=sy*sp;cullUpY=cp;cullUpZ=-cy*sp;
+            cullPixelScale=getHeight()>0?(getHeight()*0.5f)/(float)Math.tan(1.134464f*0.5f):0;
+        }
+
+        private boolean isMapBoxVisible(float x,float y,float z,float sx,float sy,float sz){
+            int width=getWidth(),height=getHeight();if(width<=0||height<=0)return true;
+            float radius=(float)Math.sqrt(sx*sx+sy*sy+sz*sz)*0.5f;
+            float dx=x-cullCameraX,dy=y-cullCameraY,dz=z-cullCameraZ;
+            float maxDistance=MAP_RENDER_DISTANCE+radius;
+            if(dx*dx+dy*dy+dz*dz>maxDistance*maxDistance)return false;
+            float depth=dx*cullForwardX+dy*cullForwardY+dz*cullForwardZ;
+            if(depth+radius<0.2f||depth-radius>240.0f)return false;
+            if(depth<=0.2f)return true;
+            float screenX=width*0.5f+(dx*cullRightX+dz*cullRightZ)*cullPixelScale/depth;
+            float screenY=height*0.5f-(dx*cullUpX+dy*cullUpY+dz*cullUpZ)*cullPixelScale/depth;
+            float pad=radius*cullPixelScale/Math.max(0.2f,depth-radius);
+            return screenX+pad>=0&&screenX-pad<=width&&screenY+pad>=0&&screenY-pad<=height;
+        }
+
+        private void updateCustomMapVisibility(){
+            if(customMapVisualBlocks==null||customMapVisualNodes==null)return;
+            customNextVisibleCount=0;customVisualCreateBudget=12;customChunkCreateBudget=3;customVisualStamp++;if(customVisualStamp<=0){for(int i=0;i<customVisualStamps.length;i++){customVisualStamps[i]=0;customCandidateStamps[i]=0;}if(customRenderChunks!=null)for(int i=0;i<customRenderChunks.size();i++)((CustomRenderChunk)customRenderChunks.elementAt(i)).seenStamp=0;customVisualStamp=1;}
+            if(customRenderGrid==null){for(int i=0;i<customMapVisualBlocks.length;i++)considerCustomVisual(i);}
+            else{
+                considerCustomVisualList(customLargeRenderBlocks);
+                int x0=renderGridX(px-MAP_RENDER_DISTANCE),x1=renderGridX(px+MAP_RENDER_DISTANCE);
+                int z0=renderGridZ(pz-MAP_RENDER_DISTANCE),z1=renderGridZ(pz+MAP_RENDER_DISTANCE);
+                x0=clampGrid(x0,customRenderGrid.length);x1=clampGrid(x1,customRenderGrid.length);
+                z0=clampGrid(z0,customRenderGrid[0].length);z1=clampGrid(z1,customRenderGrid[0].length);
+                for(int x=x0;x<=x1;x++)for(int z=z0;z<=z1;z++)considerCustomChunkList(customRenderGrid[x][z]);
+            }
+            if(customRenderChunks!=null)for(int i=0;i<customRenderChunks.size();i++){
+                CustomRenderChunk chunk=(CustomRenderChunk)customRenderChunks.elementAt(i);
+                if(chunk.attached&&chunk.seenStamp!=customVisualStamp){chunk.node.setRenderingEnable(false);try{world.removeChild(chunk.node);}catch(Throwable ignored){}chunk.attached=false;}
+            }
+            for(int i=0;i<customVisibleCount;i++){
+                int index=customVisibleVisuals[i];if(customVisualStamps[index]==customVisualStamp)continue;
+                Node node=customMapVisualNodes[index];if(node!=null&&customVisualAttached[index]){node.setRenderingEnable(false);try{world.removeChild(node);}catch(Throwable ignored){}customVisualAttached[index]=false;}
+            }
+            int[] swap=customVisibleVisuals;customVisibleVisuals=customNextVisibleVisuals;customNextVisibleVisuals=swap;
+            customVisibleCount=customNextVisibleCount;customNextVisibleCount=0;
+        }
+        private void considerCustomVisualList(java.util.Vector list){
+            if(list==null)return;for(int i=0;i<list.size();i++)considerCustomVisual(((Integer)list.elementAt(i)).intValue());
+        }
+        private void considerCustomChunkList(java.util.Vector list){
+            if(list==null)return;
+            for(int i=0;i<list.size();i++){
+                CustomRenderChunk chunk=(CustomRenderChunk)list.elementAt(i);
+                float x=(chunk.minX+chunk.maxX)*0.5f,y=(chunk.minY+chunk.maxY)*0.5f,z=(chunk.minZ+chunk.maxZ)*0.5f;
+                if(!isMapBoxVisible(x,y,z,chunk.maxX-chunk.minX,chunk.maxY-chunk.minY,chunk.maxZ-chunk.minZ))continue;
+                if(chunk.node==null){if(customChunkCreateBudget<=0)continue;chunk.node=makeCustomChunkVisual(chunk);customChunkCreateBudget--;}
+                chunk.seenStamp=customVisualStamp;
+                if(!chunk.attached){world.addChild(chunk.node);chunk.attached=true;}
+                chunk.node.setRenderingEnable(true);
+            }
+        }
+        private void considerCustomVisual(int index){
+            if(index<0||index>=customMapVisualBlocks.length||customCandidateStamps[index]==customVisualStamp)return;
+            customCandidateStamps[index]=customVisualStamp;float[] b=customMapVisualBlocks[index];
+            if(!isMapBoxVisible(b[0],b[1],b[2],b[3],b[4],b[5]))return;
+            if(customMapVisualNodes[index]==null&&customVisualCreateBudget<=0)return;
+            customVisualStamps[index]=customVisualStamp;
+            Node node=customMapVisualNodes[index];
+            if(node==null){node=makeModeBlockVisual(b[0],b[1],b[2],b[3],b[4],b[5],(int)b[6],b.length>7?(int)b[7]:1);customMapVisualNodes[index]=node;customVisualCreateBudget--;}
+            if(!customVisualAttached[index]){world.addChild(node);customVisualAttached[index]=true;}
+            node.setRenderingEnable(true);customNextVisibleVisuals[customNextVisibleCount++]=index;
+        }
+
+        private void resolveLanding(float previousY) {
+            float top = Float.NEGATIVE_INFINITY;
+            float floorLimit = currentGame == 11 ? 21.5f : 11.5f;
+            if (currentGame != 4 && currentGame != 0 && currentGame != 6 &&
+                    currentGame != 7 && Math.abs(px) < floorLimit &&
+                    Math.abs(pz) < floorLimit) top = 0.0f;
+            if (currentGame >= 4) {
+                if(currentGame==15&&customCollisionGrid!=null){
+                    top=customLandingFrom(customLargeCollisionBlocks,previousY,top);
+                    int cellX=gridX(px),cellZ=gridZ(pz);
+                    if(cellX>=0&&cellX<customCollisionGrid.length&&cellZ>=0&&cellZ<customCollisionGrid[0].length)
+                        top=customLandingFrom(customCollisionGrid[cellX][cellZ],previousY,top);
+                }else{
+                    for (int i=0;i<modeBlockCount;i++) {
+                        if (!modeBlockActive[i]||!modeBlockCollidable[i]) continue;
+                        float[] b=modeBlocks[i];
+                        float platformTop=b[1]+b[4]*0.5f;
+                        if (onPlatform(b[0],b[2],b[3]*0.5f,b[5]*0.5f) &&
+                                platformCanSupport(previousY,platformTop))
+                            top=Math.max(top,platformTop);
+                    }
+                }
+            }
+            if (currentGame == 3 && studioTesting) {
+                for (int i=0; i<studioObjectCount; i++) {
+                    StudioObject object = studioObjects[i];
+                    if (object == null || object.type == 2) continue;
+                    float platformTop = object.y + object.sy * 0.5f;
+                    if (onPlatform(object.x,object.z,object.sx*0.5f,object.sz*0.5f) &&
+                            platformCanSupport(previousY,platformTop))
+                        top = Math.max(top,platformTop);
+                }
+            }
+            if (currentGame == 0 || currentGame == 2) {
+                float[][] platforms = currentGame == 0 ? OBBY_BLOCKS : ZOMBIE_BLOCKS;
+                for (int i = 0; i < platforms.length; i++) {
+                    float[] b = platforms[i];
+                    float platformTop = b[1] + b[4] * 0.5f;
+                    if (onPlatform(b[0], b[2], b[3] * 0.5f, b[5] * 0.5f) &&
+                            platformCanSupport(previousY, platformTop)) top = Math.max(top, platformTop);
+                }
+            }
+            if (!grounded && playerVelocityY <= 0.0f && top != Float.NEGATIVE_INFINITY &&
+                    previousY >= top && jumpY <= top) {
+                jumpY = top;
+                playerVelocityY = 0.0f;
+                grounded = true;
+            } else if (grounded) {
+                if (top != Float.NEGATIVE_INFINITY && jumpY <= top + 0.05f) {
+                    jumpY = top;
+                    playerVelocityY = 0.0f;
+                } else {
+                    grounded = false;
+                }
+            }
+        }
+
+        private void resolveHideSeekCeiling(float previousY){
+            if((currentGame!=11&&currentGame!=15)||grounded||playerVelocityY<=0.0f)return;
+            float oldHead=previousY+PLAYER_COLLISION_HEIGHT,newHead=jumpY+PLAYER_COLLISION_HEIGHT;
+            if(currentGame==15&&customCollisionGrid!=null){
+                if(resolveCeilingFrom(customLargeCollisionBlocks,oldHead,newHead))return;
+                int cellX=gridX(px),cellZ=gridZ(pz);
+                if(cellX>=0&&cellX<customCollisionGrid.length&&cellZ>=0&&cellZ<customCollisionGrid[0].length)
+                    resolveCeilingFrom(customCollisionGrid[cellX][cellZ],oldHead,newHead);
+                return;
+            }
+            for(int i=0;i<modeBlockCount;i++){
+                if(!modeBlockActive[i]||!modeBlockCollidable[i])continue;
+                float[] b=modeBlocks[i];
+                float underside=b[1]-b[4]*0.5f;
+                if(onPlatform(b[0],b[2],b[3]*0.5f,b[5]*0.5f)&&
+                        oldHead<=underside&&newHead>=underside){
+                    jumpY=underside-PLAYER_COLLISION_HEIGHT;
+                    playerVelocityY=0.0f;
+                    return;
+                }
+            }
+        }
+        private boolean resolveCeilingFrom(java.util.Vector indices,float oldHead,float newHead){
+            if(indices==null)return false;
+            for(int i=0;i<indices.size();i++){
+                int index=((Integer)indices.elementAt(i)).intValue();if(!modeBlockActive[index]||!modeBlockCollidable[index])continue;
+                float[] b=modeBlocks[index];float underside=b[1]-b[4]*0.5f;
+                if(onPlatform(b[0],b[2],b[3]*0.5f,b[5]*0.5f)&&oldHead<=underside&&newHead>=underside){
+                    jumpY=underside-PLAYER_COLLISION_HEIGHT;playerVelocityY=0.0f;return true;
+                }
+            }
+            return false;
+        }
+
+        private boolean platformCanSupport(float previousY, float platformTop) {
+            return (grounded && jumpY >= platformTop - 0.05f) ||
+                    (!grounded && playerVelocityY <= 0.0f && previousY >= platformTop && jumpY <= platformTop);
+        }
+
+        private boolean onPlatform(float x, float z, float halfX, float halfZ) {
+            return Math.abs(px - x) <= halfX + 0.22f && Math.abs(pz - z) <= halfZ + 0.22f;
+        }
+
+        private boolean updateCustomMapScripts(){
+            for(int effectIndex=0;effectIndex<customEffectBlockCount;effectIndex++){
+                int i=customEffectBlocks[effectIndex];
+                int effect=modeBlockScriptEffects[i];if(!modeBlockActive[i]||effect==0)continue;
+                float[] b=modeBlocks[i];if(!onPlatform(b[0],b[2],b[3]*0.5f,b[5]*0.5f))continue;
+                float bottom=b[1]-b[4]*0.5f,top=b[1]+b[4]*0.5f;
+                boolean touching=jumpY<=top+PLAYER_COLLISION_HEIGHT&&jumpY+PLAYER_COLLISION_HEIGHT>=bottom;
+                if((effect&RobloxMapImporter.EFFECT_KILL)!=0&&touching){invulnerableUntil=0;beginDeath();return true;}
+                if((effect&RobloxMapImporter.EFFECT_SIT)!=0&&grounded&&Math.abs(jumpY-top)<0.20f){sitting=true;return false;}
+                if((effect&RobloxMapImporter.EFFECT_BOUNCE)!=0&&grounded&&Math.abs(jumpY-top)<0.20f){
+                    sitting=false;grounded=false;jumping=true;playerVelocityY=0.018f;modeStatus("Trampoline!");return false;
+                }
+            }
+            return false;
+        }
+
+        private void damagePlayer(int amount) {
+            if(dead||gameClock<invulnerableUntil)return;
+            if(amount<1)amount=1;
+            playerHealth-=amount;
+            if(playerHealth<=0){
+                playerHealth=0;
+                beginDeath();
+            }else{
+                invulnerableUntil=gameClock+850;
+                modeStatus("Health "+playerHealth+"/100");
+            }
+        }
+
+        private void beginDeath() {
+            if (dead || gameClock < invulnerableUntil) return;
+            playerHealth=0;
+            dead = true;
+            grounded = false;
+            jumping = false;
+            sitting = false;
+            respawnAt = gameClock + 2600;
+            if (avatar != null) world.removeChild(avatar);
+            deathPieces = new PhysicsPiece[6];
+            float c = (float)Math.cos(yaw), sn = (float)Math.sin(yaw);
+            addDeathPiece(0, makeRoundedCylinderHead(avatarSkinColor), 0, 2.19f, 0, 0.28f, 0.25f, 0.28f, c, sn);
+            addDeathPiece(1, makeBox(0,0,0,0.78f,0.95f,0.40f,avatarShirtColor), 0,1.45f,0, 0.39f,0.475f,0.20f, c,sn);
+            addDeathPiece(2, makeStuddedBox(0,0,0,0.30f,0.88f,0.40f,avatarSkinColor), -0.54f,1.48f,0, 0.15f,0.44f,0.20f, c,sn);
+            addDeathPiece(3, makeStuddedBox(0,0,0,0.30f,0.88f,0.40f,avatarSkinColor), 0.54f,1.48f,0, 0.15f,0.44f,0.20f, c,sn);
+            addDeathPiece(4, makeBox(0,0,0,0.36f,0.78f,0.40f,avatarLegColor), -0.20f,0.52f,0, 0.18f,0.39f,0.20f, c,sn);
+            addDeathPiece(5, makeBox(0,0,0,0.36f,0.78f,0.40f,avatarLegColor), 0.20f,0.52f,0, 0.18f,0.39f,0.20f, c,sn);
+        }
+
+        private void addDeathPiece(int index, Node node, float ox, float oy, float oz,
+                float halfX, float halfY, float halfZ, float c, float sn) {
+            addDeathPieceTo(deathPieces,index,node,px,jumpY,pz,ox,oy,oz,
+                    halfX,halfY,halfZ,c,sn);
+        }
+
+        private void addDeathPieceTo(PhysicsPiece[] pieces,int index,Node node,
+                float centerX,float centerY,float centerZ,float ox,float oy,float oz,
+                float halfX,float halfY,float halfZ,float c,float sn) {
+            float x=centerX+ox*c+oz*sn;
+            float z=centerZ-ox*sn+oz*c;
+            node.setTranslation(x,centerY+oy,z);
+            world.addChild(node);
+            float outward=(index-2.5f)*0.0012f;
+            float direction=index%2==0?1.0f:-1.0f;
+            float axisX=index%3==0?1.0f:0.35f;
+            float axisY=index%3==1?1.0f:0.45f;
+            float axisZ=index%3==2?1.0f:0.60f;
+            float axisLength=(float)Math.sqrt(axisX*axisX+axisY*axisY+axisZ*axisZ);
+            axisX/=axisLength;axisY/=axisLength;axisZ/=axisLength;
+            pieces[index]=new PhysicsPiece(node,x,centerY+oy,z,
+                    outward,0.0035f+(index%3)*0.001f,direction*0.001f,
+                    35+index*5,axisX,axisY,axisZ,halfX,halfY,halfZ);
+        }
+
+        private void updateDeathPieces(int dt) {
+            updatePhysicsPieces(deathPieces,dt);
+        }
+
+        private void updateBotDeathPieces(PlayerBot bot,int dt) {
+            if(bot!=null)updatePhysicsPieces(bot.deathPieces,dt);
+        }
+
+        private void updatePhysicsPieces(PhysicsPiece[] pieces,int dt) {
+            if(pieces==null)return;
+            for(int i=0;i<pieces.length;i++){
+                PhysicsPiece p=pieces[i];if(p==null)continue;
+                p.vy-=0.000018f*dt;
+                p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;
+                p.rotation+=p.spin*dt*0.001f;
+                updatePieceExtents(p);
+                resolvePieceEnvironment(p);
+            }
+            for(int i=0;i<pieces.length;i++){
+                PhysicsPiece a=pieces[i];if(a==null)continue;
+                for(int j=i+1;j<pieces.length;j++){
+                    PhysicsPiece b=pieces[j];if(b!=null)resolvePiecePair(a,b);
+                }
+            }
+            for(int i=0;i<pieces.length;i++){
+                PhysicsPiece p=pieces[i];if(p==null)continue;
+                p.node.setTranslation(p.x,p.y,p.z);
+                p.node.setOrientation(p.rotation,p.spinX,p.spinY,p.spinZ);
+            }
+        }
+
+        private void updatePieceExtents(PhysicsPiece p) {
+            float radians = p.rotation * 0.017453293f;
+            float c = (float)Math.cos(radians), s = (float)Math.sin(radians);
+            float t = 1.0f - c;
+            float r00=t*p.spinX*p.spinX+c, r01=t*p.spinX*p.spinY-s*p.spinZ;
+            float r02=t*p.spinX*p.spinZ+s*p.spinY;
+            float r10=t*p.spinX*p.spinY+s*p.spinZ, r11=t*p.spinY*p.spinY+c;
+            float r12=t*p.spinY*p.spinZ-s*p.spinX;
+            float r20=t*p.spinX*p.spinZ-s*p.spinY, r21=t*p.spinY*p.spinZ+s*p.spinX;
+            float r22=t*p.spinZ*p.spinZ+c;
+            p.extentX=Math.abs(r00)*p.halfX+Math.abs(r01)*p.halfY+Math.abs(r02)*p.halfZ;
+            p.extentY=Math.abs(r10)*p.halfX+Math.abs(r11)*p.halfY+Math.abs(r12)*p.halfZ;
+            p.extentZ=Math.abs(r20)*p.halfX+Math.abs(r21)*p.halfY+Math.abs(r22)*p.halfZ;
+        }
+
+        private void resolvePieceEnvironment(PhysicsPiece p) {
+            if (currentGame == 0) {
+                for (int i = 0; i < OBBY_BLOCKS.length; i++) {
+                    float[] b = OBBY_BLOCKS[i];
+                    resolvePieceAgainstBox(p,b[0],b[1],b[2],b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
+                }
+            } else if (lobbyMode) {
+                resolvePieceAgainstBox(p, 3, 0.35f, -3, 0.6f, 0.35f, 0.6f);
+            } else if (currentGame == 2) {
+                for (int i = 0; i < ZOMBIE_BLOCKS.length; i++) {
+                    float[] b = ZOMBIE_BLOCKS[i];
+                    resolvePieceAgainstBox(p,b[0],b[1],b[2],b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
+                }
+                for (int i = 0; i < worldObjectScanLimit; i++) {
+                    WorldObject o = worldObjects[i];
+                    if (o != null && o.active && !o.bomb && o.body != p) {
+                        PhysicsPiece b = o.body;
+                        resolvePieceAgainstBox(p,b.x,b.y,b.z,b.extentX,b.extentY,b.extentZ);
+                    }
+                }
+            } else if (currentGame == 3) {
+                for (int i=0; i<studioObjectCount; i++) {
+                    StudioObject object = studioObjects[i];
+                    if (object != null)
+                        resolvePieceAgainstBox(p,object.x,object.y,object.z,
+                                object.sx*0.5f,object.sy*0.5f,object.sz*0.5f);
+                }
+            } else if (modeBlockCount > 0) {
+                for (int i=0; i<modeBlockCount; i++) {
+                    float[] b=modeBlocks[i];
+                    if(b!=null&&modeBlockCollidable[i])resolvePieceAgainstBox(p,b[0],b[1],b[2],
+                            b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
+                }
+            }
+            for(int i=0;i<worldObjectScanLimit;i++) {
+                WorldObject object=worldObjects[i];
+                if(object!=null&&object.active&&!object.bomb&&object.body!=p) {
+                    PhysicsPiece other=object.body;
+                    resolvePieceAgainstBox(p,other.x,other.y,other.z,
+                            other.extentX,other.extentY,other.extentZ);
+                }
+            }
+            if (currentGame != 0 && currentGame != 6 && currentGame != 7 &&
+                    Math.abs(p.x) <= 12.0f + p.extentX && Math.abs(p.z) <= 12.0f + p.extentZ &&
+                    p.y - p.extentY < 0.0f) {
+                p.y = p.extentY;
+                if (p.vy < -0.0005f) p.vy = -p.vy * 0.18f;
+                else p.vy = 0.0f;
+                p.vx *= 0.78f; p.vz *= 0.78f; p.spin *= 0.72f;
+            }
+        }
+
+        private void resolvePieceAgainstBox(PhysicsPiece p, float x, float y, float z,
+                float hx, float hy, float hz) {
+            float dx=p.x-x, dy=p.y-y, dz=p.z-z;
+            float ox=p.extentX+hx-Math.abs(dx);
+            float oy=p.extentY+hy-Math.abs(dy);
+            float oz=p.extentZ+hz-Math.abs(dz);
+            if (ox <= 0 || oy <= 0 || oz <= 0) return;
+            if (ox <= oy && ox <= oz) {
+                float n = dx >= 0 ? 1.0f : -1.0f;
+                p.x += n * (ox + 0.001f);
+                if (p.vx * n < 0) p.vx = -p.vx * 0.20f;
+            } else if (oy <= ox && oy <= oz) {
+                float n = dy >= 0 ? 1.0f : -1.0f;
+                p.y += n * (oy + 0.001f);
+                if (p.vy * n < 0) p.vy = -p.vy * 0.20f;
+            } else {
+                float n = dz >= 0 ? 1.0f : -1.0f;
+                p.z += n * (oz + 0.001f);
+                if (p.vz * n < 0) p.vz = -p.vz * 0.20f;
+            }
+            p.vx *= 0.86f; p.vz *= 0.86f; p.spin *= 0.84f;
+        }
+
+        private void resolvePiecePair(PhysicsPiece a, PhysicsPiece b) {
+            float dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z;
+            float ox=a.extentX+b.extentX-Math.abs(dx);
+            float oy=a.extentY+b.extentY-Math.abs(dy);
+            float oz=a.extentZ+b.extentZ-Math.abs(dz);
+            if (ox <= 0 || oy <= 0 || oz <= 0) return;
+            float nx=0, ny=0, nz=0, penetration;
+            if (ox <= oy && ox <= oz) { nx=dx >= 0 ? 1 : -1; penetration=ox; }
+            else if (oy <= ox && oy <= oz) { ny=dy >= 0 ? 1 : -1; penetration=oy; }
+            else { nz=dz >= 0 ? 1 : -1; penetration=oz; }
+            float push=penetration * 0.5f + 0.001f;
+            a.x+=nx*push; a.y+=ny*push; a.z+=nz*push;
+            b.x-=nx*push; b.y-=ny*push; b.z-=nz*push;
+            float relative=(a.vx-b.vx)*nx+(a.vy-b.vy)*ny+(a.vz-b.vz)*nz;
+            if (relative < 0) {
+                float impulse=-0.82f*relative;
+                a.vx+=impulse*nx; a.vy+=impulse*ny; a.vz+=impulse*nz;
+                b.vx-=impulse*nx; b.vy-=impulse*ny; b.vz-=impulse*nz;
+            }
+            a.spin*=0.94f; b.spin*=0.94f;
+        }
+
+        private void resetPlayerSpawn() {
+            if(currentGame==15&&customMapSpawn!=null){px=customMapSpawn[0];jumpY=customMapSpawn[1];pz=customMapSpawn[2];}
+            else if (currentGame == 3 && studioTesting) {
+                boolean foundSpawn = false;
+                for (int i=0; i<studioObjectCount; i++) {
+                    StudioObject object = studioObjects[i];
+                    if (object != null && object.type == 4) {
+                        px=object.x; pz=object.z; jumpY=object.y + object.sy*0.5f;
+                        foundSpawn=true; break;
+                    }
+                }
+                if (!foundSpawn) { px=0; pz=0; jumpY=0; }
+            } else if ((currentGame == 0 || currentGame == 7) && OBBY_BLOCKS.length > 0) {
+                float[] first = OBBY_BLOCKS[0];
+                px = first[0]; pz = first[2];
+                jumpY = first[1] + first[4] * 0.5f;
+            } else if ((currentGame == 4 || currentGame == 6) && modeBlockCount > 0) {
+                float[] first=modeBlocks[0];
+                px=first[0]; pz=first[2]; jumpY=first[1]+first[4]*0.5f;
+            } else if (currentGame == 9) {
+                px=0; pz=0; jumpY=0.70f;
+            } else if (currentGame == 13) {
+                px=TYCOON_PLAYER_X;pz=TYCOON_PLAYER_Z;jumpY=0.0f;
+            } else if (currentGame == 14) {
+                px=0; pz=0; jumpY=0.50f;
+            } else {
+                px = 0;
+                pz = 0;
+                jumpY = 0;
+            }
+            playerVelocityY = 0;
+            grounded = true;
+        }
+
+        private void respawnPlayer() {
+            if (deathPieces != null) {
+                for (int i = 0; i < deathPieces.length; i++)
+                    if (deathPieces[i] != null) world.removeChild(deathPieces[i].node);
+            }
+            deathPieces = null;
+            try {
+                resetPlayerSpawn();
+                yaw = 0; grounded = true; jumping = false;
+                avatar = new Group();
+                activeModel = buildNoob();
+                avatar.addChild(activeModel);
+                protectionAura = makeProtectionAura();
+                avatar.addChild(protectionAura);
+                world.addChild(avatar);
+                dead = false;
+                playerHealth=100;
+                invulnerableUntil = gameClock + 4000;
+                updateCamera();
+            } catch (Throwable t) {
+                dead = true;
+                respawnAt = gameClock + 1000;
+                initError = "Respawn: " + t.toString();
+            }
+        }
+
+        private Group makeProtectionAura() {
+            final int rings = 10, segments = 20;
+            int[] stripLengths = new int[rings];
+            for (int i = 0; i < rings; i++) stripLengths[i] = (segments + 1) * 2;
+            short[] shell = new short[rings * (segments + 1) * 2 * 3];
+            int out = 0;
+            for (int r = 0; r < rings; r++) {
+                double a0 = -1.57079632679 + 3.14159265359 * r / rings;
+                double a1 = -1.57079632679 + 3.14159265359 * (r + 1) / rings;
+                for (int s = 0; s <= segments; s++) {
+                    double lon = 6.28318530718 * s / segments;
+                    shell[out++] = (short)(Math.cos(a0) * Math.sin(lon) * 1350);
+                    shell[out++] = (short)(Math.sin(a0) * 1350);
+                    shell[out++] = (short)(Math.cos(a0) * Math.cos(lon) * 1350);
+                    shell[out++] = (short)(Math.cos(a1) * Math.sin(lon) * 1350);
+                    shell[out++] = (short)(Math.sin(a1) * 1350);
+                    shell[out++] = (short)(Math.cos(a1) * Math.cos(lon) * 1350);
+                }
+            }
+            VertexArray va = new VertexArray(rings * (segments + 1) * 2, 3, 2);
+            va.set(0, rings * (segments + 1) * 2, shell);
+            VertexBuffer vb = new VertexBuffer(); vb.setPositions(va, 0.001f, null);
+            TriangleStripArray tris = new TriangleStripArray(0, stripLengths);
+            Appearance ap = new Appearance();
+            Material mat = new Material();
+            mat.setColor(Material.AMBIENT, 0x503399FF);
+            mat.setColor(Material.DIFFUSE, 0x503399FF);
+            mat.setColor(Material.EMISSIVE, 0x503399FF);
+            protectionAuraMaterial = mat;
+            ap.setMaterial(mat);
+            CompositingMode cm = new CompositingMode();
+            cm.setBlending(CompositingMode.ALPHA);
+            ap.setCompositingMode(cm);
+            PolygonMode pm = new PolygonMode(); pm.setCulling(PolygonMode.CULL_NONE);
+            ap.setPolygonMode(pm);
+            Mesh shellMesh = new Mesh(vb, new IndexBuffer[] {tris}, new Appearance[] {ap});
+            Group aura = new Group();
+            aura.addChild(shellMesh);
+            aura.setTranslation(0, 1.35f, 0);
+            return aura;
+        }
+
+        private void updateProtectionFlash() {
+            if (protectionAuraMaterial == null) return;
+            float pulse = (float)Math.sin(gameClock * 0.018f);
+            int alpha = 55 + (int)((pulse + 1.0f) * 75.0f);
+            int color = (alpha << 24) | 0x003399FF;
+            protectionAuraMaterial.setColor(Material.AMBIENT, color);
+            protectionAuraMaterial.setColor(Material.DIFFUSE, color);
+            protectionAuraMaterial.setColor(Material.EMISSIVE, color);
+        }
+
+        private void updateCamera() {
+            updateCameraAt(px, 1.2f + jumpY, pz);
+        }
+
+        private void updateCameraAt(float targetX, float targetY, float targetZ) {
+            float horizontal = (float)Math.cos(camPitch) * camDistance;
+            float cx = targetX - (float)Math.sin(camYaw) * horizontal;
+            float cy = targetY + (float)Math.sin(camPitch) * camDistance;
+            float cz = targetZ + (float)Math.cos(camYaw) * horizontal;
+            // M3G Transform has no setLookAt helper; set camera position and orientation.
+            // Camera looks along local -Z. Orbit position is opposite the look direction,
+            // so yaw must have the opposite sign to camYaw.
+            camera.setOrientation((float)(-camYaw * 57.29578f), 0.0f, 1.0f, 0.0f);
+            camera.postRotate((float)(-camPitch * 57.29578f), 1.0f, 0.0f, 0.0f);
+            camera.setTranslation(cx, cy, cz);
+        }
+
+        protected void paint(Graphics g) {
+            try{paintFrame(g);}catch(Throwable t){
+                try{g.setColor(0x101820);g.fillRect(0,0,getWidth(),getHeight());
+                }catch(Throwable ignored){}
+            }
+        }
+
+        private void paintFrame(Graphics g) {
+            if(isLoadingScreenActive()){
+                drawLoadingScreen(g);
+                return;
+            }
+            if (menuMode) {
+                drawMenu(g);
+                return;
+            }
+            g.setColor(0x78BCE8);
+            g.fillRect(0, 0, getWidth(), getHeight());
+            boolean showAvatarEditor=paused&&configMode&&avatarEditorMode;
+            if (loaded && world != null && !showAvatarEditor) {
+                boolean bound = false;
+                try {
+                    g3d.bindTarget(g, true, Graphics3D.DITHER);
+                    bound = true;
+                    g3d.setViewport(0, 0, getWidth(), getHeight());
+                    camera.setPerspective(65.0f, (float)getWidth()/(float)getHeight(), 0.1f, 240.0f);
+                    updateSkyCrop();
+                    g3d.render(world);
+                } catch (Throwable t) {
+                    renderError = t.toString();
+                    g.setColor(0xFFFFFF);
+                    g.drawString("M3G: " + renderError, 3, 3, Graphics.TOP|Graphics.LEFT);
+                } finally {
+                    if (bound) {
+                        try { g3d.releaseTarget(); } catch (Throwable t) {}
+                    }
+                }
+            } else if (!showAvatarEditor) {
+                g.setColor(0xFFFFFF);
+                g.drawString("Roblox3DME - model load failed", 4, 4, Graphics.TOP|Graphics.LEFT);
+                g.drawString("Check Java model and face.png / Face1.png-Face3.png", 4, 22, Graphics.TOP|Graphics.LEFT);
+            }
+            if(currentGame==11&&modeEventAt>gameClock&&modeEventAt>0){
+                g.setColor(0x000000);
+                g.fillRect(0,0,getWidth(),getHeight());
+                g.setColor(0xFFFFFF);
+                g.drawString("HIDE THE BOTS",getWidth()/2,getHeight()/2-g.getFont().getHeight(),
+                        Graphics.TOP|Graphics.HCENTER);
+                g.drawString(""+((modeEventAt-gameClock+999)/1000),
+                        getWidth()/2,getHeight()/2,Graphics.TOP|Graphics.HCENTER);
+            }
+            g.setColor(0xFFFFFF);
+            g.drawString("ROBLOX 3DME", 3, 2, Graphics.TOP|Graphics.LEFT);
+            g.drawString(modelStatus, 3, 20, Graphics.TOP|Graphics.LEFT);
+            if (modelError.length() > 0) drawWrapped(g, modelError, 3, 38, getWidth() - 6);
+            if (initError.length() > 0) drawWrapped(g, initError, 3, 72, getWidth() - 6);
+            if (currentGame == 2 || currentGame == 10 || currentGame == 14) drawInventory(g);
+            if (currentGame >= 4) drawExtraHud(g);
+            if (currentGame == 3 && !paused) drawStudioHud(g);
+            if (!paused) {
+                drawRobloxPlayerHud(g);
+                drawBotDialogue(g);
+                drawChatOverlay(g);
+            }
+            if (paused) drawPauseMenu(g);
+        }
+
+        private boolean isLoadingScreenActive(){
+            return mapScanLoading||customMapLoading||pendingSceneBuildGame>=0||
+                    (customMapBuilding&&(customMapBuildCursor<customMapBlocks.length||customMapPostProcessing));
+        }
+
+        private void drawLoadingScreen(Graphics g){
+            int w=getWidth(),h=getHeight(),cx=w/2,cy=h/2;
+            g.setColor(0x101820);g.fillRect(0,0,w,h);
+            drawMenuPanorama(g);
+            g.setColor(0x142436);g.fillRoundRect(10,Math.max(8,cy-44),w-20,92,14,14);
+            g.setColor(0x5BC0EB);g.drawRoundRect(10,Math.max(8,cy-44),w-20,92,14,14);
+            g.setColor(0xFFFFFF);g.drawString("ROBLOX 3DME",cx,Math.max(12,cy-35),Graphics.TOP|Graphics.HCENTER);
+            String title="Preparing world";int percent=-1;
+            if(mapScanLoading)title="Searching for maps";
+            else if(customMapLoading)title="Reading custom map";
+            else if(pendingSceneBuildGame>=0){
+                title="Building "+(pendingSceneBuildGame==3?"Studio":GAME_NAMES[pendingSceneBuildGame]);
+                int total=pendingSceneBuildBlocks==null?studioObjectCount:pendingSceneBuildBlocks.length;
+                percent=pendingSceneBuildKind==3?(pendingSceneBuildCursor*100/Math.max(1,total)):
+                        (pendingSceneBuildCursor*100/Math.max(1,total));
+            }else if(customMapBuilding){
+                title=customMapPostProcessing?"Preparing map zones":"Building custom map";
+                percent=customMapPostProcessing?(customMapPostReady?94:90):
+                        (customMapBuildCursor*90/Math.max(1,customMapBlocks.length));
+            }
+            Font font=g.getFont();g.setColor(0xD5E7F5);g.drawString(title,cx,cy-10,Graphics.TOP|Graphics.HCENTER);
+            int barWidth=Math.max(30,w-44),barX=(w-barWidth)/2,barY=cy+13;
+            g.setColor(0x263B50);g.fillRoundRect(barX,barY,barWidth,9,8,8);
+            if(percent>=0){g.setColor(0x5BC0EB);g.fillRoundRect(barX,barY,Math.max(2,barWidth*Math.min(100,percent)/100),9,8,8);}
+            else{int pulse=(int)((System.currentTimeMillis()/24L)%Math.max(1,barWidth-20));g.setColor(0x5BC0EB);g.fillRoundRect(barX+pulse,barY,20,9,8,8);}
+            if(percent>=0){g.setColor(0xFFFFFF);g.drawString(Math.min(100,percent)+"%",cx,barY+13,Graphics.TOP|Graphics.HCENTER);}
+        }
+
+
+        private boolean projectWorldToScreen(float x,float y,float z) {
+            if(getWidth()<=0||getHeight()<=0)return false;
+            float targetX=px,targetY=1.2f+jumpY,targetZ=pz;
+            if(dead&&deathPieces!=null&&deathPieces.length>1&&deathPieces[1]!=null){
+                PhysicsPiece torso=deathPieces[1];
+                targetX=torso.x;targetY=torso.y;targetZ=torso.z;
+            }
+            float cp=(float)Math.cos(camPitch),sp=(float)Math.sin(camPitch);
+            float horizontal=cp*camDistance;
+            float cameraX=targetX-(float)Math.sin(camYaw)*horizontal;
+            float cameraY=targetY+sp*camDistance;
+            float cameraZ=targetZ+(float)Math.cos(camYaw)*horizontal;
+            float forwardX=(float)Math.sin(camYaw)*cp,forwardY=-sp;
+            float forwardZ=-(float)Math.cos(camYaw)*cp;
+            float rightX=(float)Math.cos(camYaw),rightZ=(float)Math.sin(camYaw);
+            float upX=(float)Math.sin(camYaw)*sp,upY=cp;
+            float upZ=-(float)Math.cos(camYaw)*sp;
+            float relX=x-cameraX,relY=y-cameraY,relZ=z-cameraZ;
+            float depth=relX*forwardX+relY*forwardY+relZ*forwardZ;
+            if(depth<=0.2f)return false;
+            float scale=(getHeight()*0.5f)/(float)Math.tan(1.134464f*0.5f);
+            projectedScreenX=(int)(getWidth()*0.5f+
+                    (relX*rightX+relZ*rightZ)*scale/depth);
+            projectedScreenY=(int)(getHeight()*0.5f-
+                    (relX*upX+relY*upY+relZ*upZ)*scale/depth);
+            return projectedScreenX>=-getWidth()/2&&projectedScreenX<=getWidth()*3/2&&
+                    projectedScreenY>=0&&projectedScreenY<=getHeight();
+        }
+
+        private void drawRobloxPlayerHud(Graphics g) {
+            Font old=g.getFont(),small=Font.getFont(Font.FACE_SYSTEM,Font.STYLE_PLAIN,Font.SIZE_SMALL);
+            g.setFont(small);int line=small.getHeight()+1,w=Math.min(94,Math.max(68,getWidth()-8));
+            int x=getWidth()-w-4,y=4,total=1;
+            for(int i=0;i<playerBotCount;i++)if(playerBots[i]!=null)total++;
+            if(lanPlayers!=null)for(int i=0;i<lanPlayers.length;i++)
+                if(lanPlayers[i]!=null&&lanPlayers[i].connected&&(lanSession==null||i!=lanSession.getLocalSlot()))total++;
+            int rows=0;
+            if(playerListOpen){rows=1;for(int i=0;i<playerBotCount;i++)if(playerBots[i]!=null)rows++;
+                if(lanPlayers!=null)for(int i=0;i<lanPlayers.length;i++)
+                    if(lanPlayers[i]!=null&&lanPlayers[i].connected&&(lanSession==null||i!=lanSession.getLocalSlot()))rows++;
+                rows=Math.min(rows,Math.max(1,(getHeight()-line*3-22)/line));}
+            int header=line*2+12,height=header+(playerListOpen?rows*line+4:0);
+            g.setColor(0x101820);g.fillRoundRect(x,y,w,height,6,6);g.setColor(0xFFFFFF);g.drawRoundRect(x,y,w,height,6,6);
+            String name=playerUsername==null||playerUsername.length()==0?"Player":playerUsername;
+            if(small.stringWidth(name)>w-10){while(name.length()>1&&small.stringWidth(name+"...")>w-10)name=name.substring(0,name.length()-1);name+="...";}
+            g.drawString(name,x+5,y+2,Graphics.TOP|Graphics.LEFT);
+            drawCharacterHealthBar(g,x+w/2,y+line+4,playerHealth,w-12,4);
+            g.setColor(0xB8D8F2);g.drawString("PLAYERS "+total+(playerListOpen?" v":" >"),x+5,y+line*2+7,Graphics.TOP|Graphics.LEFT);
+            if(playerListOpen){int ry=y+header,drawn=0;
+                if(drawn<rows){g.setColor(dead?0x888888:0x65D879);g.drawString("You",x+5,ry,Graphics.TOP|Graphics.LEFT);ry+=line;drawn++;}
+                for(int i=0;i<playerBotCount&&drawn<rows;i++){PlayerBot bot=playerBots[i];if(bot==null)continue;
+                    g.setColor(bot.alive?0xFFFFFF:0x888888);g.drawString(BOT_NAMES[i%BOT_NAMES.length]+(bot.alive?"":" KO"),x+5,ry,Graphics.TOP|Graphics.LEFT);ry+=line;drawn++;}
+                if(lanPlayers!=null&&lanSession!=null)for(int i=0;i<lanPlayers.length&&drawn<rows;i++){LanSession.PlayerState p=lanPlayers[i];
+                    if(p==null||!p.connected||i==lanSession.getLocalSlot())continue;
+                    g.setColor(p.alive?0xFFFFFF:0x888888);g.drawString("Player "+(i+1),x+5,ry,Graphics.TOP|Graphics.LEFT);ry+=line;drawn++;}
+            }
+            g.setFont(old);
+        }
+        private void addChatLine(String value){
+            if(value==null||value.length()==0)return;
+            if(chatLineCount<chatLines.length)chatLines[chatLineCount++]=value;
+            else{for(int i=1;i<chatLines.length;i++)chatLines[i-1]=chatLines[i];chatLines[chatLines.length-1]=value;}
+        }
+        private void drawChatOverlay(Graphics g){
+            if(chatLineCount==0)return;Font old=g.getFont(),small=Font.getFont(Font.FACE_SYSTEM,Font.STYLE_PLAIN,Font.SIZE_SMALL);
+            g.setFont(small);int line=small.getHeight()+2,count=Math.min(4,chatLineCount),w=Math.max(1,Math.min(getWidth()-12,150));
+            int x=5,y=getHeight()-count*line-5;g.setColor(0x990D1720);g.fillRoundRect(x,y,w,count*line+4,6,6);
+            for(int i=0;i<count;i++){String msg=chatLines[chatLineCount-count+i];while(msg.length()>1&&small.stringWidth(msg)>w-10)msg=msg.substring(0,msg.length()-1);
+                g.setColor(0xFFFFFF);g.drawString(msg,x+5,y+2+i*line,Graphics.TOP|Graphics.LEFT);}
+            g.setFont(old);
+        }
+        private void openChat(){
+            chatBox=new TextBox("Chat","",120,TextField.ANY);chatBox.addCommand(chatSendCommand);chatBox.addCommand(chatCancelCommand);
+            chatBox.setCommandListener(this);Display.getDisplay(midlet).setCurrent(chatBox);
+        }
+
+        private void drawCharacterHealthBar(Graphics g,int centerX,int centerY,int value,int width,int height) {
+            if(value<0)value=0;if(value>100)value=100;
+            int x=centerX-width/2,y=centerY-height/2;
+            g.setColor(0x202020);g.fillRect(x-1,y-1,width+2,height+2);
+            g.setColor(0x5A2020);g.fillRect(x,y,width,height);
+            int fill=width*value/100;
+            if(value>60)g.setColor(0x35D05A);
+            else if(value>30)g.setColor(0xE6C832);
+            else g.setColor(0xE34343);
+            if(fill>0)g.fillRect(x,y,fill,height);
+            g.setColor(0xFFFFFF);g.drawRect(x-1,y-1,width+1,height+1);
+        }
+
+        private void drawBotDialogue(Graphics g) {
+            if(botDialogue.length()==0||gameClock>=botDialogueUntil||talkingBot<0||
+                    talkingBot>=playerBotCount||playerBots[talkingBot]==null||!playerBots[talkingBot].alive)return;
+            PlayerBot bot=playerBots[talkingBot];
+            if(!projectWorldToScreen(bot.x,bot.y+3.0f,bot.z))return;
+            int screenX=projectedScreenX,screenY=projectedScreenY;
+            Font font=g.getFont();
+            String label=botDialogue;
+            int maxTextWidth=Math.max(1,getWidth()-24);
+            if(font.stringWidth(label)>maxTextWidth){
+                while(label.length()>0&&font.stringWidth(label+"...")>maxTextWidth)
+                    label=label.substring(0,label.length()-1);
+                label+="...";
+            }
+            int boxWidth=Math.min(getWidth()-8,font.stringWidth(label)+14);
+            int boxHeight=font.getHeight()+8;
+            int boxX=screenX-boxWidth/2;
+            if(boxX<4)boxX=4;
+            if(boxX+boxWidth>getWidth()-4)boxX=getWidth()-4-boxWidth;
+            int boxY=screenY-boxHeight-11;
+            if(boxY<30)boxY=30;
+            if(boxY+boxHeight>getHeight()-2)boxY=getHeight()-boxHeight-2;
+            int tailX=boxX+boxWidth/2;
+            g.setColor(0xFFFFFF);g.drawLine(tailX,boxY+boxHeight-1,screenX,screenY-3);
+            g.fillRoundRect(boxX,boxY,boxWidth,boxHeight,10,10);
+            g.setColor(0x303030);g.drawRoundRect(boxX,boxY,boxWidth,boxHeight,10,10);
+            g.drawString(label,boxX+7,boxY+4,Graphics.TOP|Graphics.LEFT);
+        }
+
+        private void drawExtraHud(Graphics g) {
+            String label="";
+            if(currentGame==4) label="CLIMB! LAVA "+(int)(lavaHeight*10)/10.0f;
+            else if(currentGame==5) label="DODGE METEORS  "+Math.max(0,30-(int)((gameClock-modeStartAt)/1000))+"s";
+            else if(currentGame==6) label="KEEP MOVING - TILES FALL";
+            else if(currentGame==7) label="TIME "+Math.max(0,(int)((gameClock-modeStartAt)/1000))+"s";
+            else if(currentGame==8) label="COINS "+modeCollected+"/"+modeGoal;
+            else if(currentGame==9) label="HILL "+modeScore+"/20s";
+            else if(currentGame==10) label="3 ATTACK  "+modeScore+" KOs";
+            else if(currentGame==11) label=modeEventAt>gameClock?
+                    "HIDEOUTS "+((modeEventAt-gameClock+999)/1000)+"s":
+                    "FOUND "+(modeGoal-countZombies())+"/"+modeGoal;
+            else if(currentGame==12) {
+                String[] colors=new String[] {"RED","BLUE","GREEN","YELLOW"};
+                label=simonRound>12?"SIMON SAYS COMPLETE":(simonRound==0?"GET READY":
+                        "GO TO "+colors[simonTarget]+" "+Math.max(0,(int)((modeEventAt-gameClock)/1000))+"s");
+            } else if(currentGame==13) label="CASH "+modeCash+" YOU "+tycoonLevel+"/9  3 BUILD";
+            else if(currentGame==14) label="LIVES "+Math.max(0,3-defenseLeaked)+"  3 ATTACK";
+            g.setColor(0xFFFFFF);
+            g.drawString(label,getWidth()/2,getHeight()-3,Graphics.BOTTOM|Graphics.HCENTER);
+        }
+
+        private void drawInventory(Graphics g) {
+            String[] items = currentGame==2 ? new String[] {"Espada","Bomba","Pala"} :
+                    new String[] {"Espada","Bomba"};
+            int y = getHeight() - 2 * g.getFont().getHeight() - 6;
+            g.setColor(0xFFFFFF);
+            g.drawString("7/9 CAMBIAR   3 USAR", getWidth() / 2, y,
+                    Graphics.BOTTOM | Graphics.HCENTER);
+            g.setColor(0xF5C542);
+            g.drawString("ITEM: " + items[inventorySelection], getWidth() / 2,
+                    y - g.getFont().getHeight(), Graphics.BOTTOM | Graphics.HCENTER);
+        }
+
+        private void drawWrapped(Graphics g, String s, int x, int y, int maxWidth) {
+            if (s == null || s.length() == 0) return;
+            Font font = g.getFont();
+            int lineHeight = font.getHeight();
+            int start = 0;
+            int lineY = y;
+            while (start < s.length() && lineY < getHeight() - lineHeight) {
+                int end = start;
+                int lastSpace = -1;
+                while (end < s.length()) {
+                    if (s.charAt(end) == ' ') lastSpace = end;
+                    if (font.stringWidth(s.substring(start, end + 1)) > maxWidth) break;
+                    end++;
+                }
+                if (end == start) end++;
+                else if (end < s.length() && lastSpace >= start) end = lastSpace;
+                g.drawString(s.substring(start, end), x, lineY, Graphics.TOP|Graphics.LEFT);
+                start = end;
+                while (start < s.length() && s.charAt(start) == ' ') start++;
+                lineY += lineHeight;
+            }
+        }
+
+        private Texture2D getClothingTexture(boolean shirt,int style) {
+            if(style<1)return null;
+            Texture2D[] cache=shirt?shirtTextures:pantsTextures;
+            if(style>cache.length)return null;
+            if(cache[style-1]!=null)return cache[style-1];
+            String name=(shirt?"shirt":"pants")+(style==1?"":""+style)+".png";
+            try {
+                Image source=loadImageResource("/"+name,"/meblox/"+name);
+                if(source==null)throw new Exception(name+" missing");
+                // Preserve the classic 585x559 clothing atlas pixel layout.
+                // Stretching it to 1024x1024 breaks the UV coordinates for every body face.
+                Image pot=makePowerOfTwoPaddedImage(source);
+                Texture2D texture=new Texture2D(new Image2D(Image2D.RGBA,pot));
+                texture.setFiltering(Texture2D.FILTER_NEAREST,Texture2D.FILTER_NEAREST);
+                texture.setWrapping(Texture2D.WRAP_CLAMP,Texture2D.WRAP_CLAMP);
+                texture.setBlending(Texture2D.FUNC_MODULATE);
+                cache[style-1]=texture;
+                return texture;
+            } catch(Throwable t) {
+                modelError="Clothing "+name+": "+t.toString();
+                return null;
+            }
+        }
+
+        private Image makePowerOfTwoPaddedImage(Image source) {
+            int sourceWidth=source.getWidth(),sourceHeight=source.getHeight();
+            // Clothing atlases are 585x559. Resample their content to 256x244
+            // and pad to 256x256, keeping each cached outfit texture small.
+            final int width=256,height=256;
+            int contentHeight=(sourceHeight*width)/sourceWidth;
+            if(contentHeight<1||contentHeight>height)
+                throw new IllegalArgumentException("Unsupported clothing atlas size");
+            int[] sourcePixels=new int[sourceWidth*sourceHeight];
+            source.getRGB(sourcePixels,0,sourceWidth,0,0,sourceWidth,sourceHeight);
+            int[] pixels=new int[width*height];
+            for(int y=0;y<contentHeight;y++) {
+                int sourceY=(y*sourceHeight)/contentHeight;
+                int sourceRow=sourceY*sourceWidth;
+                int targetRow=y*width;
+                for(int x=0;x<width;x++) {
+                    int sourceX=(x*sourceWidth)/width;
+                    pixels[targetRow+x]=sourcePixels[sourceRow+sourceX];
+                }
+            }
+            return Image.createRGBImage(pixels,width,height,true);
+        }
+
+        private Node makeClothingBox(float x,float y,float z,float sx,float sy,float sz,
+                int tint,Texture2D texture,int[][] regions) {
+            if(texture==null)return makeBox(x,y,z,sx,sy,sz,tint);
+            float[] corners={-sx/2,-sy/2,-sz/2,sx/2,-sy/2,-sz/2,
+                -sx/2,sy/2,-sz/2,sx/2,sy/2,-sz/2,
+                -sx/2,-sy/2,sz/2,sx/2,-sy/2,sz/2,
+                -sx/2,sy/2,sz/2,sx/2,sy/2,sz/2};
+            int[] order={0,2,1,3,4,5,6,7,0,1,4,5,2,6,3,7,0,4,2,6,1,3,5,7};
+            short[] pos=new short[72],uv=new short[48];
+            for(int i=0;i<24;i++) {
+                int p=order[i]*3;
+                pos[i*3]=(short)(corners[p]*1000);
+                pos[i*3+1]=(short)(corners[p+1]*1000);
+                pos[i*3+2]=(short)(corners[p+2]*1000);
+            }
+            VertexArray positions=new VertexArray(24,3,2);
+            positions.set(0,24,pos);
+            VertexBuffer vb=new VertexBuffer();
+            vb.setPositions(positions,0.001f,null);
+            vb.setNormals(getSharedBoxNormals());
+            // Regions follow makeBox's exact face order:
+            // front (z-), back (z+), bottom (y-), top (y+), left (x-), right (x+).
+            // Roblox characters face -Z. UV corners below follow the unfolded
+            // Roblox net as seen from OUTSIDE each face; the face vertex winding
+            // differs, so each face needs its own orientation.
+            // M3G texture origin is top-left. Atlas content is 256x244 in a 256x256
+            // texture, so V is scaled to exclude the transparent padding.
+            final float atlasVScale=244.0f/256.0f;
+            for(int f=0;f<6;f++) {
+                int[] r=regions[f];
+                float u0=(float)r[0]/585.0f,u1=(float)(r[0]+r[2])/585.0f;
+                float v0=((float)r[1]/559.0f)*atlasVScale;
+                float v1=((float)(r[1]+r[3])/559.0f)*atlasVScale;
+                int k=f*8;
+                if(f==0) {
+                    // Front: character's right (+X) is the viewer's left.
+                    uv[k]=(short)(u1*1000);uv[k+1]=(short)(v1*1000);
+                    uv[k+2]=(short)(u1*1000);uv[k+3]=(short)(v0*1000);
+                    uv[k+4]=(short)(u0*1000);uv[k+5]=(short)(v1*1000);
+                    uv[k+6]=(short)(u0*1000);uv[k+7]=(short)(v0*1000);
+                } else if(f==1) {
+                    // Back: viewed from +Z, so the left/right direction is opposite the front.
+                    uv[k]=(short)(u0*1000);uv[k+1]=(short)(v1*1000);
+                    uv[k+2]=(short)(u1*1000);uv[k+3]=(short)(v1*1000);
+                    uv[k+4]=(short)(u0*1000);uv[k+5]=(short)(v0*1000);
+                    uv[k+6]=(short)(u1*1000);uv[k+7]=(short)(v0*1000);
+                } else if(f==2) {
+                    // Bottom: its front edge is the top edge of the DOWN panel in the net.
+                    uv[k]=(short)(u1*1000);uv[k+1]=(short)(v0*1000);
+                    uv[k+2]=(short)(u0*1000);uv[k+3]=(short)(v0*1000);
+                    uv[k+4]=(short)(u1*1000);uv[k+5]=(short)(v1*1000);
+                    uv[k+6]=(short)(u0*1000);uv[k+7]=(short)(v1*1000);
+                } else if(f==3) {
+                    // Top: front edge is the bottom edge of the UP panel in the net.
+                    uv[k]=(short)(u1*1000);uv[k+1]=(short)(v1*1000);
+                    uv[k+2]=(short)(u1*1000);uv[k+3]=(short)(v0*1000);
+                    uv[k+4]=(short)(u0*1000);uv[k+5]=(short)(v1*1000);
+                    uv[k+6]=(short)(u0*1000);uv[k+7]=(short)(v0*1000);
+                } else if(f==4) {
+                    // Left side (x-): front edge is the left edge of the LEFT panel.
+                    uv[k]=(short)(u0*1000);uv[k+1]=(short)(v1*1000);
+                    uv[k+2]=(short)(u1*1000);uv[k+3]=(short)(v1*1000);
+                    uv[k+4]=(short)(u0*1000);uv[k+5]=(short)(v0*1000);
+                    uv[k+6]=(short)(u1*1000);uv[k+7]=(short)(v0*1000);
+                } else {
+                    // Right side (x+): front edge is the right edge of the RIGHT panel.
+                    uv[k]=(short)(u1*1000);uv[k+1]=(short)(v1*1000);
+                    uv[k+2]=(short)(u1*1000);uv[k+3]=(short)(v0*1000);
+                    uv[k+4]=(short)(u0*1000);uv[k+5]=(short)(v1*1000);
+                    uv[k+6]=(short)(u0*1000);uv[k+7]=(short)(v0*1000);
+                }
+            }
+            VertexArray tex=new VertexArray(24,2,2);
+            tex.set(0,24,uv);
+            vb.setTexCoords(0,tex,0.001f,null);
+            Appearance ap=new Appearance();
+            ap.setTexture(0,texture);
+            Material mat=new Material();
+            // Clothing atlas pixels already contain the shirt/pants artwork.
+            // A colored material here MODULATEs every pixel by the flat avatar
+            // color, washing out logos, patterns and the original fabric colors.
+            // Keep the textured surface neutral; the colored box underneath
+            // remains visible only through transparent parts of the clothing PNG.
+            mat.setColor(Material.AMBIENT,0xFFFFFFFF);
+            mat.setColor(Material.DIFFUSE,0xFFFFFFFF);
+            mat.setColor(Material.EMISSIVE,0xFF000000);
+            ap.setMaterial(mat);
+            CompositingMode cm=new CompositingMode();
+            cm.setBlending(CompositingMode.ALPHA);
+            cm.setAlphaThreshold(0.01f);
+            cm.setDepthWriteEnable(true);
+            ap.setCompositingMode(cm);
+            PolygonMode pm=new PolygonMode();
+            pm.setCulling(PolygonMode.CULL_NONE);
+            pm.setShading(PolygonMode.SHADE_SMOOTH);
+            ap.setPolygonMode(pm);
+            IndexBuffer[] faces=new IndexBuffer[6];
+            Appearance[] appearances=new Appearance[6];
+            for(int f=0;f<6;f++) {
+                faces[f]=new TriangleStripArray(f*4,new int[]{4});
+                appearances[f]=ap;
+            }
+            Mesh mesh=new Mesh(vb,faces,appearances);
+            mesh.setTranslation(x,y,z);
+            return mesh;
+        }
+
+        private int[][] shirtTorsoRegions() {
+            // Classic shirt torso: front, back, bottom, top, left, right.
+            return new int[][]{
+                {231,74,128,128}, {427,74,128,128},
+                {231,204,128,64}, {231,8,128,64},
+                {361,74,64,128}, {165,74,64,128}
+            };
+        }
+        private int[][] shirtSleeveRegions(boolean leftSide) {
+            // Left and right sleeves use different atlas layouts; do not mirror one.
+            if(leftSide) {
+                return new int[][]{
+                    {308,355,64,128}, {440,355,64,128},
+                    {308,485,64,64}, {308,289,64,64},
+                    {374,355,64,128}, {506,355,64,128}
+                };
+            }
+            return new int[][]{
+                {217,355,64,128}, {85,355,64,128},
+                {217,485,64,64}, {217,289,64,64},
+                {19,355,64,128}, {151,355,64,128}
+            };
+        }
+        private int[][] pantsLegRegions(boolean leftSide) {
+            // Classic pants use the same face layout as the matching arm panels.
+            if(leftSide) {
+                return new int[][]{
+                    {308,355,64,128}, {440,355,64,128},
+                    {308,485,64,64}, {308,289,64,64},
+                    {374,355,64,128}, {506,355,64,128}
+                };
+            }
+            return new int[][]{
+                {217,355,64,128}, {85,355,64,128},
+                {217,485,64,64}, {217,289,64,64},
+                {19,355,64,128}, {151,355,64,128}
+            };
+        }
+
+        private Group buildNoob() throws Exception {
+            return buildNoob(false);
+        }
+
+        private Group buildNoob(boolean zombie) throws Exception {
+            return buildNoob(zombie,avatarSkinColor,avatarShirtColor,avatarLegColor,
+                    avatarShirtStyle,avatarPantsStyle,avatarHatStyle,avatarFaceStyle);
+        }
+
+        private Group buildNoob(boolean zombie,int skinColor,int shirtColor,int legColor,
+                int shirtStyle,int pantsStyle,int hatStyle,int faceStyle) throws Exception {
+            Group model = new Group();
+            int skin = zombie ? 0x35B64A : skinColor;
+            int clothing = zombie ? 0x795438 : shirtColor;
+            int legs = zombie ? 0x795438 : legColor;
+
+            // Classic template atlas mapping: torso, sleeves and both trouser legs.
+            Texture2D shirt=getClothingTexture(true,zombie?0:shirtStyle);
+            Texture2D pants=getClothingTexture(false,zombie?0:pantsStyle);
+            // Opaque body underlay lets transparent template pixels reveal the body color.
+            model.addChild(makeBox(0,1.45f,0,0.78f,0.95f,0.40f,clothing));
+            // The clothing shell sits clearly outside the flat-color underlay to prevent z-fighting.
+            model.addChild(makeClothingBox(0,1.45f,0,0.80f,0.974f,0.424f,
+                    clothing,shirt,shirtTorsoRegions()));
+            // Preserve the classic two-stud top plate above the shirt template.
+            model.addChild(makeStuddedBox(0,1.922f,0,0.78f,0.006f,0.40f,clothing));
+            model.addChild(makeRoundedCylinderHead(skin));
+            model.addChild(makeTexturedFace(zombie ? "face.png" : avatarFaceResource(faceStyle), skin));
+            if(!zombie&&hatStyle>0)model.addChild(buildClassicHat(hatStyle));
+            Group modelLeftArm = makePivotedClothedLimb(-0.585f,1.925f,0.39f,0.95f,0.40f,
+                    skin,true,shirt,shirtSleeveRegions(true));
+            Group modelRightArm = makePivotedClothedLimb(0.585f,1.925f,0.39f,0.95f,0.40f,
+                    skin,true,shirt,shirtSleeveRegions(false));
+            Group modelLeftLeg = makePivotedClothedLimb(-0.195f,0.975f,0.39f,0.95f,0.40f,
+                    legs,false,pants,pantsLegRegions(true));
+            Group modelRightLeg = makePivotedClothedLimb(0.195f,0.975f,0.39f,0.95f,0.40f,
+                    legs,false,pants,pantsLegRegions(false));
+            model.addChild(modelLeftArm);
+            model.addChild(modelRightArm);
+            model.addChild(modelLeftLeg);
+            model.addChild(modelRightLeg);
+            if (!zombie) {
+                leftArm = modelLeftArm; rightArm = modelRightArm;
+                leftLeg = modelLeftLeg; rightLeg = modelRightLeg;
+                swordVisual = makeSwordVisual();
+                swordVisual.setRenderingEnable(false);
+                model.addChild(swordVisual);
+            }
+            return model;
+        }
+
+        private Group buildClassicHat(int style) {
+            Group hat=new Group();
+            int[] colors={0xC62828,0x202020,0x1565C0,0xF9A825,0x2E7D32};
+            int color=colors[(style-1)%colors.length];
+            // Hat bases now sit just above the rounded head instead of intersecting it.
+            if(style==1) { // Baseball cap
+                hat.addChild(makeHatCylinder(0,2.48f,0,0.43f,0.20f,color,12));
+                hat.addChild(makeBox(0,2.39f,0.245f,0.48f,0.045f,0.25f,color));
+                hat.addChild(makeHatCylinder(0,2.585f,0,0.055f,0.035f,0xE0E0E0,8));
+            } else if(style==2) { // Top hat
+                hat.addChild(makeHatCylinder(0,2.40f,0,0.52f,0.055f,0x151515,16));
+                hat.addChild(makeHatCylinder(0,2.60f,0,0.34f,0.36f,color,16));
+                hat.addChild(makeHatCylinder(0,2.47f,0,0.35f,0.045f,0x151515,16));
+            } else if(style==3) { // Beanie
+                hat.addChild(makeHatCylinder(0,2.48f,0,0.43f,0.20f,0x263238,16));
+                hat.addChild(makeHatCylinder(0,2.60f,0,0.40f,0.12f,color,16));
+                hat.addChild(makeHatCylinder(0,2.67f,0,0.25f,0.035f,color,12));
+            } else if(style==4) { // Conical party hat
+                hat.addChild(makeHatCylinder(0,2.40f,0,0.39f,0.06f,0xF5F5F5,16));
+                hat.addChild(makeHatCone(0,2.60f,0,0.36f,0.40f,color,16));
+            } else { // Fedora
+                hat.addChild(makeHatCylinder(0,2.39f,0,0.58f,0.055f,0x3E2723,20));
+                hat.addChild(makeHatCylinder(0,2.50f,0,0.37f,0.20f,color,16));
+                hat.addChild(makeHatCylinder(0,2.44f,0,0.385f,0.045f,0x1B1B1B,16));
+                hat.addChild(makeHatCylinder(0,2.60f,0,0.18f,0.025f,0x3E2723,12));
+            }
+            // A small common lift prevents every hat style from clipping into the head.
+            hat.setTranslation(0,0.085f,0);
+            return hat;
+        }
+
+        private Group makeHatCylinder(float x,float y,float z,float radius,
+                float height,int color,int segments) {
+            Group cylinder=new Group();
+            int[] strips=new int[segments];
+            short[] coords=new short[segments*4*3];
+            short[] normals=new short[coords.length];
+            int out=0;
+            float half=height*0.5f;
+            for(int i=0;i<segments;i++) {
+                strips[i]=4;
+                double a0=6.283185307179586*i/segments;
+                double a1=6.283185307179586*(i+1)/segments;
+                float x0=(float)Math.sin(a0),z0=(float)-Math.cos(a0);
+                float x1=(float)Math.sin(a1),z1=(float)-Math.cos(a1);
+                float[] v={x0*radius,-half,z0*radius,
+                           x0*radius,half,z0*radius,
+                           x1*radius,-half,z1*radius,
+                           x1*radius,half,z1*radius};
+                for(int j=0;j<4;j++) {
+                    coords[out]=(short)(v[j*3]*1000.0f);
+                    coords[out+1]=(short)(v[j*3+1]*1000.0f);
+                    coords[out+2]=(short)(v[j*3+2]*1000.0f);
+                    normals[out]=(short)(((j<2?x0:x1)*32767.0f));
+                    normals[out+1]=0;
+                    normals[out+2]=(short)(((j<2?z0:z1)*32767.0f));
+                    out+=3;
+                }
+            }
+            cylinder.addChild(makeSolidMesh(coords,strips,color,normals));
+            Mesh top=makeCylinderDisk(0,radius,segments,color);
+            top.setTranslation(0,half,0);
+            cylinder.addChild(top);
+            Mesh bottom=makeCylinderDisk(0,radius,segments,color);
+            bottom.setTranslation(0,-half,0);
+            cylinder.addChild(bottom);
+            cylinder.setTranslation(x,y,z);
+            return cylinder;
+        }
+
+        private Group makeHatCone(float x,float y,float z,float radius,
+                float height,int color,int segments) {
+            Group cone=new Group();
+            int[] strips=new int[segments];
+            short[] coords=new short[segments*3*3];
+            short[] normals=new short[coords.length];
+            int out=0;
+            float base=-height*0.5f, tip=height*0.5f;
+            for(int i=0;i<segments;i++) {
+                strips[i]=3;
+                double a0=6.283185307179586*i/segments;
+                double a1=6.283185307179586*(i+1)/segments;
+                float x0=(float)Math.sin(a0),z0=(float)-Math.cos(a0);
+                float x1=(float)Math.sin(a1),z1=(float)-Math.cos(a1);
+                float[] v={0,tip,0,x0*radius,base,z0*radius,
+                           x1*radius,base,z1*radius};
+                float nx=(x0+x1)*0.5f, nz=(z0+z1)*0.5f;
+                float ny=radius/height;
+                float inv=1.0f/(float)Math.sqrt(nx*nx+ny*ny+nz*nz);
+                nx*=inv;ny*=inv;nz*=inv;
+                for(int j=0;j<3;j++) {
+                    coords[out]=(short)(v[j*3]*1000.0f);
+                    coords[out+1]=(short)(v[j*3+1]*1000.0f);
+                    coords[out+2]=(short)(v[j*3+2]*1000.0f);
+                    normals[out]=(short)(nx*32767.0f);
+                    normals[out+1]=(short)(ny*32767.0f);
+                    normals[out+2]=(short)(nz*32767.0f);
+                    out+=3;
+                }
+            }
+            cone.addChild(makeSolidMesh(coords,strips,color,normals));
+            cone.setTranslation(x,y,z);
+            return cone;
+        }
+
+        private Group makePivotedClothedLimb(float x,float jointY,float width,float height,
+                float depth,int color,boolean studsTop,Texture2D texture,int[][] regions) {
+            Group pivot=new Group();
+            pivot.setTranslation(x,jointY,0.0f);
+            // Solid underlay shows through transparent pixels in shirt/pants templates.
+            pivot.addChild(makeBox(0.0f,-height*0.5f,0.0f,width,height,depth,color));
+            // Give the textured sleeve/pant shell a visible clearance over its solid base.
+            Node body=makeClothingBox(0.0f,-height*0.5f,0.0f,width+0.02f,height+0.02f,
+                    depth+0.02f,color,texture,regions);
+            pivot.addChild(body);
+            if(studsTop) {
+                // Keep the classic stud plate visible on top of the sleeves.
+                pivot.addChild(makeStuddedBox(0.0f,-0.005f,0.0f,width,0.01f,depth,color));
+            }
+            return pivot;
+        }
+
+        private Group makePivotedLimb(float x,float jointY,float width,float height,float depth,int color,boolean studsTop) {
+            Group pivot=new Group();
+            pivot.setTranslation(x,jointY,0.0f);
+            pivot.addChild(studsTop ? makeStuddedBox(0.0f,-height*0.5f,0.0f,width,height,depth,color) :
+                    makeBox(0.0f,-height*0.5f,0.0f,width,height,depth,color));
+            return pivot;
+        }
+
+        private String avatarFaceResource() {
+            return avatarFaceResource(avatarFaceStyle);
+        }
+
+        private String avatarFaceResource(int style) {
+            switch(style) {
+                case 1: return "Face1.png";
+                case 2: return "Face2.png";
+                case 3: return "Face3.png";
+                default: return "face.png";
+            }
+        }
+
+        private Node makeTexturedFace(String resourceName, int fallbackColor) {
+            try {
+                Texture2D texture;
+                boolean zombie = "faceZomb.png".equals(resourceName);
+                int faceIndex = "Face1.png".equals(resourceName) ? 1 :
+                        ("Face2.png".equals(resourceName) ? 2 :
+                        ("Face3.png".equals(resourceName) ? 3 : 0));
+                texture = zombie ? cachedZombieFaceTexture : cachedAvatarFaceTextures[faceIndex];
+                if (texture == null) {
+                    Image img = loadImageResource("/" + resourceName, "/meblox/" + resourceName);
+                    if (img == null) {
+                        return makeCurvedTexturedFace(makeSolidAppearance(fallbackColor));
+                    }
+                    Image textureImage = makePowerOfTwoImage(img);
+                    Image2D image2D = new Image2D(Image2D.RGBA, textureImage);
+                    texture = new Texture2D(image2D);
+                    texture.setFiltering(Texture2D.FILTER_NEAREST, Texture2D.FILTER_NEAREST);
+                    texture.setWrapping(Texture2D.WRAP_CLAMP, Texture2D.WRAP_CLAMP);
+                    texture.setBlending(Texture2D.FUNC_MODULATE);
+                    if (zombie) cachedZombieFaceTexture = texture;
+                    else cachedAvatarFaceTextures[faceIndex] = texture;
+                }
+
+                Appearance ap = new Appearance();
+                ap.setTexture(0, texture);
+                Material mat = new Material();
+                mat.setColor(Material.AMBIENT, 0xFFFFFFFF);
+                mat.setColor(Material.DIFFUSE, 0xFFFFFFFF);
+                mat.setColor(Material.EMISSIVE, 0xFFFFFFFF);
+                ap.setMaterial(mat);
+                CompositingMode compositing = new CompositingMode();
+                compositing.setBlending(CompositingMode.ALPHA);
+                compositing.setAlphaThreshold(0.01f);
+                compositing.setDepthWriteEnable(false);
+                ap.setCompositingMode(compositing);
+                PolygonMode polygonMode = new PolygonMode();
+                polygonMode.setCulling(PolygonMode.CULL_NONE);
+                polygonMode.setShading(PolygonMode.SHADE_SMOOTH);
+                ap.setPolygonMode(polygonMode);
+                return makeCurvedTexturedFace(ap);
+            } catch (Throwable t) {
+                modelError = resourceName + " texture: " + t.toString();
+                return makeCurvedTexturedFace(makeSolidAppearance(fallbackColor));
+            }
+        }
+
+        private Mesh makeCurvedTexturedFace(Appearance ap) {
+            final int segments = 8;
+            final float radius = 0.291f; // 0.011 units outside the cylinder's 0.28 radius
+            short[] positions = new short[(segments + 1) * 2 * 3];
+            short[] texCoords = new short[(segments + 1) * 2 * 2];
+            int p = 0;
+            int uv = 0;
+            for (int i = 0; i <= segments; i++) {
+                double angle = -0.68 + 1.36 * i / segments;
+                float x = (float)(radius * Math.sin(angle));
+                float z = (float)(-radius * Math.cos(angle));
+                int u = 1000 * i / segments;
+                // The enlarged curved strip follows the cylinder with a small radial gap.
+                positions[p++] = (short)(x * 1000.0f);
+                positions[p++] = 2010;
+                positions[p++] = (short)(z * 1000.0f);
+                positions[p++] = (short)(x * 1000.0f);
+                positions[p++] = 2370;
+                positions[p++] = (short)(z * 1000.0f);
+                texCoords[uv++] = (short)u;
+                texCoords[uv++] = 1000;
+                texCoords[uv++] = (short)u;
+                texCoords[uv++] = 0;
+            }
+            VertexArray pos = new VertexArray((segments + 1) * 2, 3, 2);
+            pos.set(0, (segments + 1) * 2, positions);
+            VertexArray uvArray = new VertexArray((segments + 1) * 2, 2, 2);
+            uvArray.set(0, (segments + 1) * 2, texCoords);
+            short[] faceNormals = new short[(segments + 1) * 2 * 3];
+            for (int i = 0; i <= segments; i++) {
+                double angle = -0.68 + 1.36 * i / segments;
+                short nx = (short)(Math.sin(angle) * 32767.0);
+                short nz = (short)(-Math.cos(angle) * 32767.0);
+                int n = i * 6;
+                faceNormals[n] = nx; faceNormals[n + 1] = 0; faceNormals[n + 2] = nz;
+                faceNormals[n + 3] = nx; faceNormals[n + 4] = 0; faceNormals[n + 5] = nz;
+            }
+            VertexArray normalArray = new VertexArray((segments + 1) * 2, 3, 2);
+            normalArray.set(0, (segments + 1) * 2, faceNormals);
+            VertexBuffer vb = new VertexBuffer();
+            vb.setPositions(pos, 0.001f, null);
+            vb.setNormals(normalArray);
+            vb.setTexCoords(0, uvArray, 0.001f, null);
+            TriangleStripArray strip = new TriangleStripArray(0, new int[] {(segments + 1) * 2});
+            return new Mesh(vb, new IndexBuffer[] {strip}, new Appearance[] {ap});
+        }
+
+        private int scaleRgb(int color, float factor) {
+            int a = color & 0xFF000000;
+            int r = (int)(((color >> 16) & 255) * factor);
+            int g = (int)(((color >> 8) & 255) * factor);
+            int b = (int)((color & 255) * factor);
+            if (r > 255) r = 255;
+            if (g > 255) g = 255;
+            if (b > 255) b = 255;
+            return a | (r << 16) | (g << 8) | b;
+        }
+
+        private void installClassicLighting(World target) {
+            Light ambient = new Light();
+            ambient.setMode(Light.AMBIENT);
+            ambient.setColor(0xFFFFE8);
+            ambient.setIntensity(0.72f);
+            target.addChild(ambient);
+
+            Light sun = new Light();
+            sun.setMode(Light.DIRECTIONAL);
+            sun.setColor(0xFFF3D8);
+            sun.setIntensity(0.72f);
+            sun.setOrientation(-38.0f, 1.0f, 0.0f, 0.0f);
+            sun.postRotate(28.0f, 0.0f, 1.0f, 0.0f);
+            target.addChild(sun);
+        }
+
+        private Appearance makeStudsAppearance(int color) {
+            Appearance ap = new Appearance();
+            ap.setTexture(0, cachedStudsTexture);
+            Material mat = new Material();
+            mat.setColor(Material.AMBIENT, scaleRgb(color, 0.50f));
+            mat.setColor(Material.DIFFUSE, scaleRgb(color, 0.85f));
+            mat.setColor(Material.EMISSIVE, scaleRgb(color, 0.12f));
+            mat.setShininess(0.0f);
+            ap.setMaterial(mat);
+            PolygonMode pm = new PolygonMode();
+            pm.setCulling(PolygonMode.CULL_NONE);
+            pm.setShading(PolygonMode.SHADE_FLAT);
+            ap.setPolygonMode(pm);
+            return ap;
+        }
+        private Appearance makeSolidAppearance(int color) {
+            Appearance ap = new Appearance();
+            Material mat = new Material();
+            mat.setColor(Material.AMBIENT, scaleRgb(color, 0.50f));
+            mat.setColor(Material.DIFFUSE, scaleRgb(color, 0.85f));
+            mat.setColor(Material.EMISSIVE, scaleRgb(color, 0.30f));
+            mat.setShininess(0.0f);
+            ap.setMaterial(mat);
+            PolygonMode pm = new PolygonMode();
+            pm.setCulling(PolygonMode.CULL_NONE);
+            ap.setPolygonMode(pm);
+            return ap;
+        }
+
+        private Image makePowerOfTwoImage(Image source) {
+            int sourceWidth = source.getWidth();
+            int sourceHeight = source.getHeight();
+            int width = 1;
+            int height = 1;
+            while (width < sourceWidth) width *= 2;
+            while (height < sourceHeight) height *= 2;
+            if (width == sourceWidth && height == sourceHeight) return source;
+
+            int[] sourcePixels = new int[sourceWidth * sourceHeight];
+            source.getRGB(sourcePixels, 0, sourceWidth, 0, 0, sourceWidth, sourceHeight);
+            int[] texturePixels = new int[width * height];
+            for (int y = 0; y < height; y++) {
+                int sourceY = y * sourceHeight / height;
+                for (int x = 0; x < width; x++) {
+                    int sourceX = x * sourceWidth / width;
+                    texturePixels[y * width + x] = sourcePixels[sourceY * sourceWidth + sourceX];
+                }
+            }
+            return Image.createRGBImage(texturePixels, width, height, true);
+        }
+
+        private Node makeRoundedCylinderHead() {
+            return makeRoundedCylinderHead(0xF5C542);
+        }
+
+        private Node makeRoundedCylinderHead(int color) {
+            final int segments = 32;
+            final int bevelSteps = 6;
+            final float halfHeight = 0.25f;
+            final float endRadius = 0.20f;
+            final float bevelRadius = 0.08f;
+            int ringCount = bevelSteps * 2 + 1;
+            float[] ringY = new float[ringCount];
+            float[] ringRadius = new float[ringCount];
+            for (int i = 0; i <= bevelSteps; i++) {
+                double angle = 1.57079632679 * i / bevelSteps;
+                ringY[i] = -halfHeight + bevelRadius * (1.0f - (float)Math.cos(angle));
+                ringRadius[i] = endRadius + bevelRadius * (float)Math.sin(angle);
+            }
+            for (int i = 1; i <= bevelSteps; i++) {
+                double angle = 1.57079632679 * i / bevelSteps;
+                int ring = bevelSteps + i;
+                ringY[ring] = halfHeight - bevelRadius * (float)Math.cos(angle);
+                ringRadius[ring] = endRadius + bevelRadius * (float)Math.cos(angle);
+            }
+
+            int bandCount = ringCount - 1;
+            int verticesPerBand = (segments + 1) * 2;
+            short[] shellCoords = new short[bandCount * verticesPerBand * 3];
+            short[] shellNormals = new short[shellCoords.length];
+            int[] shellStrips = new int[bandCount];
+            int out = 0;
+            int normalOut = 0;
+            for (int band = 0; band < bandCount; band++) {
+                shellStrips[band] = verticesPerBand;
+                for (int point = 0; point <= segments; point++) {
+                    double angle = 6.283185307179586 * point / segments;
+                    float c = (float)Math.cos(angle);
+                    float sn = (float)Math.sin(angle);
+                    shellCoords[out++] = (short)(ringRadius[band] * sn * 1000.0f);
+                    shellCoords[out++] = (short)(ringY[band] * 1000.0f);
+                    shellCoords[out++] = (short)(-ringRadius[band] * c * 1000.0f);
+                    shellCoords[out++] = (short)(ringRadius[band + 1] * sn * 1000.0f);
+                    shellCoords[out++] = (short)(ringY[band + 1] * 1000.0f);
+                    shellCoords[out++] = (short)(-ringRadius[band + 1] * c * 1000.0f);
+                    for (int ringIndex = band; ringIndex <= band + 1; ringIndex++) {
+                        float radial, vertical;
+                        if (ringIndex <= bevelSteps) {
+                            double a = 1.57079632679 * ringIndex / bevelSteps;
+                            radial = (float)Math.sin(a); vertical = -(float)Math.cos(a);
+                        } else {
+                            double a = 1.57079632679 * (ringIndex - bevelSteps) / bevelSteps;
+                            radial = (float)Math.cos(a); vertical = (float)Math.sin(a);
+                        }
+                        shellNormals[normalOut++] = (short)(radial * sn * 32767.0f);
+                        shellNormals[normalOut++] = (short)(vertical * 32767.0f);
+                        shellNormals[normalOut++] = (short)(-radial * c * 32767.0f);
+                    }
+                }
+            }
+
+            Group head = new Group();
+            head.addChild(makeSolidMesh(shellCoords, shellStrips, color, shellNormals));
+            head.addChild(makeCylinderDisk(-halfHeight, endRadius, segments, color));
+            head.addChild(makeCylinderDisk(halfHeight, endRadius, segments, color));
+            head.setTranslation(0, 2.19f, 0);
+            return head;
+        }
+
+        private Mesh makeCylinderDisk(float y, float radius, int segments, int color) {
+            short[] coords = new short[segments * 3 * 3];
+            int[] strips = new int[segments];
+            int out = 0;
+            for (int i = 0; i < segments; i++) {
+                strips[i] = 3;
+                double a0 = 6.283185307179586 * i / segments;
+                double a1 = 6.283185307179586 * (i + 1) / segments;
+                coords[out++] = 0; coords[out++] = (short)(y * 1000.0f); coords[out++] = 0;
+                coords[out++] = (short)(radius * Math.sin(a0) * 1000.0);
+                coords[out++] = (short)(y * 1000.0f);
+                coords[out++] = (short)(-radius * Math.cos(a0) * 1000.0);
+                coords[out++] = (short)(radius * Math.sin(a1) * 1000.0);
+                coords[out++] = (short)(y * 1000.0f);
+                coords[out++] = (short)(-radius * Math.cos(a1) * 1000.0);
+            }
+            short[] normals = new short[coords.length];
+            short ny = (short)(y < 0.0f ? -32767 : 32767);
+            for (int i = 0; i < segments * 3; i++) {
+                normals[i * 3] = 0;
+                normals[i * 3 + 1] = ny;
+                normals[i * 3 + 2] = 0;
+            }
+            return makeSolidMesh(coords, strips, color, normals);
+        }
+
+        private Mesh makeSolidMesh(short[] coords, int[] stripLengths, int color) {
+            return makeSolidMesh(coords, stripLengths, color, null);
+        }
+
+        private Mesh makeSolidMesh(short[] coords, int[] stripLengths, int color, short[] normalCoords) {
+            int vertexCount = coords.length / 3;
+            VertexArray vertices = new VertexArray(vertexCount, 3, 2);
+            vertices.set(0, vertexCount, coords);
+            VertexBuffer vb = new VertexBuffer();
+            vb.setPositions(vertices, 0.001f, null);
+            if (normalCoords != null && normalCoords.length == coords.length) {
+                VertexArray normals = new VertexArray(vertexCount, 3, 2);
+                normals.set(0, vertexCount, normalCoords);
+                vb.setNormals(normals);
+            }
+            TriangleStripArray strips = new TriangleStripArray(0, stripLengths);
+            Appearance ap = new Appearance();
+            Material mat = new Material();
+            mat.setColor(Material.AMBIENT, scaleRgb(color, 0.50f));
+            mat.setColor(Material.DIFFUSE, scaleRgb(color, 0.85f));
+            mat.setColor(Material.EMISSIVE, scaleRgb(color, 0.30f));
+            mat.setShininess(0.0f);
+            ap.setMaterial(mat);
+            PolygonMode pm = new PolygonMode();
+            pm.setCulling(PolygonMode.CULL_NONE);
+            pm.setShading(PolygonMode.SHADE_SMOOTH);
+            ap.setPolygonMode(pm);
+            return new Mesh(vb, new IndexBuffer[] {strips}, new Appearance[] {ap});
+        }
+
+        private void animateNoob() {
+            if (leftArm == null || rightArm == null || leftLeg == null || rightLeg == null) return;
+            if(sitting){
+                leftArm.setOrientation(-22.0f,1,0,0);rightArm.setOrientation(-22.0f,1,0,0);
+                leftLeg.setOrientation(82.0f,1,0,0);rightLeg.setOrientation(82.0f,1,0,0);
+                if(swordVisual!=null)swordVisual.setRenderingEnable(false);
+                return;
+            }
+            float swing = 0.0f;
+            if (animation == 1) swing = (float)Math.sin(animTime * 0.012f) * 32.0f;
+            else if (animation == 2) swing = -18.0f;
+            boolean swingingSword = (currentGame == 2 || currentGame == 10 || currentGame == 14) &&
+                    gameClock < swordAttackUntil;
+            leftArm.setOrientation(swing, 1, 0, 0);
+            rightArm.setOrientation(swingingSword ? -35.0f : -swing, 1, 0, 0);
+            leftLeg.setOrientation(-swing, 1, 0, 0);
+            rightLeg.setOrientation(swingingSword ? 34.0f : swing, 1, 0, 0);
+            if (swordVisual != null) swordVisual.setRenderingEnable(swingingSword);
+        }
+
+        private VertexArray getSharedBoxNormals() {
+            if (sharedBoxNormals != null) return sharedBoxNormals;
+            // Match faceOrder: front, back, bottom, left, right, top.
+            short[] data = new short[] {
+                0,0,-32767, 0,0,-32767, 0,0,-32767, 0,0,-32767,
+                0,0,32767, 0,0,32767, 0,0,32767, 0,0,32767,
+                0,-32767,0, 0,-32767,0, 0,-32767,0, 0,-32767,0,
+                -32767,0,0, -32767,0,0, -32767,0,0, -32767,0,0,
+                32767,0,0, 32767,0,0, 32767,0,0, 32767,0,0,
+                0,32767,0, 0,32767,0, 0,32767,0, 0,32767,0
+            };
+            sharedBoxNormals = new VertexArray(24, 3, 2);
+            sharedBoxNormals.set(0, 24, data);
+            return sharedBoxNormals;
+        }
+
+        private Node makeBox(float x, float y, float z, float sx, float sy, float sz, int color) {
+            return makeBox(x,y,z,sx,sy,sz,color,false);
+        }
+
+        private Node makeStuddedBox(float x, float y, float z,
+                float sx, float sy, float sz, int color) {
+            return makeBox(x,y,z,sx,sy,sz,color,true);
+        }
+
+        private Node makeBox(float x, float y, float z, float sx, float sy, float sz,
+                int color, boolean studsTop) {
+            float[] corners = new float[] {
+                -sx/2,-sy/2,-sz/2, sx/2,-sy/2,-sz/2, -sx/2,sy/2,-sz/2, sx/2,sy/2,-sz/2,
+                -sx/2,-sy/2,sz/2, sx/2,-sy/2,sz/2, -sx/2,sy/2,sz/2, sx/2,sy/2,sz/2
+            };
+            // Keep the textured top face last so the other five faces can
+            // share one M3G submesh and one draw call.
+            int[] faceOrder = new int[] {
+                0,2,1,3,   // front
+                4,5,6,7,   // back
+                0,1,4,5,   // bottom
+                0,4,2,6,   // left
+                1,3,5,7,   // right
+                2,6,3,7    // top
+            };
+            float[] p = new float[faceOrder.length * 3];
+            for (int i = 0; i < faceOrder.length; i++) {
+                int src = faceOrder[i] * 3;
+                int dst = i * 3;
+                p[dst] = corners[src];
+                p[dst + 1] = corners[src + 1];
+                p[dst + 2] = corners[src + 2];
+            }
+            VertexArray va = new VertexArray(faceOrder.length, 3, 2);
+            short[] coords = new short[p.length];
+            for (int i=0;i<p.length;i++) coords[i]=(short)(p[i]*1000);
+            va.set(0, faceOrder.length, coords);
+            VertexBuffer vb = new VertexBuffer();
+            vb.setPositions(va, 0.001f, null);
+            vb.setNormals(getSharedBoxNormals());
+            if (studsTop && cachedStudsTexture != null) {
+                short[] uv = new short[24 * 2];
+                // Tile the studs instead of stretching one tile over the whole face.
+                // Arms (0.30 x 0.40) show one stud; the 0.78-wide torso shows two.
+                int tilesX = (int)(sx / 0.40f + 0.5f);
+                int tilesZ = (int)(sz / 0.40f + 0.5f);
+                if (tilesX < 1) tilesX = 1;
+                if (tilesZ < 1) tilesZ = 1;
+                // cachedStudsTexture is already cropped to one 16x16 stud.
+                // One UV unit now equals one complete stud tile.
+                short uMax = (short)(tilesX * 1000);
+                short vMax = (short)(tilesZ * 1000);
+                // The upper face uses vertices 20..23 in faceOrder.
+                uv[40] = 0;    uv[41] = 0;
+                uv[42] = 0;    uv[43] = vMax;
+                uv[44] = uMax; uv[45] = 0;
+                uv[46] = uMax; uv[47] = vMax;
+                VertexArray texCoords = new VertexArray(24, 2, 2);
+                texCoords.set(0, 24, uv);
+                vb.setTexCoords(0, texCoords, 0.001f, null);
+            }
+            Appearance solid = new Appearance();
+            Material mat = new Material();
+            mat.setColor(Material.AMBIENT, scaleRgb(color, 0.50f));
+            mat.setColor(Material.DIFFUSE, scaleRgb(color, 0.85f));
+            mat.setColor(Material.EMISSIVE, scaleRgb(color, 0.12f));
+            mat.setShininess(0.0f);
+            solid.setMaterial(mat);
+            PolygonMode pm = new PolygonMode();
+            pm.setCulling(PolygonMode.CULL_NONE);
+            pm.setShading(PolygonMode.SHADE_SMOOTH);
+            solid.setPolygonMode(pm);
+            boolean texturedTop = studsTop && cachedStudsTexture != null;
+            IndexBuffer[] faces;
+            Appearance[] appearances;
+            if (texturedTop) {
+                // Five solid faces in one submesh; the studded top is the second.
+                faces = new IndexBuffer[] {
+                    new TriangleStripArray(0, new int[] {4,4,4,4,4}),
+                    new TriangleStripArray(20, new int[] {4})
+                };
+                appearances = new Appearance[] {solid, makeStudsAppearance(color)};
+            } else {
+                // A regular box is a single M3G submesh instead of six.
+                faces = new IndexBuffer[] {
+                    new TriangleStripArray(0, new int[] {4,4,4,4,4,4})
+                };
+                appearances = new Appearance[] {solid};
+            }
+            Mesh mesh = new Mesh(vb, faces, appearances);
+            mesh.setTranslation(x,y,z);
+            return mesh;
+        }
+
+        private boolean isLeftSoftkey(int keyCode,int action){
+            if(keyCode==-6)return true;
+            try{String n=getKeyName(keyCode);return "Left Softkey".equalsIgnoreCase(n)||"Left Soft Key".equalsIgnoreCase(n)||"Soft1".equalsIgnoreCase(n)||"Soft 1".equalsIgnoreCase(n)||"Softkey1".equalsIgnoreCase(n)||"Softkey 1".equalsIgnoreCase(n)||"Left Selection".equalsIgnoreCase(n);}
+            catch(Throwable ignored){return false;}
+        }
+        private boolean isRightSoftkey(int keyCode, int action) {
+            if (keyCode == -7) return true;
+            try {
+                String name = getKeyName(keyCode);
+                return "Right Softkey".equalsIgnoreCase(name) ||
+                        "Right Soft Key".equalsIgnoreCase(name) ||
+                        "Soft2".equalsIgnoreCase(name) || "Soft 2".equalsIgnoreCase(name) ||
+                        "Softkey2".equalsIgnoreCase(name) || "Softkey 2".equalsIgnoreCase(name) ||
+                        "Right Selection".equalsIgnoreCase(name) ||
+                        "Options".equalsIgnoreCase(name) || "Menu".equalsIgnoreCase(name);
+            } catch (Throwable ignored) { return false; }
+        }
+
+        private void clearInput() {
+            forward = back = left = right = false;
+            camLeft = camRight = camUp = camDown = false;
+        }
+
+        private void exitToGameMenu() {
+            if (lanSession != null) { lanSession.close(); lanSession = null; }
+            lanMenu = false;
+            lanMessage = "";
+            lanPlayers = null;
+            for (int i=0;i<lanAvatars.length;i++) lanAvatars[i]=null;
+            paused = false;
+            configMode = false;
+            avatarEditorMode = false;
+            menuSettings = false;
+            menuMode = true;
+            playMusic(3);
+            loaded = false;
+            selectedGame = currentGame;
+            menuCursor = selectedGame;
+            clearInput();
+        }
+
+        private void openPauseMenu() {
+            playerListOpen=false;
+            paused = true;
+            configMode = false;
+            pauseSelection = 0;
+            clearInput();
+        }
+
+        private void updateAvatarPreviewRotation(int dt) {
+            if(!avatarEditorMode)return;
+            // Always rotate the preview. This avoids relying on keypad repeat,
+            // keyReleased, or device-specific game-action mappings.
+            avatarPreviewYaw+=60.0f*(float)dt/1000.0f;
+            if(avatarPreviewYaw>=360.0f)avatarPreviewYaw-=360.0f;
+            if(avatarPreviewYaw<0.0f)avatarPreviewYaw+=360.0f;
+        }
+
+        private void keepAvatarSelectionVisible() {
+            int panelHeight=Math.min(getHeight()-8,Math.max(120,getHeight()*4/5));
+            int fontHeight=Font.getDefaultFont().getHeight();
+            int previewHeight=Math.max(48,Math.min(panelHeight/2,
+                    panelHeight-4*fontHeight-40));
+            int rowsY=(getHeight()-panelHeight)/2+20+previewHeight+5;
+            int footerY=(getHeight()-panelHeight)/2+panelHeight-fontHeight-2;
+            int rowHeight=Math.max(18,fontHeight+4);
+            int visibleRows=Math.max(1,(footerY-rowsY-3)/rowHeight);
+            if(avatarColorSelection<avatarListScroll)
+                avatarListScroll=avatarColorSelection;
+            else if(avatarColorSelection>=avatarListScroll+visibleRows)
+                avatarListScroll=avatarColorSelection-visibleRows+1;
+            int maxScroll=Math.max(0,7-visibleRows);
+            if(avatarListScroll>maxScroll)avatarListScroll=maxScroll;
+            if(avatarListScroll<0)avatarListScroll=0;
+        }
+
+        private void handleAvatarSettingsInput(int keyCode,int action,
+                boolean up,boolean down,boolean leftKey,boolean rightKey,boolean fire) {
+            if(keyCode==KEY_STAR||keyCode==KEY_POUND||keyCode==KEY_NUM0) {
+                avatarEditorMode=false;
+                avatarRotateLeftHeld=false;avatarRotateRightHeld=false;
+                avatarPreviewAngularVelocity=0.0f;
+                settingsMessage="";
+                return;
+            }
+            if(up) {
+                avatarColorSelection=(avatarColorSelection+6)%7;
+                keepAvatarSelectionVisible();
+            } else if(down) {
+                avatarColorSelection=(avatarColorSelection+1)%7;
+                keepAvatarSelectionVisible();
+            }
+            else if(fire) {
+                int direction=1;
+                if(avatarColorSelection==0||avatarColorSelection==1||avatarColorSelection==2) {
+                    int[] palette=avatarColorSelection==0?AVATAR_SKIN_PALETTE:AVATAR_CLOTHING_PALETTE;
+                    int current=avatarColorSelection==0?avatarSkinColor:
+                            (avatarColorSelection==1?avatarShirtColor:avatarLegColor);
+                    int index=0;
+                    for(int i=0;i<palette.length;i++)if(palette[i]==current){index=i;break;}
+                    int next=palette[(index+direction+palette.length)%palette.length];
+                    if(avatarColorSelection==0)avatarSkinColor=next;
+                    else if(avatarColorSelection==1)avatarShirtColor=next;
+                    else avatarLegColor=next;
+                } else if(avatarColorSelection==3) {
+                    avatarShirtStyle=(avatarShirtStyle+direction+7)%7;
+                } else if(avatarColorSelection==4) {
+                    avatarPantsStyle=(avatarPantsStyle+direction+6)%6;
+                } else if(avatarColorSelection==5) {
+                    avatarHatStyle=(avatarHatStyle+direction+6)%6;
+                } else {
+                    avatarFaceStyle=(avatarFaceStyle+direction+4)%4;
+                }
+                applyAvatarColors();
+                settingsMessage=saveSettings()?"Avatar saved":"Could not save avatar";
+            }
+        }
+
+        private void applyAvatarColors() {
+            if(avatar!=null) {
+                try {
+                    if(activeModel!=null)avatar.removeChild(activeModel);
+                    activeModel=buildNoob(false);
+                    avatar.addChild(activeModel);
+                    animateNoob();
+                } catch(Throwable t) {
+                    modelError="Avatar update: "+t.toString();
+                }
+            }
+            rebuildAvatarPreview();
+        }
+
+        private Group buildPreviewAvatar() throws Exception {
+            Group oldLeft=leftArm,oldRight=rightArm,oldLegL=leftLeg,oldLegR=rightLeg;
+            Group oldSword=swordVisual;
+            try {
+                return buildNoob(false);
+            } finally {
+                leftArm=oldLeft;rightArm=oldRight;
+                leftLeg=oldLegL;rightLeg=oldLegR;
+                swordVisual=oldSword;
+            }
+        }
+
+        private void ensureAvatarPreview() {
+            if(avatarPreviewWorld!=null&&avatarPreviewCamera!=null&&
+                    avatarPreviewModel!=null)return;
+            // Discard an incomplete preview instead of leaving null camera/model
+            // references behind after a failed M3G initialization.
+            avatarPreviewWorld=null;
+            avatarPreviewCamera=null;
+            avatarPreviewModel=null;
+            try {
+                avatarPreviewWorld=new World();
+                installClassicLighting(avatarPreviewWorld);
+                Background background=new Background();
+                background.setColor(0x7898B5);
+                background.setColorClearEnable(true);
+                background.setDepthClearEnable(true);
+                avatarPreviewWorld.setBackground(background);
+                // Small static showroom: floor, rear wall and two low side pillars.
+                avatarPreviewWorld.addChild(makeBox(0.0f,-0.13f,0.0f,
+                        8.0f,0.25f,7.0f,0x657D58));
+                avatarPreviewWorld.addChild(makeBox(0.0f,2.0f,-3.15f,
+                        8.0f,4.0f,0.18f,0x9AAFC0));
+                avatarPreviewWorld.addChild(makeBox(-3.1f,0.45f,-1.0f,
+                        0.45f,0.9f,0.45f,0xC6A66A));
+                avatarPreviewWorld.addChild(makeBox(3.1f,0.45f,-1.0f,
+                        0.45f,0.9f,0.45f,0xC6A66A));
+                avatarPreviewWorld.addChild(makeBox(0.0f,0.015f,0.0f,
+                        2.4f,0.03f,2.4f,0x879B68));
+                avatarPreviewCamera=new Camera();
+                avatarPreviewCamera.setPerspective(32.0f,0.75f,0.1f,20.0f);
+                avatarPreviewCamera.setTranslation(0.0f,1.25f,5.0f);
+                avatarPreviewWorld.addChild(avatarPreviewCamera);
+                avatarPreviewWorld.setActiveCamera(avatarPreviewCamera);
+                avatarPreviewModel=buildPreviewAvatar();
+                avatarPreviewWorld.addChild(avatarPreviewModel);
+            } catch(Throwable t) {
+                avatarPreviewWorld=null;
+                avatarPreviewModel=null;
+                modelError="Avatar preview: "+t.toString();
+            }
+        }
+
+        private void rebuildAvatarPreview() {
+            if(avatarPreviewWorld==null||avatarPreviewCamera==null||
+                    avatarPreviewModel==null) {
+                avatarPreviewWorld=null;
+                avatarPreviewCamera=null;
+                avatarPreviewModel=null;
+                ensureAvatarPreview();
+                return;
+            }
+            try {
+                avatarPreviewWorld.removeChild(avatarPreviewModel);
+                Group replacement=buildPreviewAvatar();
+                if(replacement==null)
+                    throw new Exception("Avatar model is null");
+                avatarPreviewWorld.addChild(replacement);
+                avatarPreviewModel=replacement;
+            } catch(Throwable t) {
+                avatarPreviewWorld=null;
+                avatarPreviewCamera=null;
+                avatarPreviewModel=null;
+                modelError="Avatar preview: "+t.toString();
+            }
+        }
+
+        private void renderAvatarPreview(Graphics g,int x,int y,int width,int height) {
+            ensureAvatarPreview();
+            if(avatarPreviewWorld==null||avatarPreviewCamera==null||
+                    avatarPreviewModel==null||width<1||height<1)return;
+            boolean bound=false;
+            try {
+                // Render directly into the screen target: no offscreen image, getRGB,
+                // software upscaling, or intermediate pixel buffers.
+                avatarPreviewCamera.setPerspective(32.0f,
+                        (float)width/(float)height,0.1f,20.0f);
+                // Keep the avatar facing the camera until the user rotates it.
+                avatarPreviewModel.setOrientation(avatarPreviewYaw,0.0f,1.0f,0.0f);
+                g3d.bindTarget(g,true,0);
+                bound=true;
+                g3d.setViewport(x,y,width,height);
+                g3d.render(avatarPreviewWorld);
+            } catch(Throwable t) {
+                modelError="Avatar preview: "+t.toString();
+            } finally {
+                if(bound)try{g3d.releaseTarget();}catch(Throwable ignored){}
+            }
+        }
+
+        private void drawAvatarSettingsPanel(Graphics g) {
+            int width=getWidth(),height=getHeight();
+            if(menuSettings) {
+                g.setColor(0x101820);
+                g.fillRect(0,0,width,height);
+                drawMenuPanorama(g);
+                if(scaledLogo!=null)
+                    g.drawImage(scaledLogo,(width-scaledLogo.getWidth())/2,
+                            Math.max(3,height/28),Graphics.TOP|Graphics.LEFT);
+            }
+            if(pauseOverlayPixels==null||pauseOverlayWidth!=width||pauseOverlayHeight!=height) {
+                pauseOverlayWidth=width;pauseOverlayHeight=height;
+                pauseOverlayPixels=new int[width*height];
+                for(int i=0;i<pauseOverlayPixels.length;i++)pauseOverlayPixels[i]=0x9908121E;
+            }
+            g.drawRGB(pauseOverlayPixels,0,width,0,0,width,height,true);
+            int panelWidth=Math.min(280,Math.max(1,width-10));
+            int panelHeight=Math.min(height-8,Math.max(120,height*4/5));
+            int panelX=(width-panelWidth)/2,panelY=(height-panelHeight)/2;
+            g.setColor(0x1A2D40);
+            g.fillRoundRect(panelX,panelY,panelWidth,panelHeight,14,14);
+            Font font=g.getFont();
+            g.setColor(0xFFFFFF);
+            g.drawString("AVATAR CUSTOMIZER",width/2,panelY+4,Graphics.TOP|Graphics.HCENTER);
+
+            int previewHeight=Math.max(48,Math.min(panelHeight/2,
+                    panelHeight-4*font.getHeight()-40));
+            int previewWidth=panelWidth-16;
+            int previewX=(width-previewWidth)/2;
+            int previewY=panelY+20;
+            g.setColor(0x101B27);
+            g.fillRoundRect(previewX-3,previewY-3,previewWidth+6,previewHeight+6,9,9);
+            renderAvatarPreview(g,previewX,previewY,previewWidth,previewHeight);
+
+            String[] names={"Skin","Shirt color","Pants color","Shirt","Pants","Hat","Face"};
+            String[] faceNames={"Classic","Smile","Grin","Surprised"};
+            int[] colors={avatarSkinColor,avatarShirtColor,avatarLegColor,0xFFFFFF,0xFFFFFF,0xFFFFFF,0xFFFFFF};
+            int safeFaceStyle=avatarFaceStyle;
+            if(safeFaceStyle<0||safeFaceStyle>=faceNames.length)safeFaceStyle=0;
+            String[] values={"","","",avatarShirtStyle==0?"None":avatarShirtStyle+"/6",
+                    avatarPantsStyle==0?"None":avatarPantsStyle+"/5",
+                    avatarHatStyle==0?"None":avatarHatStyle+"/5",faceNames[safeFaceStyle]};
+            int rowsY=previewY+previewHeight+5;
+            int footerY=panelY+panelHeight-font.getHeight()-2;
+            int rowHeight=Math.max(18,font.getHeight()+4);
+            int listHeight=Math.max(0,footerY-rowsY-3);
+            int visibleRows=Math.max(1,listHeight/rowHeight);
+            int maxScroll=Math.max(0,7-visibleRows);
+            if(avatarListScroll>maxScroll)avatarListScroll=maxScroll;
+            int oldClipX=g.getClipX(),oldClipY=g.getClipY();
+            int oldClipW=g.getClipWidth(),oldClipH=g.getClipHeight();
+            g.setClip(panelX+5,rowsY,panelWidth-10,listHeight);
+            for(int visible=0;visible<visibleRows;visible++) {
+                int i=avatarListScroll+visible;
+                if(i>=7)break;
+                int y=rowsY+visible*rowHeight;
+                g.setColor(i==avatarColorSelection?0xF5C542:0x263B50);
+                g.fillRoundRect(panelX+7,y,panelWidth-14,rowHeight-1,5,5);
+                g.setColor(i==avatarColorSelection?0x17202A:0xFFFFFF);
+                g.drawString(names[i],panelX+13,y+2,Graphics.TOP|Graphics.LEFT);
+                if(i<3) {
+                    g.setColor(colors[i]);
+                    g.fillRect(panelX+panelWidth-35,y+4,19,rowHeight-8);
+                } else {
+                    g.drawString(values[i],panelX+panelWidth-13,y+2,
+                            Graphics.TOP|Graphics.RIGHT);
+                }
+            }
+            g.setClip(oldClipX,oldClipY,oldClipW,oldClipH);
+            g.setColor(0xFFFFFF);
+            g.drawString("UP/DOWN scroll  LEFT/RIGHT rotate",
+                    width/2,footerY,Graphics.TOP|Graphics.HCENTER);
+        }
+
+        private void drawSettingsPanel(Graphics g, boolean pausedPanel) {
+            if(avatarEditorMode) {
+                drawAvatarSettingsPanel(g);
+                return;
+            }
+            int width=getWidth(),height=getHeight();
+            if(pauseOverlayPixels==null||pauseOverlayWidth!=width||pauseOverlayHeight!=height) {
+                pauseOverlayWidth=width;pauseOverlayHeight=height;
+                pauseOverlayPixels=new int[width*height];
+                for(int i=0;i<pauseOverlayPixels.length;i++)pauseOverlayPixels[i]=0x9908121E;
+            }
+            g.drawRGB(pauseOverlayPixels,0,width,0,0,width,height,true);
+            int rowHeight=Math.max(18,g.getFont().getHeight()+5);
+            int optionCount=controlMapMode?Math.min(8,Math.max(1,(height-88)/rowHeight)):
+                    Math.min(6,Math.max(1,(height-88)/rowHeight));
+            int panelWidth=Math.min(270,Math.max(1,width-12));
+            int panelHeight=Math.min(height-8,48+optionCount*rowHeight+34);
+            int panelX=(width-panelWidth)/2,panelY=(height-panelHeight)/2;
+            g.setColor(0x1A2D40);
+            g.fillRoundRect(panelX,panelY,panelWidth,panelHeight,14,14);
+            g.setColor(0xFFFFFF);
+            g.drawString(controlMapMode?"MAP BUTTONS":"SETTINGS",width/2,panelY+8,
+                    Graphics.TOP|Graphics.HCENTER);
+            if(controlMapMode) {
+                int first=Math.max(0,Math.min(controlSelection-(optionCount/2),
+                        CONTROL_NAMES.length-optionCount));
+                for(int row=0;row<optionCount;row++) {
+                    int index=first+row,y=panelY+31+row*rowHeight;
+                    g.setColor(index==controlSelection?0xF5C542:0x263B50);
+                    g.fillRoundRect(panelX+7,y,panelWidth-14,rowHeight-2,7,7);
+                    g.setColor(index==controlSelection?0x17202A:0xFFFFFF);
+                    g.drawString(CONTROL_NAMES[index]+": "+controlKeyName(mappedControls[index]),
+                            width/2,y+1,Graphics.TOP|Graphics.HCENTER);
+                }
+            } else {
+                String speed=sensitivityLevel==0?"Low":(sensitivityLevel==1?"Normal":"High");
+                String bots=botCountSetting==BOT_COUNT_RANDOM?"Random (3-5)":
+                        (botCountSetting==BOT_COUNT_OFF?"Off":""+botCountSetting);
+                String[] options={"Camera sensitivity: "+speed,
+                    "Invert camera: "+(invertCamera?"On":"Off"),
+                    "Bots: "+bots, "Map buttons", "Avatar", "Back"};
+                int first=Math.max(0,Math.min(configSelection-(optionCount/2),
+                        options.length-optionCount));
+                for(int row=0;row<optionCount;row++) {
+                    int index=first+row,y=panelY+31+row*rowHeight;
+                    g.setColor(index==configSelection?0xF5C542:0x263B50);
+                    g.fillRoundRect(panelX+7,y,panelWidth-14,rowHeight-2,7,7);
+                    g.setColor(index==configSelection?0x17202A:0xFFFFFF);
+                    g.drawString(options[index],width/2,y+1,Graphics.TOP|Graphics.HCENTER);
+                }
+            }
+            g.setColor(0xFFFFFF);
+            String help=controlMapMode?(awaitingControlKey?"Press 1-9 to assign":"UP/DOWN select  FIRE map"):
+                    "UP/DOWN select  LEFT/RIGHT change";
+            g.drawString(help,width/2,panelY+panelHeight-g.getFont().getHeight()*2-6,
+                    Graphics.TOP|Graphics.HCENTER);
+            g.drawString(settingsMessage.length()>0?settingsMessage:
+                    (controlMapMode?"* BACK":"FIRE select  * BACK"),
+                    width/2,panelY+panelHeight-g.getFont().getHeight()-4,
+                    Graphics.TOP|Graphics.HCENTER);
+        }
+
+        private String controlKeyName(int keyCode) {
+            for(int i=1;i<=9;i++)if(keyCode==KEY_NUM0+i)return ""+i;
+            return "?";
+        }
+
+        private void handleSettingsInput(int keyCode,int action) {
+            boolean up=action==UP||keyCode==KEY_NUM2;
+            boolean down=action==DOWN||keyCode==KEY_NUM8;
+            boolean leftKey=action==LEFT||keyCode==KEY_NUM4;
+            boolean rightKey=action==RIGHT||keyCode==KEY_NUM6;
+            boolean fire=action==FIRE||keyCode==KEY_NUM5;
+            if(controlMapMode) {
+                if(awaitingControlKey) {
+                    int keyIndex=-1;
+                    for(int i=1;i<=9;i++)if(keyCode==KEY_NUM0+i)keyIndex=i;
+                    if(keyIndex<0) {
+                        settingsMessage="Choose a number from 1 to 9";
+                        return;
+                    }
+                    int assigned=KEY_NUM0+keyIndex;
+                    for(int i=0;i<mappedControls.length;i++) {
+                        if(i!=controlSelection&&mappedControls[i]==assigned) {
+                            settingsMessage="That button is already assigned";
+                            return;
+                        }
+                    }
+                    mappedControls[controlSelection]=assigned;
+                    awaitingControlKey=false;
+                    settingsMessage=saveSettings()?"Assigned "+keyIndex+" - saved":
+                            "Assigned, but could not save";
+                    return;
+                }
+                if(keyCode==KEY_STAR||keyCode==KEY_POUND||keyCode==KEY_NUM0) {
+                    controlMapMode=false;
+                    settingsMessage="";
+                    return;
+                }
+                if(up)controlSelection=(controlSelection+CONTROL_NAMES.length-1)%CONTROL_NAMES.length;
+                else if(down)controlSelection=(controlSelection+1)%CONTROL_NAMES.length;
+                else if(fire) {
+                    awaitingControlKey=true;
+                    settingsMessage="Press a number from 1 to 9";
+                }
+                return;
+            }
+            if(avatarEditorMode) {
+                handleAvatarSettingsInput(keyCode,action,up,down,leftKey,rightKey,fire);
+                return;
+            }
+            if(keyCode==KEY_STAR||keyCode==KEY_POUND) {
+                if(menuSettings)menuSettings=false;
+                else configMode=false;
+                avatarEditorMode=false;
+                settingsMessage="";
+                return;
+            }
+            if(up)configSelection=(configSelection+5)%6;
+            else if(down)configSelection=(configSelection+1)%6;
+            else if((leftKey||rightKey)&&configSelection<3) {
+                changeCameraSetting(rightKey?1:-1);
+            } else if(fire) {
+                if(configSelection<3)changeCameraSetting(1);
+                else if(configSelection==3) {
+                    controlMapMode=true;
+                    controlSelection=0;
+                    awaitingControlKey=false;
+                    settingsMessage="";
+                } else if(configSelection==4) {
+                    avatarEditorMode=true;
+                    avatarRotateLeftHeld=false;avatarRotateRightHeld=false;
+                    avatarPreviewAngularVelocity=0.0f;
+                    avatarColorSelection=0;
+                    avatarListScroll=0;
+                    settingsMessage="";
+                    ensureAvatarPreview();
+                } else {
+                    if(menuSettings)menuSettings=false;
+                    else configMode=false;
+                }
+            }
+        }
+
+        private void changeCameraSetting(int direction) {
+            if (configSelection == 0) {
+                sensitivityLevel = (sensitivityLevel + direction + 3) % 3;
+                if (sensitivityLevel == 0) cameraSensitivity = 0.0015f;
+                else if (sensitivityLevel == 1) cameraSensitivity = 0.0025f;
+                else cameraSensitivity = 0.0040f;
+            } else if (configSelection == 1) {
+                invertCamera = !invertCamera;
+            } else if (configSelection == 2) {
+                botCountSetting=(botCountSetting+direction+7)%7;
+            }
+            settingsMessage=saveSettings()?"Saved":"Settings could not be saved";
+        }
+
+        private void handlePauseInput(int keyCode, int action) {
+            boolean up = action == UP || keyCode == KEY_NUM2;
+            boolean down = action == DOWN || keyCode == KEY_NUM8;
+            boolean fire = action == FIRE || keyCode == KEY_NUM5;
+            if (configMode) {
+                handleSettingsInput(keyCode,action);
+                return;
+            }
+            if (up) pauseSelection = (pauseSelection + 3) % 4;
+            else if (down) pauseSelection = (pauseSelection + 1) % 4;
+            else if (fire) {
+                if (pauseSelection == 0) {
+                    paused = false;
+                } else if (pauseSelection == 1) {
+                    configMode = true;
+                    configSelection = 0;
+                    controlMapMode = false;
+                    awaitingControlKey = false;
+                    settingsMessage = "";
+                } else if (pauseSelection == 2) {
+                    try { startGame(currentGame); }
+                    catch (Throwable t) { initError = "Restart: " + t.toString(); }
+                } else {
+                    exitToGameMenu();
+                }
+            }
+        }
+
+        private void drawPauseMenu(Graphics g) {
+            if(configMode) {
+                drawSettingsPanel(g,true);
+                return;
+            }
+            int width = getWidth(), height = getHeight();
+            if (pauseOverlayPixels == null || pauseOverlayWidth != width || pauseOverlayHeight != height) {
+                pauseOverlayWidth = width; pauseOverlayHeight = height;
+                pauseOverlayPixels = new int[width * height];
+                for (int i = 0; i < pauseOverlayPixels.length; i++) pauseOverlayPixels[i] = 0x9908121E;
+            }
+            int panelWidth = Math.min(260, Math.max(1, width - 16));
+            int preferredRowHeight = Math.max(22, g.getFont().getHeight() + 8);
+            int optionCount = 4;
+            boolean showLanCode=lanSession!=null&&lanSession.isConnected();
+            int panelHeight = Math.min(height - 8, 50 + optionCount * preferredRowHeight + 32+(showLanCode?24:0));
+            int panelX = (width - panelWidth) / 2, panelY = (height - panelHeight) / 2;
+            g.drawRGB(pauseOverlayPixels, 0, width, 0, 0, width, height, true);
+            g.setColor(0x1A2D40);
+            g.fillRoundRect(panelX, panelY, panelWidth, panelHeight, 14, 14);
+            g.setColor(0xFFFFFF);
+            g.drawString("PAUSED", width / 2,
+                    panelY + 10, Graphics.TOP | Graphics.HCENTER);
+            if(showLanCode){
+                g.setColor(0xF5C542);
+                g.drawString("LAN ID: "+lanSession.getRoomCode(),width/2,panelY+31,Graphics.TOP|Graphics.HCENTER);
+            }
+            String[] options;
+            int selected;
+            options = new String[] {"Resume", "Configure", "Restart", "Exit to game menu"};
+            selected = pauseSelection;
+            int firstY = panelY + (showLanCode?54:38);
+            int footerSpace=g.getFont().getHeight()*2+14;
+            int fitRow=(panelHeight-(firstY-panelY)-footerSpace-6)/optionCount;
+            int rowHeight=Math.max(14,Math.min(preferredRowHeight,fitRow));
+            int buttonX = panelX + 8, buttonWidth = panelWidth - 16;
+            for (int i = 0; i < options.length; i++) {
+                int y = firstY + i * rowHeight;
+                if (y + rowHeight > panelY + panelHeight - 16) break;
+                g.setColor(i == selected ? 0xF5C542 : 0x263B50);
+                g.fillRoundRect(buttonX, y, buttonWidth, rowHeight - 2, 8, 8);
+                g.setColor(i == selected ? 0x17202A : 0xFFFFFF);
+                g.drawString(options[i], width / 2, y + 2,
+                        Graphics.TOP | Graphics.HCENTER);
+            }
+            g.setColor(0xFFFFFF);
+            int footerY = panelY + panelHeight - 2 * g.getFont().getHeight() - 8;
+            g.drawString("UP/DOWN: select  FIRE: confirm",
+                    width / 2, footerY, Graphics.TOP | Graphics.HCENTER);
+            g.drawString("RIGHT SOFTKEY: resume",
+                    width / 2, footerY + g.getFont().getHeight(),
+                    Graphics.TOP | Graphics.HCENTER);
+        }
+
+        private void handleStudioInput(int keyCode, int action) {
+            if (keyCode == KEY_NUM7 || keyCode == KEY_NUM9) {
+                if (studioObjectCount == 0) {
+                    studioPalette = (studioPalette +
+                            (keyCode == KEY_NUM9 ? 1 : STUDIO_TYPE_NAMES.length - 1)) %
+                            STUDIO_TYPE_NAMES.length;
+                    modelStatus = "Studio palette: " + STUDIO_TYPE_NAMES[studioPalette];
+                } else {
+                    if (studioSelected < 0) studioSelected =
+                            keyCode == KEY_NUM9 ? 0 : studioObjectCount - 1;
+                    else studioSelected = (studioSelected +
+                            (keyCode == KEY_NUM9 ? 1 : studioObjectCount - 1)) % studioObjectCount;
+                    modelStatus = "Studio object " + (studioSelected + 1);
+                }
+            } else if (keyCode == KEY_NUM5 || action == FIRE) {
+                addStudioObject();
+            } else if (keyCode == KEY_NUM2 || keyCode == KEY_NUM4 ||
+                    keyCode == KEY_NUM6 || keyCode == KEY_NUM8) {
+                moveStudioObject(keyCode);
+            } else if (keyCode == KEY_STAR) {
+                studioProperty = (studioProperty + 1) % STUDIO_PROPERTY_NAMES.length;
+            } else if (keyCode == KEY_NUM1) {
+                adjustStudioProperty(-1);
+            } else if (keyCode == KEY_POUND) {
+                adjustStudioProperty(1);
+            } else if (keyCode == KEY_NUM0) {
+                deleteStudioObject();
+            } else if (action == LEFT) camLeft = true;
+            else if (action == RIGHT) camRight = true;
+            else if (action == UP) camUp = true;
+            else if (action == DOWN) camDown = true;
+        }
+
+        private void addStudioObject() {
+            if (studioObjectCount >= studioObjects.length) {
+                modelStatus = "Studio full - delete an object first";
+                return;
+            }
+            int type = studioPalette;
+            float sx=2.0f, sy=2.0f, sz=2.0f;
+            int color = STUDIO_COLORS[type % STUDIO_COLORS.length];
+            if (type == 1) { sx=4.0f; sy=0.5f; sz=4.0f; }
+            else if (type == 2) { sx=2.0f; sy=0.5f; sz=2.0f; }
+            else if (type == 3) { sx=1.2f; sy=3.0f; sz=1.2f; }
+            else if (type == 4) { sx=2.0f; sy=0.25f; sz=2.0f; }
+            int column = studioObjectCount % 5;
+            int row = studioObjectCount / 5;
+            float x = (column - 2) * 2.6f;
+            float z = -2.0f - row * 2.6f;
+            float y = sy * 0.5f;
+            StudioObject object = new StudioObject(type,x,y,z,sx,sy,sz,color);
+            studioObjects[studioObjectCount] = object;
+            object.node = makeStuddedBox(x,y,z,sx,sy,sz,color);
+            world.addChild(object.node);
+            studioSelected = studioObjectCount++;
+            studioPalette = (studioPalette + 1) % STUDIO_TYPE_NAMES.length;
+            modelStatus = "Studio: added " + STUDIO_TYPE_NAMES[type];
+        }
+
+        private void moveStudioObject(int keyCode) {
+            StudioObject object = getSelectedStudioObject();
+            if (object == null) {
+                modelStatus = "Studio: add an object with 5";
+                return;
+            }
+            float step = 0.5f;
+            if (keyCode == KEY_NUM2) object.z -= step;
+            else if (keyCode == KEY_NUM8) object.z += step;
+            else if (keyCode == KEY_NUM4) object.x -= step;
+            else if (keyCode == KEY_NUM6) object.x += step;
+            rebuildStudioObject(object);
+        }
+
+        private StudioObject getSelectedStudioObject() {
+            return studioSelected >= 0 && studioSelected < studioObjectCount ?
+                    studioObjects[studioSelected] : null;
+        }
+
+        private void adjustStudioProperty(int direction) {
+            StudioObject object = getSelectedStudioObject();
+            if (object == null) {
+                studioPalette = (studioPalette + direction + STUDIO_TYPE_NAMES.length) %
+                        STUDIO_TYPE_NAMES.length;
+                modelStatus = "Studio palette: " + STUDIO_TYPE_NAMES[studioPalette];
+                return;
+            }
+            float step = 0.25f * direction;
+            switch (studioProperty) {
+                case 0: object.x += step; break;
+                case 1: object.y += step; break;
+                case 2: object.z += step; break;
+                case 3: object.sx = clampStudioSize(object.sx + step); break;
+                case 4: object.sy = clampStudioSize(object.sy + step); break;
+                case 5: object.sz = clampStudioSize(object.sz + step); break;
+                default:
+                    int colorIndex = 0;
+                    for (int i=0; i<STUDIO_COLORS.length; i++)
+                        if (STUDIO_COLORS[i] == object.color) colorIndex = i;
+                    colorIndex = (colorIndex + direction + STUDIO_COLORS.length) %
+                            STUDIO_COLORS.length;
+                    object.color = STUDIO_COLORS[colorIndex];
+                    break;
+            }
+            rebuildStudioObject(object);
+        }
+
+        private float clampStudioSize(float size) {
+            if (size < 0.25f) return 0.25f;
+            if (size > 16.0f) return 16.0f;
+            return size;
+        }
+
+        private void rebuildStudioObject(StudioObject object) {
+            if (object.node != null) {
+                try { world.removeChild(object.node); } catch (Throwable ignored) {}
+            }
+            object.node = makeStuddedBox(object.x,object.y,object.z,
+                    object.sx,object.sy,object.sz,object.color);
+            world.addChild(object.node);
+            modelStatus = "Studio object " + (studioSelected + 1) +
+                    ": " + STUDIO_PROPERTY_NAMES[studioProperty];
+        }
+
+        private void deleteStudioObject() {
+            if (studioSelected < 0 || studioSelected >= studioObjectCount) return;
+            StudioObject object = studioObjects[studioSelected];
+            try { world.removeChild(object.node); } catch (Throwable ignored) {}
+            for (int i=studioSelected; i<studioObjectCount-1; i++)
+                studioObjects[i] = studioObjects[i+1];
+            studioObjects[--studioObjectCount] = null;
+            if (studioObjectCount == 0) studioSelected = -1;
+            else if (studioSelected >= studioObjectCount) studioSelected = studioObjectCount - 1;
+            modelStatus = "Studio: object deleted";
+        }
+
+        private void syncStudioNodes() {
+            for (int i=0; i<studioObjectCount; i++) {
+                StudioObject object = studioObjects[i];
+                if (object == null) continue;
+                object.node = makeStuddedBox(object.x,object.y,object.z,
+                        object.sx,object.sy,object.sz,object.color);
+                world.addChild(object.node);
+            }
+        }
+
+        private void toggleStudioTest() {
+            studioTesting = !studioTesting;
+            clearInput();
+            if (studioTesting) {
+                resetPlayerSpawn();
+                if (avatar != null) avatar.setTranslation(px,jumpY,pz);
+                invulnerableUntil = gameClock + 1200;
+                modelStatus = "Studio - TESTING (3 returns to edit)";
+            } else {
+                modelStatus = "Studio - Edit mode";
+            }
+        }
+
+        private boolean isTouchingStudioHazard() {
+            if (!studioTesting) return false;
+            for (int i=0; i<studioObjectCount; i++) {
+                StudioObject object = studioObjects[i];
+                if (object == null || object.type != 2) continue;
+                boolean vertical = jumpY <= object.y + object.sy * 0.5f + 0.03f &&
+                        jumpY + 1.9f > object.y - object.sy * 0.5f;
+                if (vertical && Math.abs(px-object.x) < object.sx*0.5f + 0.25f &&
+                        Math.abs(pz-object.z) < object.sz*0.5f + 0.25f) return true;
+            }
+            return false;
+        }
+
+        private void drawStudioHud(Graphics g) {
+            int line = g.getFont().getHeight();
+            int panelHeight = line * 5 + 6;
+            int top = getHeight() - panelHeight;
+            g.setColor(0x102030);
+            g.fillRect(0, top, getWidth(), panelHeight);
+            g.setColor(0xFFFFFF);
+            StudioObject object = getSelectedStudioObject();
+            String first = studioTesting ? "STUDIO TEST - 3: EDIT" :
+                    "STUDIO - " + (object == null ? "No object" :
+                    STUDIO_TYPE_NAMES[object.type] + " " + (studioSelected + 1) +
+                    "/" + studioObjectCount);
+            String second = object == null ? "Palette: " + STUDIO_TYPE_NAMES[studioPalette] :
+                    STUDIO_PROPERTY_NAMES[studioProperty] + ": " +
+                    studioPropertyValue(object);
+            g.drawString(first, 3, top + 1, Graphics.TOP | Graphics.LEFT);
+            g.drawString(second, 3, top + line + 1, Graphics.TOP | Graphics.LEFT);
+            g.drawString("7/9 select  5 add  2/4/6/8 move", 3, top + line*2 + 1,
+                    Graphics.TOP | Graphics.LEFT);
+            g.drawString("* property  1/# edit  0 delete", 3, top + line*3 + 1,
+                    Graphics.TOP | Graphics.LEFT);
+            g.drawString("D-pad camera  3 test  Softkey pause", 3, top + line*4 + 1,
+                    Graphics.TOP | Graphics.LEFT);
+        }
+
+        private String studioPropertyValue(StudioObject object) {
+            switch (studioProperty) {
+                case 0: return "" + object.x;
+                case 1: return "" + object.y;
+                case 2: return "" + object.z;
+                case 3: return "" + object.sx;
+                case 4: return "" + object.sy;
+                case 5: return "" + object.sz;
+                default: return "0x" + Integer.toHexString(object.color);
+            }
+        }
+
+        protected void keyPressed(int keyCode) {
+            int k = getGameAction(keyCode);
+            if (menuMode) {
+                if(menuSettings) {
+                    handleSettingsInput(keyCode,k);
+                    repaint();
+                    return;
+                }
+                if(keyCode==KEY_POUND && !lanMenu) {
+                    if(selectedGame==15){initError="Custom Map can only be played on this device";repaint();return;}
+                    lanMenu=true;
+                    lanMenuSelection=0;
+                    repaint();
+                    return;
+                }
+                if(keyCode==KEY_STAR) {
+                    menuSettings=true;
+                    configSelection=0;
+                    controlMapMode=false;
+                    awaitingControlKey=false;
+                    settingsMessage="";
+                    repaint();
+                    return;
+                }
+                if (lanMenu) {
+                    if (k == UP || keyCode == KEY_NUM2)
+                        lanMenuSelection = (lanMenuSelection + 2) % 3;
+                    else if (k == DOWN || keyCode == KEY_NUM8)
+                        lanMenuSelection = (lanMenuSelection + 1) % 3;
+                    else if (keyCode == KEY_POUND) lanMenu = false;
+                    else if (keyCode == KEY_NUM5 || k == FIRE) {
+                        if (lanMenuSelection == 0) {
+                            try {
+                                initError = "";
+                                startGame(selectedGame);
+                                lanSession = LanSession.host(selectedGame);
+                                lanPlayers = null;
+                                lanMessage = "LAN room ready. Pause to see the ID.";
+                            } catch (Throwable t) {
+                                lanMessage = "LAN host: " + t.toString();
+                                modelError = lanMessage;
+                                menuMode = true;
+                                lanMenu = true;
+                            }
+                        } else if (lanMenuSelection == 1) {
+                            lanCodeBox = new TextBox("Join by 6-digit LAN ID",
+                                    "", 6, TextField.NUMERIC);
+                            lanCodeBox.addCommand(lanConnectCommand);
+                            lanCodeBox.addCommand(lanCancelCommand);
+                            lanCodeBox.setCommandListener(this);
+                            Display.getDisplay(midlet).setCurrent(lanCodeBox);
+                            return;
+                        } else lanMenu = false;
+                    }
+                    repaint();
+                    return;
+                }
+                int pageSize = getHeight() < 220 ? 4 : 5;
+                int menuItemCount=GAME_NAMES.length+2;
+                int pageCount = (menuItemCount + pageSize - 1) / pageSize;
+                int page = menuCursor / pageSize;
+                int row = menuCursor % pageSize;
+                if (keyCode == KEY_NUM7) {
+                    page = (page + pageCount - 1) % pageCount;
+                    menuCursor = Math.min(page * pageSize + row, menuItemCount - 1);
+                } else if (keyCode == KEY_NUM9) {
+                    page = (page + 1) % pageCount;
+                    menuCursor = Math.min(page * pageSize + row, menuItemCount - 1);
+                } else if (k == UP || keyCode == KEY_NUM2)
+                    menuCursor = (menuCursor + menuItemCount - 1) % menuItemCount;
+                else if (k == DOWN || keyCode == KEY_NUM8)
+                    menuCursor = (menuCursor + 1) % menuItemCount;
+                else if (keyCode == KEY_NUM5 || k == FIRE) {
+                    if(menuCursor==GAME_NAMES.length) {
+                        selectedGame=15;
+                        showMapPicker();
+                        return;
+                    }
+                    if(menuCursor>GAME_NAMES.length) {
+                        midlet.quit();
+                        return;
+                    }
+                    selectedGame=menuCursor;
+                    try {
+                        initError = "";
+                        startGame(selectedGame);
+                    } catch (Throwable t) {
+                        menuMode = true;
+                        loaded = false;
+                        initError = "Game: " + t.toString();
+                    }
+                }
+                repaint();
+                return;
+            }
+            if(keyCode==KEY_NUM3){if(!paused){playerListOpen=!playerListOpen;repaint();}return;}
+            if(isLeftSoftkey(keyCode,k)&&!paused){openChat();return;}
+            if (isRightSoftkey(keyCode, k)) {
+                if (paused && configMode) {
+                    configMode=false;avatarEditorMode=false;controlMapMode=false;awaitingControlKey=false;
+                    avatarRotateLeftHeld=false;avatarRotateRightHeld=false;
+                    avatarPreviewAngularVelocity=0.0f;
+                } else if(paused)paused=false;else openPauseMenu();
+                repaint();return;
+            }
+            if (paused) {
+                if(configMode&&avatarEditorMode&&
+                        (k==LEFT||k==RIGHT||keyCode==KEY_NUM4||keyCode==KEY_NUM6)) {
+                    // Apply rotation on key-down: some MIDP devices/emulators do not
+                    // deliver reliable keyReleased events for numeric keypad keys.
+                    if(k==LEFT||keyCode==KEY_NUM4) {
+                        avatarPreviewYaw-=15.0f;
+                        if(avatarPreviewYaw<0.0f)avatarPreviewYaw+=360.0f;
+                    } else {
+                        avatarPreviewYaw+=15.0f;
+                        if(avatarPreviewYaw>=360.0f)avatarPreviewYaw-=360.0f;
+                    }
+                    avatarRotateLeftHeld=false;
+                    avatarRotateRightHeld=false;
+                    avatarPreviewAngularVelocity=0.0f;
+                    if(avatarPreviewModel!=null)
+                        avatarPreviewModel.setOrientation(avatarPreviewYaw,0.0f,1.0f,0.0f);
+                    repaint();
+                    return;
+                }
+                handlePauseInput(keyCode, k);
+                repaint();
+                return;
+            }
+            if (currentGame == 3 && !studioTesting) {
+                handleStudioInput(keyCode, k);
+                repaint();
+                return;
+            }
+            if (currentGame == 3 && studioTesting && keyCode == KEY_NUM0) {
+                exitToGameMenu();
+                repaint();
+                return;
+            }
+            if (keyCode == KEY_NUM0) {
+                exitToGameMenu();
+                repaint();
+                return;
+            }
+            if ((currentGame == 2 || currentGame == 10 || currentGame == 14) &&
+                    (keyCode == mappedControls[CONTROL_PREVIOUS] || keyCode == mappedControls[CONTROL_NEXT])) {
+                int n=currentGame==2?3:2;
+                inventorySelection=(inventorySelection+(keyCode==mappedControls[CONTROL_NEXT]?1:n-1))%n;
+                repaint(); return;
+            }
+            if ((currentGame == 2 || currentGame == 10 || currentGame == 14) &&
+                    keyCode == mappedControls[CONTROL_USE]) {
+                useInventoryItem(); repaint(); return;
+            }
+            if (currentGame == 13 && keyCode == mappedControls[CONTROL_USE]) {
+                useTycoonAction();
+                repaint();
+                return;
+            }
+            if (keyCode == mappedControls[CONTROL_FORWARD]) forward = true;
+            else if (keyCode == mappedControls[CONTROL_BACK]) back = true;
+            else if (keyCode == mappedControls[CONTROL_LEFT]) left = true;
+            else if (keyCode == mappedControls[CONTROL_RIGHT]) right = true;
+            else if (k == LEFT) camLeft = true;
+            else if (k == RIGHT) camRight = true;
+            else if (k == UP) camUp = true;
+            else if (k == DOWN) camDown = true;
+            else if ((keyCode == mappedControls[CONTROL_JUMP] || k == FIRE) && !jumping) {
+                sitting=false;
+                if (grounded) {
+                    grounded = false;
+                    playerVelocityY = 0.0075f;
+                    jumping = true;
+                }
+                animation = 2;
+                animateNoob();
+            }
+            else if (keyCode == KEY_STAR || keyCode == KEY_POUND) {
+                camDistance += keyCode == KEY_STAR ? -0.5f : 0.5f;
+                if (camDistance < 2) camDistance=2;
+                if (camDistance > 9) camDistance=9;
+                saveSettings();
+            }
+        }
+        protected void keyReleased(int keyCode) {
+            int k = getGameAction(keyCode);
+            if(paused&&configMode&&avatarEditorMode&&
+                    (k==LEFT||k==RIGHT||keyCode==KEY_NUM4||keyCode==KEY_NUM6)) {
+                if(k==LEFT||keyCode==KEY_NUM4)avatarRotateLeftHeld=false;
+                if(k==RIGHT||keyCode==KEY_NUM6)avatarRotateRightHeld=false;
+                return;
+            }
+            if (keyCode == mappedControls[CONTROL_FORWARD]) forward = false;
+            else if (keyCode == mappedControls[CONTROL_BACK]) back = false;
+            else if (keyCode == mappedControls[CONTROL_LEFT]) left = false;
+            else if (keyCode == mappedControls[CONTROL_RIGHT]) right = false;
+            else if (k == LEFT) camLeft = false;
+            else if (k == RIGHT) camRight = false;
+            else if (k == UP) camUp = false;
+            else if (k == DOWN) camDown = false;
+        }
+    }
+}
