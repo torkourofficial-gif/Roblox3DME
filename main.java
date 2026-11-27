@@ -2342,6 +2342,9 @@ public final class main extends MIDlet {
                 WorldObject o = worldObjects[i];
                 if (o != null && o.active) resolvePieceEnvironment(o.body,true);
             }
+            // Environment resolution can move pieces across cell boundaries.
+            // Rebuild buckets before pair resolution so no nearby pair is missed.
+            buildWorldObjectGrid();
             for (int i = 0; i < worldObjectScanLimit; i++) {
                 WorldObject a = worldObjects[i];
                 if (a == null || !a.active) continue;
