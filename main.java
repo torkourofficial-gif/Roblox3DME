@@ -63,7 +63,8 @@ public final class main extends MIDlet {
         private int sensitivityLevel = 1;
         private boolean invertCamera;
         // 0 = random 3-5, 1-5 = exact count, 6 = no bots.
-        private int botCountSetting;
+        // Default to one NPC on low-memory devices; saved user settings still override this.
+        private int botCountSetting=1;
         private static final int BOT_COUNT_RANDOM=0, BOT_COUNT_OFF=6;
         private static final String SETTINGS_STORE="Roblox3DMESettings";
         private int avatarSkinColor=0xF5C542, avatarShirtColor=0x1769AA,
