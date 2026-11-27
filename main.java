@@ -203,6 +203,9 @@ public final class main extends MIDlet {
         private long swordAttackUntil, nextWaveAt;
         private int zombieWave;
         private Group swordVisual, shovelVisual, heldBombVisual;
+        private Node[] shovelBarrierNodes=new Node[6];
+        private float[][] shovelBarrierBoxes=new float[6][6];
+        private long shovelBarrierUntil;
         private long itemAttackUntil;
         private Image logoSource, titleBackgroundSource, skySource;
         private Texture2D cachedPlayerFaceTexture, cachedZombieFaceTexture;
@@ -2263,6 +2266,10 @@ public final class main extends MIDlet {
         }
 
         private boolean isWorldBlocked(float x, float z, float bottom, float height) {
+            if(currentGame==2&&shovelBarrierUntil>gameClock){
+                for(int i=0;i<shovelBarrierBoxes.length;i++){float[] b=shovelBarrierBoxes[i];
+                    if(shovelBarrierNodes[i]!=null&&overlapsBlock(x,z,bottom,height,b[0],b[1],b[2],b[3],b[4],b[5],0.30f))return true;}
+            }
             if (worldObjects != null) {
                 for (int i = 0; i < worldObjectScanLimit; i++) {
                     WorldObject o = worldObjects[i];
@@ -2566,7 +2573,7 @@ public final class main extends MIDlet {
                 addWorldObject(makeBombModel(),px+fx*0.85f,jumpY+0.45f,pz+fz*0.85f,
                         fx*0.0018f,0,fz*0.0018f,0.34f,0.44f,0.34f,0,true,2600);
             }else if(currentGame==2){
-                itemAttackUntil=gameClock+400;animateNoob();
+                itemAttackUntil=gameClock+400;animateNoob();placeShovelBarrier();
                 float fx=(float)Math.sin(yaw),fz=-(float)Math.cos(yaw);
                 float rx=(float)Math.cos(yaw),rz=(float)Math.sin(yaw);
                 float cx=px+fx*1.75f,cz=pz+fz*1.75f;
@@ -2575,6 +2582,30 @@ public final class main extends MIDlet {
                     addWorldObject(block,cx+rx*col*0.86f,jumpY+1.5f+row*0.84f,cz+rz*col*0.86f,
                             0,0,0,0.88f,0.82f,0.36f,yaw,false,0);}
             }
+        }
+        private void placeShovelBarrier(){
+            if(currentGame!=2)return;
+            for(int i=0;i<shovelBarrierNodes.length;i++){
+                if(shovelBarrierNodes[i]!=null){try{world.removeChild(shovelBarrierNodes[i]);}catch(Throwable ignored){}shovelBarrierNodes[i]=null;}
+            }
+            float fx=(float)Math.sin(yaw),fz=-(float)Math.cos(yaw);
+            float rx=(float)Math.cos(yaw),rz=(float)Math.sin(yaw);
+            float cx=px+fx*1.6f,cz=pz+fz*1.6f;
+            for(int row=0;row<2;row++)for(int col=-1;col<=1;col++){
+                int i=row*3+col+1;
+                float bx=cx+rx*col*0.9f,bz=cz+rz*col*0.9f,by=jumpY+0.42f+row*0.84f;
+                Node n=makeStuddedBox(bx,by,bz,0.88f,0.82f,0.36f,0x777777);
+                shovelBarrierNodes[i]=n;world.addChild(n);
+                shovelBarrierBoxes[i]=new float[]{bx,by,bz,0.44f,0.41f,0.18f};
+            }
+            shovelBarrierUntil=gameClock+8000;modeStatus("Stud barrier: 8 seconds");
+        }
+        private void updateShovelBarrier(){
+            if(shovelBarrierUntil==0||gameClock<shovelBarrierUntil)return;
+            for(int i=0;i<shovelBarrierNodes.length;i++){
+                if(shovelBarrierNodes[i]!=null){try{world.removeChild(shovelBarrierNodes[i]);}catch(Throwable ignored){}shovelBarrierNodes[i]=null;}
+            }
+            shovelBarrierUntil=0;
         }
         private Group makeBombModel(){
             Group bomb=new Group();
@@ -2982,6 +3013,7 @@ public final class main extends MIDlet {
             }
             updateLanPlayers();
             gameClock += dt;
+            updateShovelBarrier();
             if(modeBlockGridDirty&&currentGame>=4&&!(currentGame==15&&customMapBuilding))buildCustomCollisionGrid();
             if(currentGame==15&&customMapBuilding){
                 if(customMapBuildCursor<customMapBlocks.length)updateCustomMapBuildChunk();
