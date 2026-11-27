@@ -2609,9 +2609,14 @@ public final class main extends MIDlet {
         }
         private Group makeBombModel(){
             Group bomb=new Group();
-            bomb.addChild(makeRoundedCylinderHead(0x111111));
-            bomb.addChild(makeBox(0,0.18f,0,0.10f,0.08f,0.10f,0x303030));
-            bomb.addChild(makeBox(0,0.23f,0,0.06f,0.06f,0.06f,0x777777));
+            Node body=makeRoundedCylinderHead(0x111111);
+            // The shared avatar-head mesh is normally offset to Y=2.19.
+            // A bomb is a standalone object, so keep its body centered locally.
+            body.setTranslation(0.0f,0.0f,0.0f);
+            bomb.addChild(body);
+            // Raise the fuse above the shell instead of embedding it inside.
+            bomb.addChild(makeBox(0,0.30f,0,0.10f,0.12f,0.10f,0x6B4A2B));
+            bomb.addChild(makeBox(0,0.39f,0,0.07f,0.06f,0.07f,0xFFAA33));
             return bomb;
         }
 
@@ -2636,9 +2641,13 @@ public final class main extends MIDlet {
             shovel.setTranslation(0.02f,-0.82f,-0.12f);return shovel;
         }
         private Group makeHeldBombVisual(){
-            Group bomb=new Group();bomb.addChild(makeRoundedCylinderHead(0x111111));
-            bomb.addChild(makeBox(0,0.18f,0,0.10f,0.08f,0.10f,0x303030));
-            bomb.addChild(makeBox(0,0.23f,0,0.06f,0.06f,0.06f,0x777777));
+            Group bomb=new Group();
+            Node body=makeRoundedCylinderHead(0x111111);
+            // Reset the avatar-specific head offset before attaching it to the hand.
+            body.setTranslation(0.0f,0.0f,0.0f);
+            bomb.addChild(body);
+            bomb.addChild(makeBox(0,0.30f,0,0.10f,0.12f,0.10f,0x6B4A2B));
+            bomb.addChild(makeBox(0,0.39f,0,0.07f,0.06f,0.07f,0xFFAA33));
             bomb.setTranslation(0.02f,-0.78f,-0.12f);
             return bomb;
         }
