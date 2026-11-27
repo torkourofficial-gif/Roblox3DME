@@ -2610,35 +2610,35 @@ public final class main extends MIDlet {
         private Group makeBombModel(){
             Group bomb=new Group();
             bomb.addChild(makeRoundedCylinderHead(0x111111));
-            bomb.addChild(makeBox(0,0.25f,0,0.10f,0.08f,0.10f,0x303030));
-            bomb.addChild(makeBox(0,0.31f,0,0.06f,0.06f,0.06f,0x777777));
+            bomb.addChild(makeBox(0,0.18f,0,0.10f,0.08f,0.10f,0x303030));
+            bomb.addChild(makeBox(0,0.23f,0,0.06f,0.06f,0.06f,0x777777));
             return bomb;
         }
 
         private Group makeSwordVisual() {
             Group sword = new Group();
-            sword.setOrientation(90.0f,1.0f,0.0f,0.0f);
-            sword.addChild(makeBox(0, 0.42f, 0, 0.12f, 0.76f, 0.055f, 0xDCE9F2));
-            sword.addChild(makeBox(0, 0.02f, 0, 0.36f, 0.08f, 0.12f, 0xB68A42));
-            sword.addChild(makeBox(0, -0.13f, 0, 0.10f, 0.30f, 0.10f, 0x654321));
+            Group horizontal=new Group();horizontal.setOrientation(90.0f,1.0f,0.0f,0.0f);
+            horizontal.addChild(makeBox(0, 0.42f, 0, 0.12f, 0.76f, 0.055f, 0xDCE9F2));
+            horizontal.addChild(makeBox(0, 0.02f, 0, 0.36f, 0.08f, 0.12f, 0xB68A42));
+            horizontal.addChild(makeBox(0, -0.13f, 0, 0.10f, 0.30f, 0.10f, 0x654321));
+            sword.addChild(horizontal);sword.setOrientation(180.0f,0.0f,1.0f,0.0f);
             sword.setTranslation(0.02f,-0.82f,-0.12f);
             return sword;
         }
         private Group makeShovelVisual(){
-            Group shovel=new Group();
-            shovel.setOrientation(90.0f,1.0f,0.0f,0.0f);
-            shovel.addChild(makeBox(0,0.20f,0,0.09f,0.65f,0.09f,0x79502D));
-            shovel.addChild(makeBox(0,0.53f,0,0.10f,0.12f,0.12f,0x79502D));
-            Group blade=new Group();
-            blade.addChild(makeBox(0,0,0,0.22f,0.28f,0.06f,0xBFC9D1));
-            blade.setTranslation(0,0.68f,-0.01f);shovel.addChild(blade);
-            shovel.setTranslation(0.02f,-0.82f,-0.12f);
-            return shovel;
+            Group shovel=new Group(),horizontal=new Group();
+            horizontal.setOrientation(90.0f,1.0f,0.0f,0.0f);
+            horizontal.addChild(makeBox(0,0.20f,0,0.09f,0.65f,0.09f,0x79502D));
+            horizontal.addChild(makeBox(0,0.53f,0,0.10f,0.12f,0.12f,0x79502D));
+            Group blade=new Group();blade.addChild(makeBox(0,0,0,0.22f,0.28f,0.06f,0xBFC9D1));
+            blade.setTranslation(0,0.68f,-0.01f);horizontal.addChild(blade);
+            shovel.addChild(horizontal);shovel.setOrientation(180.0f,0.0f,1.0f,0.0f);
+            shovel.setTranslation(0.02f,-0.82f,-0.12f);return shovel;
         }
         private Group makeHeldBombVisual(){
             Group bomb=new Group();bomb.addChild(makeRoundedCylinderHead(0x111111));
-            bomb.addChild(makeBox(0,0.25f,0,0.10f,0.08f,0.10f,0x303030));
-            bomb.addChild(makeBox(0,0.31f,0,0.06f,0.06f,0.06f,0x777777));
+            bomb.addChild(makeBox(0,0.18f,0,0.10f,0.08f,0.10f,0x303030));
+            bomb.addChild(makeBox(0,0.23f,0,0.06f,0.06f,0.06f,0x777777));
             bomb.setTranslation(0.02f,-0.78f,-0.12f);
             return bomb;
         }
@@ -4691,9 +4691,9 @@ public final class main extends MIDlet {
             boolean attacking=itemMode&&gameClock<itemAttackUntil;
             int selected=itemMode?inventorySelection:0;
             leftArm.setOrientation(swing,1,0,0);
-            rightArm.setOrientation(attacking?-72.0f:(selected==1?-12.0f:selected==2?18.0f:-swing),1,0,0);
+            rightArm.setOrientation(attacking?72.0f:(selected==1?12.0f:selected==2?-18.0f:swing),1,0,0);
             leftLeg.setOrientation(-swing,1,0,0);
-            rightLeg.setOrientation(attacking?18.0f:swing,1,0,0);
+            rightLeg.setOrientation(attacking?-18.0f:swing,1,0,0);
             if(swordVisual!=null)swordVisual.setRenderingEnable(itemMode&&selected==0);
             if(shovelVisual!=null)shovelVisual.setRenderingEnable(itemMode&&currentGame==2&&selected==2);
             if(heldBombVisual!=null)heldBombVisual.setRenderingEnable(itemMode&&selected==1);
