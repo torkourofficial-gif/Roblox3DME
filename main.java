@@ -1080,6 +1080,36 @@ public final class main extends MIDlet {
                 if(modeBlockListCollision(customCollisionGrid[gx][gz],x,z,bottom,height))return true;
             return false;
         }
+        private void resolvePieceAgainstModeGrid(PhysicsPiece p){
+            if(customCollisionGrid==null)return;
+            int width=customCollisionGrid.length,depth=customCollisionGrid[0].length;
+            int x0=gridX(p.x-p.extentX-0.31f),x1=gridX(p.x+p.extentX+0.31f);
+            int z0=gridZ(p.z-p.extentZ-0.31f),z1=gridZ(p.z+p.extentZ+0.31f);
+            if(x0<0||z0<0||x1>=width||z1>=depth){
+                for(int i=0;i<modeBlockCount;i++)if(modeBlockActive[i]&&modeBlockCollidable[i]){
+                    float[] b=modeBlocks[i];
+                    if(b!=null)resolvePieceAgainstBox(p,b[0],b[1],b[2],b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
+                }
+                return;
+            }
+            if(customLargeCollisionBlocks!=null)for(int i=0;i<customLargeCollisionBlocks.size();i++){
+                int index=((Integer)customLargeCollisionBlocks.elementAt(i)).intValue();
+                if(index>=0&&index<modeBlockCount&&modeBlockActive[index]&&modeBlockCollidable[index]){
+                    float[] b=modeBlocks[index];
+                    resolvePieceAgainstBox(p,b[0],b[1],b[2],b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
+                }
+            }
+            for(int gx=x0;gx<=x1;gx++)for(int gz=z0;gz<=z1;gz++){
+                java.util.Vector list=customCollisionGrid[gx][gz];if(list==null)continue;
+                for(int n=0;n<list.size();n++){
+                    int index=((Integer)list.elementAt(n)).intValue();
+                    if(index>=0&&index<modeBlockCount&&modeBlockActive[index]&&modeBlockCollidable[index]){
+                        float[] b=modeBlocks[index];
+                        resolvePieceAgainstBox(p,b[0],b[1],b[2],b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
+                    }
+                }
+            }
+        }
         private float customLandingFrom(java.util.Vector indices,float previousY,float top){
             if(indices==null)return top;
             for(int i=0;i<indices.size();i++){
@@ -3328,7 +3358,7 @@ public final class main extends MIDlet {
                                 object.sx*0.5f,object.sy*0.5f,object.sz*0.5f);
                 }
             } else if (modeBlockCount > 0) {
-                if(customCollisionGrid!=null)modeBlockGridCollision(p.x,p.z,p.y-p.extentY,p.extentY*2.0f);
+                if(customCollisionGrid!=null)resolvePieceAgainstModeGrid(p);
                 else for (int i=0; i<modeBlockCount; i++) {
                     float[] b=modeBlocks[i];
                     if(b!=null&&modeBlockCollidable[i])resolvePieceAgainstBox(p,b[0],b[1],b[2],
@@ -3338,7 +3368,8 @@ public final class main extends MIDlet {
             if(useObjectGrid&&worldObjectGridHeads!=null){
                 int cx=(int)Math.floor((p.x-WORLD_OBJECT_GRID_ORIGIN)/WORLD_OBJECT_GRID_CELL);
                 int cz=(int)Math.floor((p.z-WORLD_OBJECT_GRID_ORIGIN)/WORLD_OBJECT_GRID_CELL);
-                if(cx>=0&&cz>=0&&cx<WORLD_OBJECT_GRID_SIZE&&cz<WORLD_OBJECT_GRID_SIZE){
+                if(cx>=0&&cz>=0&&cx<WORLD_OBJECT_GRID_SIZE&&cz<WORLD_OBJECT_GRID_SIZE&&
+                        p.extentX<WORLD_OBJECT_GRID_CELL*0.5f&&p.extentZ<WORLD_OBJECT_GRID_CELL*0.5f){
                     for(int gx=Math.max(0,cx-1);gx<=Math.min(WORLD_OBJECT_GRID_SIZE-1,cx+1);gx++)
                         for(int gz=Math.max(0,cz-1);gz<=Math.min(WORLD_OBJECT_GRID_SIZE-1,cz+1);gz++)
                             for(int j=worldObjectGridHeads[gx*WORLD_OBJECT_GRID_SIZE+gz];j>=0;j=worldObjectGridNext[j]){
