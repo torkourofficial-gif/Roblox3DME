@@ -159,7 +159,7 @@ public final class main extends MIDlet {
         };
         private int[] mappedControls = {
             KEY_NUM2, KEY_NUM8, KEY_NUM4, KEY_NUM6, KEY_NUM5,
-            KEY_NUM3, KEY_NUM7, KEY_NUM9
+            KEY_NUM1, KEY_NUM7, KEY_NUM9
         };
         private float jumpY = 0;
         private long lastTime;
@@ -3859,15 +3859,51 @@ public final class main extends MIDlet {
         }
 
         private void drawInventory(Graphics g) {
-            String[] items = currentGame==2 ? new String[] {"Espada","Bomba","Pala"} :
-                    new String[] {"Espada","Bomba"};
-            int y = getHeight() - 2 * g.getFont().getHeight() - 6;
+            int count=currentGame==2?3:2;
+            if(inventorySelection>=count)inventorySelection=0;
+            int slot=34, gap=3, total=count*slot+(count-1)*gap;
+            int x=(getWidth()-total)/2, y=getHeight()-slot-5;
+            for(int i=0;i<count;i++){
+                int sx=x+i*(slot+gap);
+                g.setColor(i==inventorySelection?0xD7A832:0x292929);
+                g.fillRect(sx-2,y-2,slot+4,slot+4);
+                g.setColor(i==inventorySelection?0xFFF2A0:0x777777);
+                g.drawRect(sx-2,y-2,slot+3,slot+3);
+                g.setColor(0xFFFFFF);
+                g.drawString(""+(i+1),sx+2,y+1,Graphics.TOP|Graphics.LEFT);
+                drawInventoryIcon(g,i,sx,y,slot);
+            }
+            Font old=g.getFont();
+            g.setFont(Font.getFont(Font.FACE_SYSTEM,Font.STYLE_PLAIN,Font.SIZE_SMALL));
             g.setColor(0xFFFFFF);
-            g.drawString("7/9 CAMBIAR   3 USAR", getWidth() / 2, y,
-                    Graphics.BOTTOM | Graphics.HCENTER);
-            g.setColor(0xF5C542);
-            g.drawString("ITEM: " + items[inventorySelection], getWidth() / 2,
-                    y - g.getFont().getHeight(), Graphics.BOTTOM | Graphics.HCENTER);
+            g.drawString("7/9: SELECT   1: USE",getWidth()/2,y-3,
+                    Graphics.BOTTOM|Graphics.HCENTER);
+            g.setFont(old);
+        }
+
+        private void drawInventoryIcon(Graphics g,int item,int x,int y,int size){
+            int cx=x+size/2,cy=y+size/2+3;
+            if(item==0){
+                // Compact sword silhouette.
+                g.setColor(0xD8E4EE);g.drawLine(cx-8,cy+10,cx+10,cy-10);
+                g.drawLine(cx-6,cy+9,cx+11,cy-10);
+                g.setColor(0xB58A43);g.drawLine(cx-9,cy+2,cx+1,cy+12);
+                g.drawLine(cx-12,cy+5,cx-6,cy-1);
+                g.setColor(0x654321);g.drawLine(cx-10,cy+8,cx-14,cy+12);
+            }else if(item==1){
+                // Bomb.
+                g.setColor(0x111111);g.fillArc(cx-10,cy-8,20,20,0,360);
+                g.setColor(0xBBBBBB);g.drawArc(cx-10,cy-8,20,20,0,360);
+                g.setColor(0x8A6A3A);g.drawLine(cx,cy-8,cx+2,cy-13);
+                g.setColor(0xFFAA33);g.drawLine(cx+2,cy-13,cx+5,cy-16);
+                g.setColor(0xFFFFFF);g.drawLine(cx-5,cy-3,cx-2,cy-6);
+            }else{
+                // Shovel silhouette.
+                g.setColor(0x8A6338);g.drawLine(cx-1,cy-12,cx+2,cy+7);
+                g.setColor(0xBBBBBB);g.fillArc(cx-7,cy+4,14,12,180,180);
+                g.drawLine(cx-7,cy+10,cx+7,cy+10);
+                g.setColor(0x666666);g.drawLine(cx-1,cy-12,cx+2,cy+7);
+            }
         }
 
         private void drawWrapped(Graphics g, String s, int x, int y, int maxWidth) {
