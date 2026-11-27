@@ -2610,14 +2610,14 @@ public final class main extends MIDlet {
         private Group makeBombModel(){
             Group bomb=new Group();
             bomb.addChild(makeRoundedCylinderHead(0x111111));
-            bomb.addChild(makeBox(0,0.25f,0,0.12f,0.10f,0.12f,0x303030));
-            bomb.addChild(makeBox(0.04f,0.32f,0,0.08f,0.05f,0.08f,0xFFAA33));
+            bomb.addChild(makeBox(0,0.25f,0,0.10f,0.08f,0.10f,0x303030));
+            bomb.addChild(makeBox(0,0.31f,0,0.06f,0.06f,0.06f,0x777777));
             return bomb;
         }
 
         private Group makeSwordVisual() {
             Group sword = new Group();
-            sword.setOrientation(90.0f,0.0f,0.0f,1.0f);
+            sword.setOrientation(90.0f,1.0f,0.0f,0.0f);
             sword.addChild(makeBox(0, 0.42f, 0, 0.12f, 0.76f, 0.055f, 0xDCE9F2));
             sword.addChild(makeBox(0, 0.02f, 0, 0.36f, 0.08f, 0.12f, 0xB68A42));
             sword.addChild(makeBox(0, -0.13f, 0, 0.10f, 0.30f, 0.10f, 0x654321));
@@ -2626,7 +2626,7 @@ public final class main extends MIDlet {
         }
         private Group makeShovelVisual(){
             Group shovel=new Group();
-            shovel.setOrientation(90.0f,0.0f,0.0f,1.0f);
+            shovel.setOrientation(90.0f,1.0f,0.0f,0.0f);
             shovel.addChild(makeBox(0,0.20f,0,0.09f,0.65f,0.09f,0x79502D));
             shovel.addChild(makeBox(0,0.53f,0,0.10f,0.12f,0.12f,0x79502D));
             Group blade=new Group();
@@ -2637,8 +2637,8 @@ public final class main extends MIDlet {
         }
         private Group makeHeldBombVisual(){
             Group bomb=new Group();bomb.addChild(makeRoundedCylinderHead(0x111111));
-            bomb.addChild(makeBox(0,0.22f,0,0.12f,0.10f,0.12f,0x303030));
-            bomb.addChild(makeBox(0.035f,0.28f,0,0.08f,0.05f,0.08f,0xFFAA33));
+            bomb.addChild(makeBox(0,0.25f,0,0.10f,0.08f,0.10f,0x303030));
+            bomb.addChild(makeBox(0,0.31f,0,0.06f,0.06f,0.06f,0x777777));
             bomb.setTranslation(0.02f,-0.78f,-0.12f);
             return bomb;
         }
