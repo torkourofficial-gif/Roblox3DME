@@ -1105,7 +1105,10 @@ public final class main extends MIDlet {
                     int index=((Integer)list.elementAt(n)).intValue();
                     if(index>=0&&index<modeBlockCount&&modeBlockActive[index]&&modeBlockCollidable[index]){
                         float[] b=modeBlocks[index];
-                        if(gridX(b[0])==gx&&gridZ(b[2])==gz)
+                        int anchorX=gridX(b[0]),anchorZ=gridZ(b[2]);
+                        if(anchorX<x0)anchorX=x0;else if(anchorX>x1)anchorX=x1;
+                        if(anchorZ<z0)anchorZ=z0;else if(anchorZ>z1)anchorZ=z1;
+                        if(gx==anchorX&&gz==anchorZ)
                             resolvePieceAgainstBox(p,b[0],b[1],b[2],b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
                     }
                 }
