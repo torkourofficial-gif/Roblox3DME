@@ -2340,13 +2340,11 @@ public final class main extends MIDlet {
                     damageAtMeteorImpact(impactX,impactZ);
                 }
             }
-            buildWorldObjectGrid();
             for (int i = 0; i < worldObjectScanLimit; i++) {
                 WorldObject o = worldObjects[i];
                 if (o != null && o.active) resolvePieceEnvironment(o.body,true);
             }
-            // Environment resolution can move pieces across cell boundaries.
-            // Rebuild buckets before pair resolution so no nearby pair is missed.
+            // Pair resolution handles object-to-object contacts after terrain collisions.
             buildWorldObjectGrid();
             for (int i = 0; i < worldObjectScanLimit; i++) {
                 WorldObject a = worldObjects[i];
@@ -3427,40 +3425,7 @@ public final class main extends MIDlet {
                             b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
                 }
             }
-            if(useObjectGrid&&worldObjectGridHeads!=null){
-                int cx=(int)Math.floor((p.x-WORLD_OBJECT_GRID_ORIGIN)/WORLD_OBJECT_GRID_CELL);
-                int cz=(int)Math.floor((p.z-WORLD_OBJECT_GRID_ORIGIN)/WORLD_OBJECT_GRID_CELL);
-                if(cx>=0&&cz>=0&&cx<WORLD_OBJECT_GRID_SIZE&&cz<WORLD_OBJECT_GRID_SIZE&&
-                        p.extentX<WORLD_OBJECT_GRID_CELL*0.5f&&p.extentZ<WORLD_OBJECT_GRID_CELL*0.5f){
-                    for(int gx=Math.max(0,cx-1);gx<=Math.min(WORLD_OBJECT_GRID_SIZE-1,cx+1);gx++)
-                        for(int gz=Math.max(0,cz-1);gz<=Math.min(WORLD_OBJECT_GRID_SIZE-1,cz+1);gz++)
-                            for(int j=worldObjectGridHeads[gx*WORLD_OBJECT_GRID_SIZE+gz];j>=0;j=worldObjectGridNext[j]){
-                                WorldObject object=worldObjects[j];
-                                if(object!=null&&object.active&&!object.bomb&&object.body!=p){
-                                    PhysicsPiece other=object.body;
-                                    if(Math.abs(p.x-other.x)<p.extentX+other.extentX&&
-                                            Math.abs(p.y-other.y)<p.extentY+other.extentY&&
-                                            Math.abs(p.z-other.z)<p.extentZ+other.extentZ)
-                                        resolvePieceAgainstBox(p,other.x,other.y,other.z,other.extentX,other.extentY,other.extentZ);
-                                }
-                            }
-                    for(int j=0;j<worldObjectScanLimit;j++)if(worldObjectGridOverflow[j]){
-                        WorldObject object=worldObjects[j];
-                        if(object!=null&&object.active&&!object.bomb&&object.body!=p){
-                            PhysicsPiece other=object.body;
-                            resolvePieceAgainstBox(p,other.x,other.y,other.z,other.extentX,other.extentY,other.extentZ);
-                        }
-                    }
-                }else{
-                    for(int j=0;j<worldObjectScanLimit;j++){
-                        WorldObject object=worldObjects[j];
-                        if(object!=null&&object.active&&!object.bomb&&object.body!=p){
-                            PhysicsPiece other=object.body;
-                            resolvePieceAgainstBox(p,other.x,other.y,other.z,other.extentX,other.extentY,other.extentZ);
-                        }
-                    }
-                }
-            }else for(int i=0;i<worldObjectScanLimit;i++) {
+            if(!useObjectGrid)for(int i=0;i<worldObjectScanLimit;i++) {
                 WorldObject object=worldObjects[i];
                 if(object!=null&&object.active&&!object.bomb&&object.body!=p) {
                     PhysicsPiece other=object.body;
