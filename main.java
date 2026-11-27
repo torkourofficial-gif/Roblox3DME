@@ -1105,7 +1105,8 @@ public final class main extends MIDlet {
                     int index=((Integer)list.elementAt(n)).intValue();
                     if(index>=0&&index<modeBlockCount&&modeBlockActive[index]&&modeBlockCollidable[index]){
                         float[] b=modeBlocks[index];
-                        resolvePieceAgainstBox(p,b[0],b[1],b[2],b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
+                        if(gridX(b[0])==gx&&gridZ(b[2])==gz)
+                            resolvePieceAgainstBox(p,b[0],b[1],b[2],b[3]*0.5f,b[4]*0.5f,b[5]*0.5f);
                     }
                 }
             }
@@ -1116,6 +1117,42 @@ public final class main extends MIDlet {
                 int index=((Integer)indices.elementAt(i)).intValue();if(!modeBlockActive[index]||!modeBlockCollidable[index])continue;
                 float[] b=modeBlocks[index];float platformTop=b[1]+b[4]*0.5f;
                 if(onPlatform(b[0],b[2],b[3]*0.5f,b[5]*0.5f)&&platformCanSupport(previousY,platformTop))top=Math.max(top,platformTop);
+            }
+            return top;
+        }
+        private float modeBlockLandingFrom(java.util.Vector indices,float x,float z,float previousY,float top){
+            if(indices==null)return top;
+            for(int i=0;i<indices.size();i++){
+                int index=((Integer)indices.elementAt(i)).intValue();
+                if(index<0||index>=modeBlockCount||!modeBlockActive[index]||!modeBlockCollidable[index])continue;
+                float[] b=modeBlocks[index];float platformTop=b[1]+b[4]*0.5f;
+                if(Math.abs(x-b[0])<=b[3]*0.5f+0.22f&&Math.abs(z-b[2])<=b[5]*0.5f+0.22f&&
+                        ((previousY>=platformTop-0.05f&&previousY<=platformTop+0.25f)||previousY>=platformTop))
+                    top=Math.max(top,platformTop);
+            }
+            return top;
+        }
+        private float modeBlockGroundTopFrom(java.util.Vector indices,float x,float z,float top){
+            if(indices==null)return top;
+            for(int i=0;i<indices.size();i++){
+                int index=((Integer)indices.elementAt(i)).intValue();
+                if(index<0||index>=modeBlockCount||!modeBlockActive[index]||!modeBlockCollidable[index])continue;
+                float[] b=modeBlocks[index];
+                if(Math.abs(x-b[0])<b[3]*0.5f+0.2f&&Math.abs(z-b[2])<b[5]*0.5f+0.2f)
+                    top=Math.max(top,b[1]+b[4]*0.5f);
+            }
+            return top;
+        }
+        private float modeBlockBotLandingFrom(java.util.Vector indices,PlayerBot bot,float previousY,float top){
+            if(indices==null)return top;
+            for(int i=0;i<indices.size();i++){
+                int index=((Integer)indices.elementAt(i)).intValue();
+                if(index<0||index>=modeBlockCount||!modeBlockActive[index]||!modeBlockCollidable[index])continue;
+                float[] b=modeBlocks[index];float platformTop=b[1]+b[4]*0.5f;
+                if(botOnPlatform(bot.x,bot.z,b[0],b[2],b[3]*0.5f,b[5]*0.5f)&&
+                        ((bot.grounded&&bot.y>=platformTop-0.05f)||
+                        (!bot.grounded&&bot.velocityY<=0&&previousY>=platformTop&&bot.y<=platformTop)))
+                    top=Math.max(top,platformTop);
             }
             return top;
         }
@@ -1620,7 +1657,12 @@ public final class main extends MIDlet {
             if(currentGame!=4&&currentGame!=0&&currentGame!=6&&currentGame!=7&&
                     Math.abs(bot.x)<11.5f&&Math.abs(bot.z)<11.5f)top=0.0f;
             if(currentGame>=4){
-                for(int i=0;i<modeBlockCount;i++){
+                if(customCollisionGrid!=null){
+                    top=modeBlockBotLandingFrom(customLargeCollisionBlocks,bot,previousY,top);
+                    int gx=gridX(bot.x),gz=gridZ(bot.z);
+                    if(gx>=0&&gz>=0&&gx<customCollisionGrid.length&&gz<customCollisionGrid[0].length)
+                        top=modeBlockBotLandingFrom(customCollisionGrid[gx][gz],bot,previousY,top);
+                }else for(int i=0;i<modeBlockCount;i++){
                     if(!modeBlockActive[i]||!modeBlockCollidable[i])continue;
                     float[] b=modeBlocks[i];float platformTop=b[1]+b[4]*0.5f;
                     if(botOnPlatform(bot.x,bot.z,b[0],b[2],b[3]*0.5f,b[5]*0.5f)&&
@@ -1697,7 +1739,12 @@ public final class main extends MIDlet {
                 float[] b=OBBY_BLOCKS[i];
                 if(Math.abs(x-b[0])<b[3]*0.5f+0.2f&&Math.abs(z-b[2])<b[5]*0.5f+0.2f)
                     if(b[1]+b[4]*0.5f>top)top=b[1]+b[4]*0.5f;}
-            for(int i=0;i<modeBlockCount;i++)if(modeBlockActive[i]&&modeBlockCollidable[i]){
+            if(customCollisionGrid!=null){
+                top=modeBlockGroundTopFrom(customLargeCollisionBlocks,x,z,top);
+                int gx=gridX(x),gz=gridZ(z);
+                if(gx>=0&&gz>=0&&gx<customCollisionGrid.length&&gz<customCollisionGrid[0].length)
+                    top=modeBlockGroundTopFrom(customCollisionGrid[gx][gz],x,z,top);
+            }else for(int i=0;i<modeBlockCount;i++)if(modeBlockActive[i]&&modeBlockCollidable[i]){
                 float[] b=modeBlocks[i];
                 if(Math.abs(x-b[0])<b[3]*0.5f+0.2f&&Math.abs(z-b[2])<b[5]*0.5f+0.2f)
                     if(b[1]+b[4]*0.5f>top)top=b[1]+b[4]*0.5f;}
@@ -3127,6 +3174,11 @@ public final class main extends MIDlet {
                     int cellX=gridX(px),cellZ=gridZ(pz);
                     if(cellX>=0&&cellX<customCollisionGrid.length&&cellZ>=0&&cellZ<customCollisionGrid[0].length)
                         top=customLandingFrom(customCollisionGrid[cellX][cellZ],previousY,top);
+                }else if(customCollisionGrid!=null){
+                    top=customLandingFrom(customLargeCollisionBlocks,previousY,top);
+                    int cellX=gridX(px),cellZ=gridZ(pz);
+                    if(cellX>=0&&cellX<customCollisionGrid.length&&cellZ>=0&&cellZ<customCollisionGrid[0].length)
+                        top=customLandingFrom(customCollisionGrid[cellX][cellZ],previousY,top);
                 }else{
                     for (int i=0;i<modeBlockCount;i++) {
                         if (!modeBlockActive[i]||!modeBlockCollidable[i]) continue;
@@ -3175,7 +3227,7 @@ public final class main extends MIDlet {
         private void resolveHideSeekCeiling(float previousY){
             if((currentGame!=11&&currentGame!=15)||grounded||playerVelocityY<=0.0f)return;
             float oldHead=previousY+PLAYER_COLLISION_HEIGHT,newHead=jumpY+PLAYER_COLLISION_HEIGHT;
-            if(currentGame==15&&customCollisionGrid!=null){
+            if(customCollisionGrid!=null){
                 if(resolveCeilingFrom(customLargeCollisionBlocks,oldHead,newHead))return;
                 int cellX=gridX(px),cellZ=gridZ(pz);
                 if(cellX>=0&&cellX<customCollisionGrid.length&&cellZ>=0&&cellZ<customCollisionGrid[0].length)
